@@ -17,26 +17,29 @@ import logging
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict
-
-from flask import Flask, jsonify, render_template_string, request
+from typing import Any, Dict, Generator
+from flask import Flask, jsonify, render_template_string, request, Response
 import requests  # For Hugging Face API calls
+
+app = Flask(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ──────────────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
+MODELS_DIR = BASE_DIR / "models"
 MODELS_JSON = BASE_DIR / "models.json"
 LOG_FILE = BASE_DIR / "running_models.log"
 ENV_FILE = BASE_DIR / ".env"
 
 DEFAULTS: dict[str, Any] = {
-    "host": "0.0.0.0",
+    "host": "127.0.0.1",
     "port": 11000,
     "cache_size": 32768,
     "threads": 16,
@@ -50,15 +53,81 @@ DEFAULTS: dict[str, Any] = {
 }
 
 WINDOWS = platform.system() == "Windows"
-LLAMA_SERVER = BASE_DIR / "llama-server.exe"
-if WINDOWS and not LLAMA_SERVER.exists():
-    LLAMA_SERVER = BASE_DIR / "llama-server"
+# Check for WSL (Windows Subsystem for Linux) - must be done before LLAMA_SERVER assignment
+WSL = False
+if not WINDOWS:
+    try:
+        proc_version = Path("/proc/version")
+        if proc_version.exists() and "microsoft" in proc_version.read_text().lower():
+            WSL = True
+    except Exception:
+        pass
+
+
+
+# Check for llama-server binary - prefer native binary for the platform
+LLAMA_SERVER = None
+if WINDOWS:
+    candidate = BASE_DIR / "llama-server.exe"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+elif WSL:
+    # On WSL, prefer Windows binary for better compatibility
+    candidate = BASE_DIR / "llama-server.exe"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+else:
+    # On Linux, check for native binary first, then Windows binary
+    candidate = BASE_DIR / "llama-server"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server.exe"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
 
 PYTHON = sys.executable
+
+def convert_path_for_binary(path: Path) -> str:
+    r"""Convert path for the binary being used.
+    On Linux with Windows binary (WSL), convert /mnt/c/... to C:/...
+    Windows APIs accept forward slashes, so we use C:/... format.
+    """
+    path_str = str(path)
+    if LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe') and path_str.startswith('/mnt/'):
+        # Convert /mnt/X/... to X:/...
+        # Windows APIs accept forward slashes, avoiding backslash escaping issues
+        parts = path_str.split('/')
+        if len(parts) >= 3 and parts[1] == 'mnt':
+            drive = parts[2].upper()
+            # Use forward slashes - Windows APIs accept this format
+            windows_path = drive + ':/' + '/'.join(parts[3:])
+            return windows_path
+    return path_str
 
 # Download status tracking
 download_status: Dict[str, Dict[str, Any]] = {}
 download_lock = threading.Lock()
+
+# Models cache
+_models: dict[str, dict[str, Any]] = {}
+_models_lock = threading.Lock()
+
+# Track recent stop operations to avoid race conditions
+_recent_stops: dict[str, float] = {}  # model_name -> timestamp
+_recent_stops_lock = threading.Lock()
+
+# Track PIDs for WSL models (since PowerShell can't see Windows process info from Linux)
+_wsl_pids: dict[str, int] = {}  # model_name -> pid
+_wsl_pids_lock = threading.Lock()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -69,11 +138,8 @@ logging.basicConfig(
     handlers=[logging.FileHandler(BASE_DIR / "webapp.log"), logging.StreamHandler(sys.stderr)],
 )
 log = logging.getLogger("llamaweb")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Flask app setup
-# ──────────────────────────────────────────────────────────────────────────────
-app = Flask(__name__)
+log.info(f"Platform: WINDOWS={WINDOWS}, WSL={WSL}")
+log.info(f"LLAMA_SERVER: {LLAMA_SERVER}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -89,11 +155,112 @@ def load_env() -> dict[str, str]:
     return env
 
 
-def load_models() -> dict[str, dict[str, Any]]:
-    if not MODELS_JSON.exists():
-        return {}
-    with open(MODELS_JSON, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+def get_models() -> dict[str, dict[str, Any]]:
+    """Get cached models (thread-safe)."""
+    with _models_lock:
+        return _MODELS.copy()
+
+def load_models_cache() -> None:
+    """Load models from disk into cache (called at startup and after modifications)."""
+    global _MODELS
+    models = {}
+    
+    # Load from models.json
+    if MODELS_JSON.exists():
+        try:
+            with open(MODELS_JSON, "r", encoding="utf-8") as fh:
+                models = json.load(fh)
+        except (json.JSONDecodeError, IOError) as e:
+            log.warning(f"Failed to load models.json: {e}")
+    
+    # Merge with filesystem scan
+    filesystem_models = scan_models_directory()
+    for model_name, fs_meta in filesystem_models.items():
+        # Case-insensitive lookup for existing model
+        existing_key = None
+        for key in models:
+            if key.lower() == model_name.lower():
+                existing_key = key
+                break
+        
+        if existing_key is None:
+            # New model from filesystem
+            models[model_name] = fs_meta
+        else:
+            # Update existing model with filesystem info
+            existing = models[existing_key]
+            existing["file_exists"] = True
+            existing["file_size_gb"] = fs_meta.get("file_size_gb")
+            # Always use filesystem expected_size if available
+            if fs_meta.get("expected_size"):
+                existing["expected_size"] = fs_meta["expected_size"]
+            # Ensure filename is set
+            if fs_meta.get("filename"):
+                existing["filename"] = fs_meta["filename"]
+            # Ensure model_path is set
+            if fs_meta.get("model_path"):
+                existing["model_path"] = fs_meta["model_path"]
+            # Ensure repo is set
+            if existing.get("repo") is None:
+                existing["repo"] = ""
+    
+    assign_ports(models)
+    with _models_lock:
+        _MODELS = models
+
+def refresh_models_cache() -> None:
+    """Force refresh of the models cache."""
+    load_models_cache()
+
+
+def scan_models_directory() -> dict[str, dict[str, Any]]:
+    """Scan the models directory and return a dictionary of models with their metadata."""
+    models = {}
+    if not MODELS_DIR.exists():
+        return models
+    
+    for model_dir in sorted(MODELS_DIR.iterdir()):
+        if not model_dir.is_dir():
+            continue
+        
+        model_name = model_dir.name
+        
+        for model_file in model_dir.glob("*.gguf"):
+            try:
+                file_size = model_file.stat().st_size
+                file_size_gb = round(file_size / (1024 ** 3), 2)
+                
+                models[model_name] = {
+                    "model_path": str(model_file.relative_to(BASE_DIR)),
+                    "repo": "",
+                    "filename": model_file.name,
+                    "expected_size": file_size,
+                    "port": 0,
+                    "cache_size": DEFAULTS["cache_size"],
+                    "threads": DEFAULTS["threads"],
+                    "threads_batch": DEFAULTS["threads_batch"],
+                    "timeout": DEFAULTS["timeout"],
+                    "mlock": DEFAULTS["mlock"],
+                    "flash_attn": DEFAULTS["flash_attn"],
+                    "no_mmap": DEFAULTS["no_mmap"],
+                    "parallel": DEFAULTS["parallel"],
+                    "ubatch_size": DEFAULTS["ubatch_size"],
+                    "file_size_gb": file_size_gb,
+                    "file_exists": True
+                }
+                break
+            except OSError:
+                continue
+    
+    return models
+
+
+def assign_ports(models: dict[str, dict[str, Any]]) -> None:
+    """Assign sequential ports to models starting from 11000."""
+    sorted_names = sorted(models.keys())
+    for i, model_name in enumerate(sorted_names):
+        if models[model_name].get("port", 0) <= 0:
+            models[model_name]["port"] = 11000 + i * 10
 
 
 def save_models(models: dict[str, dict[str, Any]]) -> None:
@@ -110,6 +277,62 @@ def log_event(action: str, model: str, port: int | str, pid: int | str | None, s
 
 
 def find_pid_by_port(port: int) -> int | None:
+    # On WSL with Windows binary, use PowerShell to find the PID
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        try:
+            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
+            # Use ss/netstat on Linux to find the port, then PowerShell to verify
+            # First try ss/lsof
+            for binary in ("ss", "lsof"):
+                path = shutil.which(binary)
+                if not path:
+                    continue
+                try:
+                    if binary == "ss":
+                        out = subprocess.check_output(
+                            ["ss", "-tlnp", f"sport = :{port}"],
+                            stderr=subprocess.DEVNULL,
+                            text=True,
+                            timeout=5,
+                        )
+                    else:
+                        out = subprocess.check_output(
+                            ["lsof", "-ti", f"tcp:{port}"],
+                            stderr=subprocess.DEVNULL,
+                            text=True,
+                            timeout=5,
+                        )
+                    for line in out.splitlines():
+                        if "pid=" in line:
+                            pid_str = line.split("pid=")[1].split(",")[0]
+                            return int(pid_str)
+                        if line.strip().isdigit():
+                            return int(line.strip())
+                except Exception:
+                    pass
+            # Try netstat as fallback
+            netstat = shutil.which("netstat")
+            if netstat:
+                try:
+                    out = subprocess.check_output(
+                        [netstat, "-plant"],
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                        timeout=5,
+                    )
+                    for line in out.splitlines()[1:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            local = parts[1]
+                            if local.endswith(f":{port}"):
+                                candidate = parts[-1]
+                                if candidate.isdigit():
+                                    return int(candidate)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    
     for binary in ("ss", "lsof"):
         path = shutil.which(binary)
         if not path:
@@ -162,6 +385,26 @@ def find_pid_by_port(port: int) -> int | None:
 
 def pids_of_llama() -> list[int]:
     pids: list[int] = []
+    # On WSL with Windows binary, use PowerShell to find llama-server processes
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        try:
+            ps_cmd = 'Get-Process -Name "llama-server" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id'
+            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
+            result = subprocess.run(
+                [ps_bin, "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().splitlines():
+                    if line.strip().isdigit():
+                        pids.append(int(line.strip()))
+                if pids:
+                    return pids
+        except Exception:
+            pass
+    
     if WINDOWS:
         result = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq llama-server.exe", "/FO", "CSV", "/NH"],
@@ -189,13 +432,84 @@ def pids_of_llama() -> list[int]:
     return pids
 
 
+def _kill_tree(pid: int, model: str = "") -> bool:
+    """Kill a process and all its children. Returns True if successful."""
+    try:
+        # On WSL with Windows binary, use PowerShell to kill the process
+        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            log.info(f"Killing Windows process {pid} via PowerShell (WSL mode)")
+            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
+            # First, try to find the process and kill it
+            ps_cmd = f'''try {{ $p = Get-Process -Id {pid} -ErrorAction Stop; $p | Stop-Process -Force -ErrorAction Stop; Write-Output "success" }} catch {{ Write-Output "failed: $($_.Exception.Message)" }}'''
+            result = subprocess.run(
+                [ps_bin, "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            log.info(f"Kill result for {pid}: returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
+            if "success" in result.stdout.lower():
+                return True
+            # Fallback: kill all llama-server processes
+            log.info(f"Fallback: killing all llama-server processes")
+            ps_cmd = '''try { Get-Process -Name "llama-server" -ErrorAction Stop | Stop-Process -Force -ErrorAction Stop; Write-Output "success" } catch { Write-Output "failed" }'''
+            result = subprocess.run(
+                [ps_bin, "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            log.info(f"Kill all result: returncode={result.returncode}, stdout={result.stdout.strip()}")
+            return "success" in result.stdout.lower()
+        elif WINDOWS:
+            # Use taskkill to kill process tree on Windows
+            result = subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+        else:
+            # On Linux, kill the process group (negative PID)
+            # First try to kill the process group
+            try:
+                os.killpg(pid, signal.SIGTERM)
+                time.sleep(0.5)
+                # Check if still alive
+                try:
+                    os.killpg(pid, 0)
+                    # Still alive, use SIGKILL
+                    os.killpg(pid, signal.SIGKILL)
+                except OSError:
+                    pass  # Process already dead
+                return True
+            except (OSError, ProcessLookupError):
+                # Process group doesn't exist, try killing just the process
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(0.5)
+                    try:
+                        os.kill(pid, 0)
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass
+                    return True
+                except (OSError, ProcessLookupError):
+                    return True  # Already dead
+    except Exception as e:
+        log.error(f"Failed to kill process {pid}: {e}")
+        return False
+
+
 def check_port_active(port: int) -> bool:
     import socket
 
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=1.5):
+        with socket.create_connection(("127.0.0.1", port), timeout=1.0):
             return True
-    except OSError:
+    except OSError as e:
+        log.debug(f"Port check for {port} failed: {e}")
         return False
 
 
@@ -203,7 +517,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     cmd: list[str] = [
         str(LLAMA_SERVER),
         "-m",
-        str(BASE_DIR / meta["model_path"]),
+        convert_path_for_binary(BASE_DIR / meta["model_path"]),
         "--alias",
         model,
         "--host",
@@ -230,17 +544,19 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["--parallel", str(meta["parallel"])]
     if meta.get("ubatch_size"):
         cmd += ["--ubatch-size", str(meta["ubatch_size"])]
+    
+    log.info(f"Build command for {model}: {cmd}")
     return cmd
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Download logic
 # ──────────────────────────────────────────────────────────────────────────────
-def _download_worker(model_name: str, url: str, expected_size: int, token: str | None):
+def _download_worker(model_name: str, url: str, expected_size: int, token: str | None, force: bool = False):
     """Background worker to download a model file."""
     try:
         # Determine output path from models.json
-        models = load_models()
+        models = get_models()
         if model_name not in models:
             with download_lock:
                 download_status[model_name] = {"status": "error", "error": "Model not found in config"}
@@ -249,29 +565,74 @@ def _download_worker(model_name: str, url: str, expected_size: int, token: str |
         out_path = BASE_DIR / meta["model_path"]
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Check for existing file to resume (skip if force redownload)
+        resume_pos = 0
+        if out_path.exists() and not force:
+            existing_size = out_path.stat().st_size
+            if expected_size and existing_size >= expected_size * 0.9:  # 90% tolerance
+                with download_lock:
+                    download_status[model_name] = {"status": "complete", "progress": 100, "size": existing_size}
+                return
+            resume_pos = existing_size
+            log.info(f"Resuming download for {model_name} from {resume_pos} bytes")
+        elif out_path.exists() and force:
+            # Force redownload: delete existing file
+            log.info(f"Force redownload for {model_name}: deleting existing file")
+            out_path.unlink()
+
         # Update status
         with download_lock:
-            download_status[model_name] = {"status": "downloading", "progress": 0, "size": expected_size}
+            download_status[model_name] = {
+                "status": "downloading", 
+                "progress": int((resume_pos / expected_size) * 100) if expected_size else 0,
+                "size": expected_size,
+                "downloaded": resume_pos
+            }
 
         headers = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         headers["User-Agent"] = "Mozilla/5.0"
-
+        if resume_pos > 0:
+            headers["Range"] = f"bytes={resume_pos}-"
+        headers["Accept"] = "*/*"
+        
+        start_time = time.time()
+        last_notify = 0
+        
         # Stream download
         with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+            if r.status_code == 416:  # Range not satisfiable
+                with download_lock:
+                    download_status[model_name] = {"status": "complete", "progress": 100, "size": out_path.stat().st_size}
+                return
+            
             r.raise_for_status()
-            downloaded = 0
+            downloaded = resume_pos
             chunk_size = 1024 * 1024  # 1MB
-            with open(out_path, "wb") as f:
+            file_mode = "ab" if resume_pos > 0 else "wb"
+            with open(out_path, file_mode) as f:
                 for chunk in r.iter_content(chunk_size=chunk_size):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if expected_size:
-                            progress = int((downloaded / expected_size) * 100)
+                        elapsed = time.time() - start_time
+                        # Update progress every 100ms or every 10MB
+                        if time.time() - last_notify > 0.1 or downloaded - last_notify > 10 * 1024 * 1024:
+                            if expected_size:
+                                progress = int((downloaded / expected_size) * 100)
+                            else:
+                                progress = min(100, int(elapsed * 10))  # Fallback progress
+                            speed_mbps = (downloaded - resume_pos) / (1024 * 1024) / max(elapsed, 0.1)
                             with download_lock:
-                                download_status[model_name]["progress"] = progress
+                                download_status[model_name].update({
+                                    "progress": progress, 
+                                    "size": expected_size,
+                                    "downloaded": downloaded,
+                                    "speed_mbps": round(speed_mbps, 2)
+                                })
+                            last_notify = downloaded
+
         # Verify size
         actual_size = out_path.stat().st_size
         if expected_size and actual_size < expected_size * 0.9:  # allow 10% tolerance
@@ -284,14 +645,14 @@ def _download_worker(model_name: str, url: str, expected_size: int, token: str |
     except Exception as e:
         log.exception("Download failed for %s", model_name)
         with download_lock:
-            download_status[model_name] = {"status": "error", "error": str(e)}
+            download_status[model_name] = {"status": "error", "error": str(e), "retryable": True}
 
 
-def start_download(model_name: str, url: str, expected_size: int):
+def start_download(model_name: str, url: str, expected_size: int, force: bool = False):
     """Start download in a background thread."""
     env = load_env()
     token = env.get("TOKEN")
-    thread = threading.Thread(target=_download_worker, args=(model_name, url, expected_size, token), daemon=True)
+    thread = threading.Thread(target=_download_worker, args=(model_name, url, expected_size, token, force), daemon=True)
     thread.start()
 
 
@@ -316,7 +677,7 @@ def add_model_entry(
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
-        models = load_models()
+        models = get_models()
         if name in models:
             return False  # already exists
         # Ensure model directory exists
@@ -327,6 +688,9 @@ def add_model_entry(
         rel_path = model_path.relative_to(BASE_DIR)
         models[name] = {
             "model_path": str(rel_path),
+            "repo": repo,
+            "filename": filename,
+            "expected_size": expected_size,
             "port": port,
             "cache_size": cache_size,
             "threads": threads,
@@ -348,23 +712,27 @@ def add_model_entry(
 def delete_model_entry(name: str, delete_files: bool = False) -> bool:
     """Remove model from models.json and optionally delete its files."""
     try:
-        models = load_models()
+        models = get_models()
         if name not in models:
             return False
         meta = models[name]
         if delete_files:
-            model_path = BASE_DIR / meta["model_path"]
-            if model_path.exists():
-                model_path.unlink()
-            # Optionally remove directory if empty
-            model_dir = model_path.parent
-            try:
-                if model_dir.exists() and not any(model_dir.iterdir()):
-                    model_dir.rmdir()
-            except Exception:
-                pass
+            model_path_str = meta.get("model_path", "")
+            if model_path_str:
+                model_path = BASE_DIR / model_path_str
+                if model_path.exists():
+                    model_path.unlink()
+                # Optionally remove directory if empty
+                model_dir = model_path.parent
+                try:
+                    if model_dir.exists() and not any(model_dir.iterdir()):
+                        model_dir.rmdir()
+                except Exception:
+                    pass
         del models[name]
         save_models(models)
+        # Refresh the in-memory cache
+        load_models_cache()
         return True
     except Exception as e:
         log.exception("Failed to delete model %s", name)
@@ -375,23 +743,65 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
 # Status and control endpoints
 # ──────────────────────────────────────────────────────────────────────────────
 def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
-    port = int(meta["port"])
-    pid = find_pid_by_port(port)
-    model_path = BASE_DIR / meta["model_path"]
-    exists = model_path.is_file()
+    port = int(meta.get("port", 11000))
+    model_path_str = meta.get("model_path", "")
+    model_path = BASE_DIR / model_path_str if model_path_str else None
+    exists = model_path.is_file() if model_path else False
+    # Quick check if port is active
     active = check_port_active(port)
-    if pid:
-        status = "running"
-    elif active:
-        status = "running (unknown pid)"
-    else:
-        status = "stopped"
+    pid = None
+    status = "stopped"
+    
+    if WSL:
+        with _wsl_pids_lock:
+            stored_pid_debug = _wsl_pids.get(model)
+        log.info(f"Status check for {model}: WSL=True, port={port}, active={active}, stored_pid={stored_pid_debug}")
+    
+    # Check if model was recently stopped (within last 10 seconds)
+    with _recent_stops_lock:
+        recent_stop_time = _recent_stops.get(model, 0)
+        if recent_stop_time and time.time() - recent_stop_time < 10:
+            # If recently stopped, still report as stopped even if port shows active
+            # This handles race conditions with port release and WSL PID lookup
+            status = "stopped"
+        else:
+            # First check stored PID for WSL (most reliable)
+            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+                with _wsl_pids_lock:
+                    stored_pid = _wsl_pids.get(model)
+                if stored_pid:
+                    pid = stored_pid
+                    status = "running"
+                    log.info(f"Status for {model}: using stored PID {pid}")
+                elif active:
+                    # Port active but no stored PID - this is expected on WSL
+                    # The stored PID might be lost if server restarted
+                    # Use None for pid since find_pid_by_port won't work for Windows processes
+                    status = "running"
+                    log.info(f"Status for {model}: port active but no stored PID (WSL)")
+            elif active:
+                # Non-WSL: use port check
+                pid = find_pid_by_port(port)
+                if pid:
+                    status = "running"
+                else:
+                    status = "running (unknown pid)"
     # File size if it exists
-    size_gb: float | None = None
-    if exists:
+    size_gb: float | None = meta.get("file_size_gb")
+    if exists and size_gb is None and model_path:
         try:
             size_bytes = model_path.stat().st_size
             size_gb = round(size_bytes / (1024 ** 3), 2)
+        except OSError:
+            pass
+    # Check for partial download
+    partial_download = 0
+    if model_path and model_path.exists():
+        try:
+            actual_size = model_path.stat().st_size
+            expected_size = meta.get("expected_size", 0)
+            if expected_size and actual_size > 0 and actual_size < expected_size * 0.9:
+                partial_download = actual_size
         except OSError:
             pass
     # Download status
@@ -405,15 +815,16 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
         "pid": pid,
         "file_exists": exists,
         "file_size_gb": size_gb,
-        "model_path": meta["model_path"],
+        "model_path": model_path_str,
         "download_status": dl_status,
-        **meta,
+        "partial_download": partial_download,
+        **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
     }
 
 
 @app.route("/")
 def index():
-    models = load_models()
+    models = get_models()
     statuses = [_status_for_model(name, meta) for name, meta in models.items()]
     html = render_template_string(TEMPLATE, statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT)
     return html
@@ -421,48 +832,158 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    models = load_models()
-    return jsonify([_status_for_model(n, m) for n, m in models.items()])
+    models = get_models()
+    results = []
+    log.info(f"Status API called, models: {list(models.keys())}")
+    for name, meta in models.items():
+        result = _status_for_model(name, meta)
+        results.append(result)
+        log.info(f"Status API returning: model={result['model']}, status={result['status']}, pid={result['pid']}")
+    response = jsonify(results)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+@app.route("/api/debug/<model_name>")
+def api_debug(model_name):
+    """Debug endpoint to check model status."""
+    models = get_models()
+    if model_name not in models:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    
+    meta = models[model_name]
+    port = int(meta["port"])
+    active = check_port_active(port)
+    
+    result = {
+        "model": model_name,
+        "port": port,
+        "active": active,
+        "WSL": WSL,
+        "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
+        "stored_pid": _wsl_pids.get(model_name) if WSL else None,
+        "recent_stop": _recent_stops.get(model_name),
+    }
+    return jsonify(result)
 
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    data = request.get_json(force=True) or {}
-    model = data.get("model", "").strip()
-    if not model:
-        return jsonify({"error": "Missing 'model'"}), 400
-    models = load_models()
-    if model not in models:
-        return jsonify({"error": f"Unknown model '{model}'"}), 404
-    meta = models[model]
-    port = int(meta["port"])
-    if find_pid_by_port(port):
-        return jsonify({"error": f"Already running on port {port}", "status": "running"}), 409
-
-    model_file = BASE_DIR / meta["model_path"]
-    if not model_file.is_file():
-        return jsonify({"error": f"Model file not found: {meta['model_path']}"}), 404
-
-    cmd = build_cmd(model, port, meta)
-    kwargs: dict[str, Any] = {}
-    if WINDOWS:
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
     try:
-        proc = subprocess.Popen(cmd, **kwargs)
-    except Exception as exc:
-        log_event("start", model, port, None, f"failed: {exc}")
-        return jsonify({"error": str(exc)}), 500
+        data = request.get_json(force=True) or {}
+        model = data.get("model", "").strip()
+        if not model:
+            return jsonify({"error": "Missing 'model'"}), 400
+        models = get_models()
+        if model not in models:
+            return jsonify({"error": f"Unknown model '{model}'"}), 404
+        meta = models[model]
+        port = int(meta["port"])
+        if find_pid_by_port(port):
+            return jsonify({"error": f"Already running on port {port}", "status": "running"}), 409
 
-    # Wait briefly to see if it crashes immediately
-    time.sleep(2.5)
-    if proc.poll() is None:
-        log_event("start", model, port, proc.pid, "running")
-        return jsonify({"status": "running", "pid": proc.pid, "port": port})
-    else:
-        log_event("start", model, port, proc.pid, "exited_early")
-        return jsonify({"error": f"Server exited immediately with code {proc.poll()}", "status": "exited"}), 500
+        model_file = BASE_DIR / meta["model_path"]
+        if not model_file.is_file():
+            return jsonify({"error": f"Model file not found: {meta['model_path']}"}), 404
+
+        cmd = build_cmd(model, port, meta)
+        proc = None
+        pid = None
+        
+        # On WSL with Windows binary, use bash to start the process in background
+        # This is more reliable than PowerShell's Start-Process on Linux
+        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            log.info(f"WSL mode: starting Windows binary in background via bash")
+            log.info(f"LLAMA_SERVER: {LLAMA_SERVER}")
+            log.info(f"cmd: {cmd}")
+            # Build arguments directly from meta dictionary for reliability
+            args = [
+                convert_path_for_binary(BASE_DIR / meta["model_path"]),
+                model,
+                DEFAULTS["host"],
+                str(port),
+                str(meta.get("threads", DEFAULTS["threads"])),
+                str(meta.get("threads_batch", DEFAULTS["threads_batch"])),
+                str(meta.get("cache_size", DEFAULTS["cache_size"])),
+                str(meta.get("timeout", DEFAULTS["timeout"])),
+                str(meta.get("parallel", DEFAULTS["parallel"])),
+                str(meta.get("ubatch_size", DEFAULTS["ubatch_size"])),
+            ]
+            log.info(f"args: {args}")
+            # Build the command with Windows path for bash
+            bash_cmd = (
+                f'nohup "{cmd[0]}" -m "{args[0]}" --alias "{args[1]}" '
+                f'--host "{args[2]}" --port {args[3]} --threads {args[4]} '
+                f'--threads-batch {args[5]} -c {args[6]} --timeout {args[7]} '
+                f'--mlock --no-mmap --parallel {args[8]} --ubatch-size {args[9]} '
+                '> /dev/null 2>&1 & echo $!'
+            )
+            log.info(f"Starting Windows process via bash: nohup")
+            log.info(f"bash_cmd: {bash_cmd}")
+            # Run bash in background and immediately return
+            proc = subprocess.Popen(
+                ["bash", "-c", bash_cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            # Give the process a moment to start and print PID
+            time.sleep(0.2)
+            # On WSL, we can't reliably get the PID from Windows process
+            # Instead, we'll track it by port and return a placeholder
+            pid = None  # Will be set to None since we can't get Windows PID
+            log.info(f"Started bash process to launch Windows binary, pid={proc.pid}")
+        elif WINDOWS:
+            kwargs = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+            proc = subprocess.Popen(cmd, **kwargs)
+            pid = proc.pid
+            log.info(f"Started Windows process with PID {pid}")
+        else:
+            # On Linux, use start_new_session for detached process
+            kwargs = {"start_new_session": True}
+            proc = subprocess.Popen(cmd, **kwargs)
+            pid = proc.pid
+            log.info(f"Started Linux process with PID {pid}")
+        
+        # On WSL with Windows binary, we can't get the PID from bash
+        # The PID will be tracked by port instead
+        if pid is None and not (WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe')):
+            log_event("start", model, port, None, "failed: could not get PID")
+            return jsonify({"error": "Failed to start server: could not get PID"}), 500
+
+        # Wait briefly for the process to start
+        time.sleep(2.5)
+        
+        # Check if process is still running
+        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            # On WSL, check if port is active (more reliable than PID check for background processes)
+            # Try multiple times as the port may take a moment to become available
+            is_running = False
+            for _ in range(5):
+                if check_port_active(port):
+                    is_running = True
+                    break
+                time.sleep(0.5)
+        elif proc:
+            is_running = proc.poll() is None
+        else:
+            is_running = False
+        
+        if is_running:
+            # Clear any recent stop entry so status reflects running state
+            with _recent_stops_lock:
+                _recent_stops.pop(model, None)
+            # For WSL, we can't store the PID since it's a Windows process
+            # The status will be determined by port check
+            log.info(f"Start successful: model={model}, pid={pid}, port={port}, is_running={is_running}")
+            log_event("start", model, port, pid, "running")
+            return jsonify({"status": "running", "pid": pid, "port": port})
+        else:
+            log_event("start", model, port, pid, "exited_early")
+            return jsonify({"error": "Server exited immediately", "status": "exited"}), 500
+    except Exception as e:
+        log.exception("Failed to start server for %s", model)
+        return jsonify({"error": f"Failed to start server: {str(e)}"}), 500
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -471,26 +992,78 @@ def api_stop():
     model = data.get("model", "").strip()
     if not model:
         return jsonify({"error": "Missing 'model'"}), 400
-    models = load_models()
+    models = get_models()
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
-    port = int(models[model]["port"])
-    pid = find_pid_by_port(port)
+    meta = models[model]
+    port = int(meta["port"])
+    
+    # On WSL with Windows binary, we can't reliably get the PID
+    # Use pids_of_llama() to find the process
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        # Find llama-server processes
+        pids = pids_of_llama()
+        if pids:
+            pid = pids[0]
+            log.info(f"Stop request for {model}: using llama-server PID {pid} (WSL mode)")
+        else:
+            log.info(f"No llama-server process found for {model}")
+            # Record stop time even when no PID found, to prevent status race condition
+            with _recent_stops_lock:
+                _recent_stops[model] = time.time()
+            return jsonify({"status": "stopped"})
+    else:
+        pid = find_pid_by_port(port)
+        log.info(f"Stop request for {model}: port={port}, pid={pid}")
+        
+        # If no PID found but port is active, try to find llama-server process anyway
+        if not pid and check_port_active(port):
+            pids = pids_of_llama()
+            log.info(f"No PID from port, found llama-server PIDs: {pids}")
+            if pids:
+                pid = pids[0]  # Use first found
+    
     if not pid:
+        log.info(f"No PID found for {model}, returning stopped")
+        # Record stop time even when no PID found, to prevent status race condition
+        with _recent_stops_lock:
+            _recent_stops[model] = time.time()
         return jsonify({"status": "stopped"})
 
-    success = _kill_tree(pid)
+    success = _kill_tree(pid, model)
+    log.info(f"Kill result for {model} (pid={pid}): success={success}")
+    
+    # Clear the stored PID for WSL models
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        with _wsl_pids_lock:
+            old_pid = _wsl_pids.pop(model, None)
+        log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
+    
+    # Record the stop time to avoid race conditions
+    with _recent_stops_lock:
+        _recent_stops[model] = time.time()
+    
+    # Wait for port to be released (up to 3 seconds)
+    for _ in range(30):
+        time.sleep(0.1)
+        if not check_port_active(port):
+            break
+    
     if success:
         log_event("stop", model, port, pid, "stopped")
     else:
         log_event("stop", model, port, pid, "kill_failed")
+    # Clear the WSL PID tracking for this model
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        with _wsl_pids_lock:
+            _wsl_pids.pop(model, None)
     return jsonify({"status": "stopped", "pid": pid, "success": success})
 
 
 @app.route("/api/download", methods=["POST"])
 def api_download():
     """Start downloading a model.
-    Expected JSON: { "model": "...", "url": "...", "expected_size": 123456789 }
+    Expected JSON: { "model": "...", "url": "...", "expected_size": 123456789, "resume": true, "force": true }
     """
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
@@ -499,25 +1072,160 @@ def api_download():
         expected_size = int(data.get("expected_size", 0))
     except ValueError:
         expected_size = 0
+    resume = data.get("resume", False)
+    force = data.get("force", False)
     if not model or not url:
         return jsonify({"error": "Missing model or url"}), 400
     # Basic validation: model should exist in models.json
-    models = load_models()
+    models = get_models()
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     # Ensure target directory exists
     meta = models[model]
     target = BASE_DIR / meta["model_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
-    # If file already exists and looks complete, we could skip, but we'll just start download (will overwrite)
+    
+    # If force redownload, delete existing file and start fresh
+    if force and target.exists():
+        log.info(f"Force redownload requested for {model}: deleting existing file")
+        target.unlink()
+        start_download(model, url, expected_size, force=True)
+        return jsonify({"status": "download started", "model": model, "force": True})
+    
+    # Check if we should resume
+    actual_size = 0
+    if resume and target.exists():
+        stat = target.stat()
+        actual_size = stat.st_size
+        if expected_size and actual_size < expected_size * 0.9:
+            # Resume is possible
+            pass
+        else:
+            # File is complete or resume doesn't make sense
+            return jsonify({"status": "complete", "model": model, "size": actual_size})
+    
     start_download(model, url, expected_size)
     return jsonify({"status": "download started", "model": model})
+
+
+@app.route("/api/download-search", methods=["POST"])
+def api_download_search():
+    """Search HF for a model by name and return all GGUF files found.
+    Expected JSON: { "model": "...", "force": true }
+    Returns list of GGUF files for user selection, or single result to auto-download.
+    """
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    force = data.get("force", False)
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    meta = models[model]
+    
+    # Check if file already exists and is complete (skip if force)
+    out_path = BASE_DIR / meta.get("model_path", "")
+    if out_path.exists() and not force:
+        existing_size = out_path.stat().st_size
+        expected_size = meta.get("expected_size", 0)
+        if expected_size and existing_size >= expected_size * 0.9:
+            return jsonify({"status": "complete", "model": model, "size": existing_size, "results": []})
+    
+    # Search HF for the model
+    try:
+        resp = requests.get(
+            "https://huggingface.co/api/models",
+            params={"search": model, "limit": 10, "full": "true"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"HF search failed: HTTP {resp.status_code}"}), 500
+        
+        hf_models = resp.json()
+        if not hf_models:
+            return jsonify({"error": f"No model found on Hugging Face for '{model}'"}), 404
+        
+        # Collect all GGUF files from all matching models
+        results = []
+        for hf_model in hf_models:
+            repo = hf_model["id"]
+            for file in hf_model.get("siblings", []):
+                if file.get("rfilename", "").lower().endswith(".gguf"):
+                    filename = file["rfilename"]
+                    size = file.get("size", 0)
+                    if not size:
+                        size = estimate_gguf_size(repo, filename)
+                    url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+                    results.append({
+                        "repo": repo,
+                        "filename": filename,
+                        "size": size,
+                        "url": url,
+                        "downloads": hf_model.get("downloads", 0),
+                        "likes": hf_model.get("likes", 0)
+                    })
+        
+        if not results:
+            return jsonify({"error": f"No GGUF file found for '{model}' on Hugging Face"}), 404
+        
+        # If only one result, start download automatically
+        if len(results) == 1:
+            url = results[0]["url"]
+            size = results[0]["size"]
+            target = BASE_DIR / meta["model_path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            start_download(model, url, size, force=force)
+            return jsonify({"status": "download started", "model": model, "results": results})
+        
+        # Return multiple results for user selection
+        return jsonify({"status": "multiple_results", "model": model, "results": results})
+    except Exception as e:
+        log.error(f"HF search error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/download-status")
 def api_download_status():
     with download_lock:
-        return jsonify(download_status)
+        response = jsonify(download_status)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
+
+@app.route("/api/download-stream/<model_name>")
+def api_download_stream(model_name: str):
+    """SSE endpoint for download progress streaming."""
+    from urllib.parse import unquote
+    model_name = unquote(model_name)
+    
+    def generate() -> Generator[str, None, None]:
+        try:
+            # Send initial status
+            with download_lock:
+                status = download_status.get(model_name, {"status": "waiting", "progress": 0})
+            yield f"data: {json.dumps(status)}\n\n"
+            
+            # Poll for updates
+            last_status = status.get("status", "")
+            while last_status not in ("complete", "error"):
+                time.sleep(0.5)
+                with download_lock:
+                    status = download_status.get(model_name, {"status": "waiting", "progress": 0})
+                yield f"data: {json.dumps(status)}\n\n"
+                last_status = status.get("status", "")
+            
+            # Final update
+            yield f"data: {json.dumps(status)}\n\n"
+        except GeneratorExit:
+            pass
+    
+    return Response(generate(), mimetype="text/event-stream", headers={
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+    })
 
 
 @app.route("/api/add-model", methods=["POST"])
@@ -566,10 +1274,10 @@ def api_add_model():
 @app.route("/api/delete-model", methods=["POST"])
 def api_delete_model():
     """Delete a model.
-    Expected JSON: { "name": "...", "delete_files": false }
+    Expected JSON: { "model": "...", "delete_files": false }
     """
     data = request.get_json(force=True) or {}
-    name = data.get("name", "").strip()
+    name = data.get("model", "").strip()
     if not name:
         return jsonify({"error": "Missing model name"}), 400
     delete_files = bool(data.get("delete_files", False))
@@ -593,6 +1301,41 @@ def api_next_port():
     while check_port_active(port):
         port += 1
     return jsonify({"port": port})
+
+
+@app.route("/api/model-file", methods=["POST"])
+def api_model_file():
+    """Get the download URL and size for a model file."""
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    meta = models[model]
+    repo = meta.get("repo", "")
+    filename = meta.get("filename", "")
+    size = meta.get("expected_size", 0)
+    
+    if repo and filename:
+        # Search HF for the actual file info
+        try:
+            resp = requests.get(f"https://huggingface.co/api/models/{repo}", timeout=10)
+            if resp.status_code == 200:
+                hf_model = resp.json()
+                for file in hf_model.get("siblings", []):
+                    if file.get("rfilename") == filename:
+                        size = file.get("size", size)
+                        break
+            url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+            return jsonify({"url": url, "size": size, "filename": filename})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    
+    return jsonify({"error": "Model has no repo/filename configured"}), 400
 
 
 @app.route("/api/search-models", methods=["POST"])
@@ -725,13 +1468,14 @@ TEMPLATE = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <style>
-  :root {
-    --bg: #1a1a2e; --surface: #16213e; --surface2: #0f3460;
-    --text: #e0e0e0; --text2: #a0a0b8; --green: #2ecc71;
-    --red: #e74c3c; --yellow: #f1c40f; --blue: #3498db;
-    --btn-run: #27ae60; --btn-stop: #e74c3c; --btn-download: #ff9800;
-    --btn-add: #9b59b6; --btn-del: #e67e22; --btn-search: #3498db;
-  }
+   :root {
+     --bg: #1a1a2e; --surface: #16213e; --surface2: #0f3460;
+     --text: #e0e0e0; --text2: #a0a0b8; --green: #2ecc71;
+     --red: #e74c3c; --yellow: #f1c40f; --blue: #3498db;
+     --btn-run: #27ae60; --btn-stop: #e74c3c; --btn-download: #ff9800;
+     --btn-add: #9b59b6; --btn-del: #e67e22; --btn-search: #3498db;
+     --btn-goto: #00bcd4;
+   }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -761,12 +1505,13 @@ TEMPLATE = r"""<!DOCTYPE html>
     padding: .5rem 1rem; border: none; border-radius: 6px;
     cursor: pointer; font-size: .9rem; text-decoration: none; color: #fff;
   }
-  .btn-run   { background: var(--btn-run); }
-  .btn-stop  { background: var(--btn-stop); }
-  .btn-download { background: var(--btn-download); }
-  .btn-add   { background: var(--btn-add); }
-  .btn-del   { background: var(--btn-del); }
-  .btn-search { background: var(--btn-search); }
+   .btn-run   { background: var(--btn-run); }
+   .btn-stop  { background: var(--btn-stop); }
+   .btn-download { background: var(--btn-download); }
+   .btn-add   { background: var(--btn-add); }
+   .btn-del   { background: var(--btn-del); }
+   .btn-search { background: var(--btn-search); }
+   .btn-goto { background: var(--btn-goto); }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--text2); font-weight: 500;
        border-bottom: 1px solid var(--surface2); padding: .5rem .4rem; }
@@ -849,15 +1594,15 @@ TEMPLATE = r"""<!DOCTYPE html>
      color: var(--text2);
      font-size: 1.1rem;
    }
-   .spinner {
-     width: 40px;
-     height: 40px;
-     margin: 0 auto 1rem;
-     border: 4px solid var(--surface2);
-     border-top: 4px solid var(--blue);
-     border-radius: 50%;
-     animation: spin 1s linear infinite;
-   }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 1rem;
+      border: 4px solid var(--surface2);
+      border-top: 4px solid var(--btn-goto);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
    @keyframes spin {
      0% { transform: rotate(0deg); }
      100% { transform: rotate(360deg); }
@@ -866,7 +1611,8 @@ TEMPLATE = r"""<!DOCTYPE html>
      main { padding: 1rem; }
      header { flex-direction: column; align-items: flex-start; gap: .4rem; }
      th, td { font-size: .82rem; }
-   }
+    }
+</style>
 </head>
 <body>
 <header>
@@ -878,13 +1624,26 @@ TEMPLATE = r"""<!DOCTYPE html>
     Access from other devices on your LAN using <b>http://{{ host }}:{{ flask_port }}</b>
     ({{ host }} is bound to 0.0.0.0).
   </p>
-  <div class="toolbar">
-    <input type="search" id="search" placeholder="Filter models…">
-    <button class="btn-goto" onclick="refresh()">↻ Refresh</button>
-    <button class="btn-add" onclick="toggleAddForm()">➕ Add Model</button>
-    <a class="btn-goto" href="/api/logs" target="_blank">📜 Logs</a>
+ <div class="toolbar">
+ <input type="search" id="search" placeholder="Filter models…">
+ <button class="btn-goto" id="refreshBtn" style="background: var(--btn-goto); color: var(--bg);">↻ Refresh</button>
+ <button class="btn-add" id="addModelBtn">➕ Add Model</button>
+ <a class="btn-goto" href="/api/logs" target="_blank">📜 Logs</a>
+</div>
+
+<!-- Download Selection Modal -->
+<div id="download-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border-radius:8px; padding:1.2rem; width:min(500px,90vw); max-height:80vh; display:flex; flex-direction:column; border:1px solid var(--surface2);">
+    <h3 style="margin:0 0 .8rem; color:var(--text);">Download from Hugging Face</h3>
+    <p style="margin:0 0 .6rem; color:var(--text2); font-size:.85rem;" id="dl-modal-model-name"></p>
+    <div id="dl-search-results" style="max-height:300px; overflow-y:auto; border:1px solid var(--surface2); border-radius:4px; background:var(--surface);"></div>
+    <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem;">
+      <button type="button" class="btn-cancel" id="dl-modal-cancel" style="padding:.4rem .9rem; border:none; border-radius:4px; background:var(--btn-del); color:#fff; cursor:pointer;">Cancel</button>
+    </div>
   </div>
-  <div id="add-model-form">
+</div>
+
+<div id="add-model-form">
     <h3>Add New Model</h3>
     <form id="addForm">
       <div style="display: flex; gap: 0.5rem; align-items: end;">
@@ -922,16 +1681,20 @@ TEMPLATE = r"""<!DOCTYPE html>
      <div class="spinner"></div>
      <div>Loading models…</div>
    </div>
-   <table>
-    <thead>
-      <tr>
-        <th>#</th><th>Status</th><th>Model</th><th>File</th><th>File size</th>
-        <th>Port</th><th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="tbody"></tbody>
-  </table>
-  <div id="log"><b>Ready.</b></div>
+<div style="margin-bottom: 10px;">
+      <button onclick="refresh(true)" style="padding: 5px 10px;">🔄 Refresh Now</button>
+      <button onclick="testStatus()" style="padding: 5px 10px;">🧪 Test Status</button>
+    </div>
+    <table>
+     <thead>
+       <tr>
+         <th>#</th><th>Status</th><th>Model</th><th>File</th><th>File size</th>
+         <th>Port</th><th>Actions</th>
+       </tr>
+     </thead>
+     <tbody id="tbody"></tbody>
+   </table>
+   <div id="log"></div>
 </main>
 <script>
 const HOST = "{{ host }}";
@@ -946,60 +1709,100 @@ function jsEscape(str) {
 }
 function portUrl(p) { return 'http://' + HOST + ':' + p; }
 
-async function refresh() {
-  const res = await fetch('/api/status');
-  const rows = await res.json();
-  const dlRes = await fetch('/api/download-status');
-  const dlMap = {};
-  const dlJson = await dlRes.json();
-  for (const [k, v] of Object.entries(dlJson)) {
-    dlMap[k] = v;
+async function refresh(showLoading=true) {
+  console.log('refresh() called, showLoading:', showLoading);
+  if (showLoading) {
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
   }
-  const q = document.getElementById('search').value.toLowerCase();
-  const tb = document.getElementById('tbody');
-  tb.innerHTML = rows
-    .filter(r => r.model.toLowerCase().includes(q) || String(r.port).includes(q))
-    .map((r, i) => {
+  try {
+    // Timeout after 8 seconds
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 8000));
+    const res = await Promise.race([fetch('/api/status?' + Date.now(), { cache: 'no-store' }), timeoutPromise]);
+    console.log('Fetched /api/status, status:', res.status);
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status + ': ' + res.statusText);
+    }
+    const text = await res.text();
+    console.log('Response text length:', text.length);
+    let rows;
+    try {
+      rows = JSON.parse(text);
+    } catch (e) {
+      console.error('Failed to parse /api/status response:', text);
+      throw e;
+    }
+    console.log('Received', rows.length, 'models');
+    const dlRes = await Promise.race([fetch('/api/download-status?' + Date.now(), { cache: 'no-store' }), timeoutPromise]);
+    const dlText = await dlRes.text();
+    const dlMap = {};
+    let dlJson;
+    try {
+      dlJson = JSON.parse(dlText);
+    } catch (e) {
+      console.error('Failed to parse /api/download-status response:', dlText);
+      dlJson = {};
+    }
+    for (const [k, v] of Object.entries(dlJson)) {
+      dlMap[k] = v;
+    }
+const q = document.getElementById('search').value.toLowerCase();
+    const tb = document.getElementById('tbody');
+    console.log('tbody element:', tb);
+    console.log('rows to render:', rows.length);
+    const filtered = rows.filter(r => r.model.toLowerCase().includes(q) || String(r.port).includes(q));
+    console.log('filtered rows:', filtered.length);
+    const html = filtered.map((r, i) => {
       const running = r.status.startsWith('running');
+      console.log('Model:', r.model, 'status:', r.status, 'running:', running);
       const statusChip = running
         ? '<span class="chip ok">● running</span>'
         : r.file_exists
           ? '<span class="chip ok">● stopped</span>'
           : '<span class="chip bad">✕ missing</span>';
-      const dl = dlMap[r.model] || {};
-      let dlHtml = '';
-      if (dl.status === 'downloading') {
-        dlHtml = `<div class="actions"><button class="download" disabled>⬇ ${dl.progress}%</button></div>`;
-      } else if (dl.status === 'complete') {
-        dlHtml = `<div class="actions"><button class="download" disabled>✓ Done</button></div>`;
-      } else if (dl.status === 'error') {
-        dlHtml = `<div class="actions"><button class="download" disabled style="background:var(--red)">✗ Error</button></div>`;
-       } else if (!r.file_exists) {
-         dlHtml = `<div class="actions"><button class="download" onclick="downloadModel('${jsEscape(r.model)}')">⬇ Download</button></div>`;
-      } else {
-        dlHtml = ''; // file exists, no download needed
-      }
+        const dl = dlMap[r.model] || {};
+        const partial = r.partial_download || 0;
+        let dlHtml = '';
+        if (dl.status === 'downloading') {
+          dlHtml = `<button class="download" disabled>⬇ ${dl.progress}%</button>`;
+        } else if (dl.status === 'complete') {
+          dlHtml = `<button class="download" disabled>✓ Done</button>`;
+        } else if (dl.status === 'error') {
+          dlHtml = `<button class="download" onclick="retryDownload('${jsEscape(r.model)}', true)">🔄 Retry</button>`;
+        } else if (partial > 0) {
+          dlHtml = `<button class="download" onclick="resumeDownload('${jsEscape(r.model)}', ${partial})">▶ Resume</button>`;
+        } else {
+          dlHtml = `<button class="download" onclick="downloadModel('${jsEscape(r.model)}', true)">⬇ ${r.file_exists ? 'Re-download' : 'Download'}</button>`;
+        }
       return `<tr class="${running ? 'running' : ''}">
         <td>${i + 1}</td>
         <td>${statusChip}<br><small style="color:var(--text2)">${r.status}${r.pid ? ' · pid ' + r.pid : ''}</small></td>
         <td><b>${r.model}</b></td>
         <td title="${r.model_path}"><code>${r.model_path.split('/').pop()}</code></td>
- <td>${fmtGb(r.file_size_gb)}</td>
- <td>${r.file_exists ? `<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="${portUrl(r.port)}" target="_blank">:${r.port}</a>` : `<span class="chip bad">-</span>`}</td>
- <td><div class="actions">
-           <button class="run"  onclick="act('${jsEscape(r.model)}','start')"  ${running ? 'disabled' : ''}>▶ Start</button>
-           <button class="stop" onclick="act('${jsEscape(r.model)}','stop')"   ${!running ? 'disabled' : ''}>■ Stop</button>
-         </div></td>
-         <td><div class="actions">
-           <button class="add" onclick="promptAddModel('${jsEscape(r.model)}')">➕ Add Variant</button>
-           <button class="del" onclick="promptDeleteModel('${jsEscape(r.model)}')">🗑 Delete</button>
-         </div></td>
+        <td>${fmtGb(r.file_size_gb)}</td>
+        <td>${r.file_exists ? `<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="${portUrl(r.port)}" target="_blank">:${r.port}</a>` : `<span class="chip bad">-</span>`}</td>
+        <td><div class="actions">
+          ${dlHtml}
+<button class="run" onclick="act('${jsEscape(r.model)}','start')" ${running || !r.file_exists ? 'disabled' : ''}>▶ Start</button>
+          <button class="stop" onclick="act('${jsEscape(r.model)}','stop')"   ${!running ? 'disabled' : ''}>■ Stop</button>
+          <button class="add" onclick="promptAddModel('${jsEscape(r.model)}')">➕ Add Variant</button>
+          <button class="del" onclick="promptDeleteModel('${jsEscape(r.model)}')">🗑 Delete</button>
+        </div></td>
       </tr>`;
     }).join('');
+    console.log('Setting innerHTML, length:', html.length);
+    tb.innerHTML = html;
+  } catch (e) {
+    console.error('Refresh failed:', e);
+  } finally {
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'none';
+  }
 }
 
 async function act(model, verb) {
   const btn = event.target;
+  console.log('act() called with model:', model, 'verb:', verb, 'btn:', btn);
   btn.disabled = true;
   const prev = btn.textContent;
   btn.textContent = verb === 'start' ? 'Starting…' : 'Stopping…';
@@ -1009,66 +1812,354 @@ async function act(model, verb) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ model }),
     });
-    const data = await res.json();
+    console.log('Fetch response:', res.status, res.statusText);
+    const text = await res.text();
+    console.log('Response text:', text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      log(`<b>${prev} error:</b> Server returned non-JSON response`, 'red');
+      console.error('Failed to parse response:', text);
+      return;
+    }
+    console.log('Parsed data:', data);
     if (data.error) { log('<b>' + prev + ' error:</b> ' + data.error, 'red'); }
     else { log(`<b>${prev}:</b> ${model} → ${data.status}${data.pid ? ' (pid ' + data.pid + ')' : ''}`, 'green'); }
+    // For stop, wait a bit longer and force refresh to ensure status is updated
+    const delay = verb === 'stop' ? 1200 : 800;
+    console.log('Calling refresh after', delay, 'ms');
+    // Capture btn reference for setTimeout
+    const capturedBtn = btn;
+    const capturedPrev = prev;
+    setTimeout(() => { 
+      capturedBtn.disabled = false; 
+      capturedBtn.textContent = capturedPrev; 
+      console.log('Calling refresh()');
+      refresh(true); 
+    }, delay);
   } catch (e) {
+    console.error('act() error:', e);
     log('<b>Error:</b> ' + e, 'red');
-  } finally {
-    setTimeout(() => { btn.disabled = false; btn.textContent = prev; refresh(); }, 800);
+    setTimeout(() => { btn.disabled = false; btn.textContent = prev; }, 800);
   }
 }
 
-async function downloadModel(model) {
-  const btn = event.target;
-  btn.disabled = true;
-  const prev = btn.textContent;
-  btn.textContent = 'Downloading…';
+async function testStatus() {
+  console.log('testStatus() called');
   try {
-    // We need to know the URL and expected size; for simplicity we'll fetch from a predefined map.
-    // In a real app, you might have a catalog endpoint or store this in models.json.
-    // Here we use a hardcoded map for demonstration.
-    const modelInfo = {
-      "Phi-4": {url: "https://huggingface.co/bartowski/phi-4-GGUF/resolve/main/phi-4-Q4_K_M.gguf", size: 8000000000},
-      "DeepSeek-Coder-33b": {url: "https://huggingface.co/bartowski/DeepSeek-Coder-33B-GGUF/resolve/main/deepseek-coder-33b-instruct.Q4_K_M.gguf", size: 18000000000},
-      "DeepSeek-Coder-7b": {url: "https://huggingface.co/bartowski/DeepSeek-Coder-7B-GGUF/resolve/main/deepseek-coder-7b-instruct-v1.5.Q4_K_M.gguf", size: 4000000000},
-      "DeepSeek-R1-Distill-Llama-70b": {url: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf", size: 40000000000},
-      "DeepSeek-R1-Distill-Qwen-32b": {url: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf", size: 20000000000},
-      "DeepSeek-R1-Distill-Qwen-14b": {url: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf", size: 9000000000},
-      "Qwen3-14b": {url: "https://huggingface.co/lmstudio-community/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf", size: 8500000000}
-    }[model];
-    if (!modelInfo) { throw new Error('No download info for model'); }
+    const res = await fetch('/api/debug/deepseek-coder-7b');
+    console.log('Response:', res.status, res.statusText);
+    const data = await res.json();
+    console.log('Debug status:', data);
+    alert('Debug: ' + JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('testStatus error:', e);
+    alert('Error: ' + e);
+  }
+}
+
+async function downloadModel(model, force = false) {
+  console.log('downloadModel called for:', model, 'force:', force);
+  // First, search HF for the model using the known name
+  try {
+    const res = await fetch('/api/download-search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ model, force })
+    });
+    const data = await res.json();
+    console.log('download-search response:', data);
+    
+    if (data.error) {
+      log('<b>Download error:</b> ' + data.error, 'red');
+      return;
+    }
+    
+    // If already complete, show message
+    if (data.status === 'complete') {
+      log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
+      return;
+    }
+    
+    // If download started automatically (single result), show progress
+    if (data.status === 'download started') {
+      log(`<b>Download:</b> ${model} started`, 'green');
+      // Small delay to let the download worker set initial status
+      setTimeout(() => {
+        showProgressBar(model, data.results?.[0]?.size || 0);
+        startProgressListener(model);
+        refresh();
+      }, 100);
+      return;
+    }
+    
+    // If multiple results, show modal for selection
+    if (data.status === 'multiple_results') {
+      console.log('Showing modal with', data.results.length, 'results');
+      showDownloadModal(model, data.results, force);
+    }
+  } catch (err) {
+    log('<b>Error:</b> ' + err, 'red');
+  }
+}
+
+async function retryDownload(model, resume = false) {
+  // Check if there's an existing partial download
+  const statusRes = await fetch('/api/download-status');
+  const status = await statusRes.json();
+  const dlStatus = status[model] || {};
+  
+  if (dlStatus.status === 'error' && resume && confirm(`Resume interrupted download for ${model}?`)) {
+    downloadWithResume(model, true);
+  } else if (dlStatus.status === 'error' && confirm(`Retry failed download for ${model}?`)) {
+    downloadModel(model, true);  // Use force for retry
+  } else {
+    downloadModel(model, true);  // Use force for retry
+  }
+}
+
+async function resumeDownload(model, partialBytes) {
+  if (!confirm(`Resume download for ${model}? (${fmtSize(partialBytes)} already downloaded)`)) {
+    return;
+  }
+  downloadWithResume(model, true, partialBytes);
+}
+
+async function downloadWithResume(model, resume, partialBytes = 0, force = false) {
+  // Get the download URL
+  const fileRes = await fetch('/api/model-file', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ model })
+  });
+  const fileInfo = await fileRes.json();
+  
+  if (fileInfo.error) {
+    log('<b>Error:</b> ' + fileInfo.error, 'red');
+    return;
+  }
+  
+  const response = await fetch('/api/download', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ 
+      model, 
+      url: fileInfo.url, 
+      expected_size: fileInfo.size || 0,
+      resume: resume,
+      force: force
+    })
+  });
+  const data = await response.json();
+  
+  if (data.error) {
+    log('<b>Resume error:</b> ' + data.error, 'red');
+  } else {
+    log(`<b>Download:</b> ${model} resumed`, 'green');
+    showProgressBar(model, fileInfo.size || 0);
+    startProgressListener(model);
+  }
+}
+
+function showDownloadModal(model, results, force = false) {
+  const modal = document.getElementById('download-modal');
+  const modelNameText = document.getElementById('dl-modal-model-name');
+  const resultsDiv = document.getElementById('dl-search-results');
+  
+  modelNameText.textContent = 'Select a file to download:';
+  resultsDiv.innerHTML = results.map(r => `
+    <div data-url="${r.url}" data-size="${r.size}" style="padding:.5rem; cursor:pointer; border-bottom:1px solid var(--surface2);">
+      <strong>${r.filename}</strong><br>
+      <small>Size: ${fmtSize(r.size)} • Downloads: ${r.downloads.toLocaleString()} • Likes: ${r.likes}</small>
+    </div>
+  `).join('');
+  resultsDiv.style.display = 'block';
+  modal.style.display = 'flex';
+  
+  // Click handler on results
+  resultsDiv.querySelectorAll('div').forEach(div => {
+    div.addEventListener('click', function() {
+      const url = this.getAttribute('data-url');
+      const size = parseInt(this.getAttribute('data-size')) || 0;
+      modal.style.display = 'none';
+      _triggerDownload(model, url, size, force);
+    });
+  });
+  
+  // Cancel handler
+  document.getElementById('dl-modal-cancel').onclick = () => { 
+    modal.style.display = 'none'; 
+  };
+}
+
+function fmtSize(bytes) {
+  if (!bytes || bytes === 0) return 'Unknown size';
+  const gb = bytes / (1024 ** 3);
+  return gb.toFixed(2) + ' GB';
+}
+
+function fmtSpeed(bytesPerSecond) {
+  if (!bytesPerSecond) return '';
+  const mbps = bytesPerSecond / (1024 * 1024);
+  return mbps.toFixed(1) + ' MB/s';
+}
+
+// Progress bar UI
+function showProgressBar(model, expectedSize) {
+  console.log('showProgressBar called for:', model, 'size:', expectedSize);
+  const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+  const existing = document.getElementById('progress-' + safeId);
+  if (existing) existing.remove();
+  
+  const progressDiv = document.createElement('div');
+  progressDiv.id = 'progress-' + safeId;
+  progressDiv.style.cssText = 'margin: 1rem 0; padding: 1rem; background: var(--surface, #16213e); border-radius: 6px; border: 1px solid var(--surface2, #0f3460); display: block; visibility: visible;';
+  progressDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+      <strong>${model}</strong>
+      <span id="progress-text-${safeId}">0%</span>
+    </div>
+    <div style="background: var(--surface2, #0f3460); border-radius: 4px; height: 8px; overflow: hidden;">
+      <div id="progress-bar-${safeId}" style="background: var(--btn-download, #ff9800); height: 100%; width: 0%; transition: width 0.2s;"></div>
+    </div>
+    <div id="progress-details-${safeId}" style="font-size: 0.8rem; color: var(--text2, #a0a0b8); margin-top: 0.5rem;">Starting download...</div>
+  `;
+  
+  const logEl = document.getElementById('log');
+  console.log('log element:', logEl);
+  if (logEl && logEl.parentNode) {
+    logEl.parentNode.insertBefore(progressDiv, logEl);
+    console.log('Progress bar inserted before log');
+  } else {
+    console.log('log element not found, appending to main');
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+      mainEl.insertBefore(progressDiv, mainEl.firstChild);
+    } else {
+      document.body.appendChild(progressDiv);
+    }
+  }
+  // Force visibility
+  progressDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// SSE listener for download progress
+function startProgressListener(model) {
+  console.log('startProgressListener called for:', model);
+  const eventSource = new EventSource(`/api/download-stream/${encodeURIComponent(model)}`);
+  const safeModel = model.replace(/[^a-zA-Z0-9]/g, '_');
+  
+  eventSource.onopen = function(e) {
+    console.log('SSE connection opened for', model);
+  };
+  
+  eventSource.onmessage = function(e) {
+    console.log('SSE message received:', e.data);
+    try {
+      const data = JSON.parse(e.data);
+      const progress = data.progress || 0;
+      const downloaded = data.downloaded || 0;
+      const size = data.size || 0;
+      const speed = data.speed_mbps || 0;
+      
+      const bar = document.getElementById('progress-bar-' + safeModel);
+      const text = document.getElementById('progress-text-' + safeModel);
+      const details = document.getElementById('progress-details-' + safeModel);
+      
+      console.log('Progress elements:', { bar: !!bar, text: !!text, details: !!details });
+      
+      if (bar) {
+        bar.style.width = progress + '%';
+        text.textContent = progress + '%';
+        if (size) {
+          text.textContent = progress + '% (' + fmtSize(downloaded) + ' / ' + fmtSize(size) + ')';
+        }
+        if (details) {
+          details.textContent = fmtSpeed(speed * 1024 * 1024) + (speed ? ' · ' : '') + 
+            (data.status === 'error' ? 'Error: ' + data.error : data.status === 'complete' ? 'Complete!' : '');
+        }
+      }
+      
+      if (data.status === 'complete' || data.status === 'error') {
+        setTimeout(() => {
+          if (bar) bar.style.width = '100%';
+          eventSource.close();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Progress parse error:', err);
+    }
+  };
+  
+  eventSource.onerror = function(e) {
+    console.log('SSE closed for', model, e);
+    eventSource.close();
+  };
+}
+
+async function _triggerDownload(model, url, size, force = false) {
+  console.log('_triggerDownload called:', { model, url, size, force });
+  log(`<b>Download:</b> ${model} starting...`, 'green');
+  
+  try {
     const res = await fetch('/api/download', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        model: model,
-        url: modelInfo.url,
-        expected_size: modelInfo.size
-      })
+      body: JSON.stringify({ model, url, expected_size: size || 0, force })
     });
     const data = await res.json();
-    if (data.error) { log('<b>' + prev + ' error:</b> ' + data.error, 'red'); }
-    else { log(`<b>${prev}:</b> download started`, 'green'); }
+    console.log('download response:', data);
+    
+    if (data.error) {
+      log('<b>Download error:</b> ' + data.error, 'red');
+      return;
+    }
+    
+    // Show progress bar for active downloads
+    showProgressBar(model, size || 0);
+    
+    if (data.status === 'complete') {
+      log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
+      // Update progress bar to show complete
+      setTimeout(() => {
+        const bar = document.getElementById('progress-bar-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
+        const text = document.getElementById('progress-text-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
+        const details = document.getElementById('progress-details-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
+        if (bar) bar.style.width = '100%';
+        if (text) text.textContent = '100% (already downloaded)';
+        if (details) details.textContent = 'Complete!';
+      }, 100);
+      return;
+    }
+    
+    // Small delay to ensure progress bar is rendered before SSE starts
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    startProgressListener(model);
+    refresh();
   } catch (e) {
     log('<b>Error:</b> ' + e, 'red');
-  } finally {
-    setTimeout(() => { btn.disabled = false; btn.textContent = prev; refresh(); }, 1000);
   }
 }
 
 function toggleAddForm() {
-  const form = document.getElementById('add-model-form');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  if (form.style.display === 'block') {
-    document.getElementById('modelName').focus();
-  }
-}
+   const form = document.getElementById('add-model-form');
+   form.style.display = form.style.display === 'none' ? 'block' : 'none';
+   if (form.style.display === 'block') {
+     document.getElementById('modelName').focus();
+   }
+ }
 
-async function promptAddModel(existingModel) {
-  // For simplicity, just open the form - user can search or enter manually
-  toggleAddForm();
-}
+ function showAddForm() {
+   const form = document.getElementById('add-model-form');
+   form.style.display = 'block';
+   document.getElementById('modelName').focus();
+ }
+
+ async function promptAddModel(existingModel) {
+   showAddForm();
+ }
 
 async function promptDeleteModel(model) {
   if (!confirm(`Delete model "${model}"? This will remove it from the list.\\nCheck "Delete files" to also remove the GGUF file.`)) {
@@ -1204,14 +2295,15 @@ document.getElementById('searchBtn').addEventListener('click', async function() 
     btn.disabled = false;
     btn.textContent = '🔍 Search';
   }
-});
+ });
 
 document.getElementById('search').addEventListener('input', refresh);
+document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.getElementById('addModelBtn').addEventListener('click', showAddForm);
 refresh();
-setInterval(refresh, 5000);
-// Also periodically update download status
-setInterval(async () => {
-  try { await refresh(); } catch (_) {}
+setInterval(() => refresh(false), 5000);
+// Also periodically update download status (no spinner)
+setInterval(async () => { try { await refresh(false); } catch (_) {}
 }, 3000);
 </script>
 </body>
@@ -1227,11 +2319,13 @@ FLASK_PORT: int = 5000
 def main() -> None:
     global FLASK_PORT
     parser = argparse.ArgumentParser(description="llama.cpp web frontend")
-    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default 0.0.0.0)")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default 5000)")
     args = parser.parse_args()
     FLASK_PORT = args.port
     log.info("Starting web UI on http://%s:%d from %s", args.host, args.port, BASE_DIR)
+    log.info("Loading models cache...")
+    load_models_cache()
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
 
 
