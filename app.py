@@ -158,11 +158,11 @@ def load_env() -> dict[str, str]:
 def get_models() -> dict[str, dict[str, Any]]:
     """Get cached models (thread-safe)."""
     with _models_lock:
-        return _MODELS.copy()
+        return _models.copy()
 
 def load_models_cache() -> None:
     """Load models from disk into cache (called at startup and after modifications)."""
-    global _MODELS
+    global _models
     models = {}
     
     # Load from models.json
@@ -206,7 +206,7 @@ def load_models_cache() -> None:
     
     assign_ports(models)
     with _models_lock:
-        _MODELS = models
+        _models = models
 
 def refresh_models_cache() -> None:
     """Force refresh of the models cache."""
@@ -256,16 +256,34 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
 
 
 def assign_ports(models: dict[str, dict[str, Any]]) -> None:
-    """Assign sequential ports to models starting from 11000."""
+    """Assign sequential ports to models starting from 11000, ensuring uniqueness."""
     sorted_names = sorted(models.keys())
+    used_ports = set()
+    # Collect already-assigned ports
+    for model_name in sorted_names:
+        port = models[model_name].get("port", 0)
+        if port > 0:
+            used_ports.add(port)
+    # Assign unique ports only if needed
     for i, model_name in enumerate(sorted_names):
-        if models[model_name].get("port", 0) <= 0:
-            models[model_name]["port"] = 11000 + i * 10
+        port = models[model_name].get("port", 0)
+        # Only reassign if port is invalid (<=0) or is a duplicate
+        if port <= 0 or (port in used_ports and models[model_name].get("port") != port):
+            # Find next available port
+            new_port = 11000 + i * 10
+            while new_port in used_ports:
+                new_port += 10
+            models[model_name]["port"] = new_port
+            used_ports.add(new_port)
 
 
 def save_models(models: dict[str, dict[str, Any]]) -> None:
     with open(MODELS_JSON, "w", encoding="utf-8") as fh:
         json.dump(models, fh, indent=2)
+    # Also update the in-memory cache
+    with _models_lock:
+        global _models
+        _models = models.copy()
 
 
 def log_event(action: str, model: str, port: int | str, pid: int | str | None, status: str) -> None:
@@ -506,7 +524,7 @@ def check_port_active(port: int) -> bool:
     import socket
 
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
             return True
     except OSError as e:
         log.debug(f"Port check for {port} failed: {e}")
@@ -584,8 +602,8 @@ def _download_worker(model_name: str, url: str, expected_size: int, token: str |
         with download_lock:
             download_status[model_name] = {
                 "status": "downloading", 
-                "progress": int((resume_pos / expected_size) * 100) if expected_size else 0,
-                "size": expected_size,
+                "progress": expected_size > 0 and int((resume_pos / expected_size) * 100) or 0,
+                "size": expected_size if expected_size > 0 else 0,
                 "downloaded": resume_pos
             }
 
@@ -600,8 +618,16 @@ def _download_worker(model_name: str, url: str, expected_size: int, token: str |
         start_time = time.time()
         last_notify = 0
         
+        log.info(f"Starting download for {model_name} from {url}")
+        
         # Stream download
-        with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+        try:
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            log.error(f"Failed to connect to download URL {url}: {e}")
+            raise
+        with response as r:
             if r.status_code == 416:  # Range not satisfiable
                 with download_lock:
                     download_status[model_name] = {"status": "complete", "progress": 100, "size": out_path.stat().st_size}
@@ -619,15 +645,17 @@ def _download_worker(model_name: str, url: str, expected_size: int, token: str |
                         elapsed = time.time() - start_time
                         # Update progress every 100ms or every 10MB
                         if time.time() - last_notify > 0.1 or downloaded - last_notify > 10 * 1024 * 1024:
-                            if expected_size:
+                            if expected_size and expected_size > 0:
                                 progress = int((downloaded / expected_size) * 100)
                             else:
-                                progress = min(100, int(elapsed * 10))  # Fallback progress
+                                # Fallback: show progress based on bytes downloaded
+                                # Just show that we're making progress
+                                progress = min(99, max(1, int(downloaded / (1024 * 1024))))  # 1% per MB
                             speed_mbps = (downloaded - resume_pos) / (1024 * 1024) / max(elapsed, 0.1)
                             with download_lock:
                                 download_status[model_name].update({
                                     "progress": progress, 
-                                    "size": expected_size,
+                                    "size": expected_size if expected_size > 0 else downloaded,
                                     "downloaded": downloaded,
                                     "speed_mbps": round(speed_mbps, 2)
                                 })
@@ -826,7 +854,7 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
 def index():
     models = get_models()
     statuses = [_status_for_model(name, meta) for name, meta in models.items()]
-    html = render_template_string(TEMPLATE, statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT)
+    html = render_template_string(TEMPLATE, statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT, cache_version="v2")
     return html
 
 
@@ -1064,6 +1092,8 @@ def api_stop():
 def api_download():
     """Start downloading a model.
     Expected JSON: { "model": "...", "url": "...", "expected_size": 123456789, "resume": true, "force": true }
+    
+    When force=true and the URL is from a different file, creates a new model entry (Add Variant).
     """
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
@@ -1076,8 +1106,85 @@ def api_download():
     force = data.get("force", False)
     if not model or not url:
         return jsonify({"error": "Missing model or url"}), 400
-    # Basic validation: model should exist in models.json
+    
     models = get_models()
+    
+    # Handle "Add Variant" case: force=true with a different file
+    # BUT: if we're re-downloading (same model, same filename), just overwrite
+    if force and model in models:
+        meta = models[model]
+        existing_filename = meta.get("filename", "")
+        # Extract filename from URL to compare
+        url_filename = url.split("/")[-1] if "/" in url else ""
+        
+        # Normalize filenames for comparison (case-insensitive, ignore .gguf extension)
+        # Also normalize separators: replace . with - to handle v1.5.Q4_K_M vs v1-5-q4_k_m
+        existing_normalized = existing_filename.lower()
+        if existing_normalized.endswith(".gguf"):
+            existing_normalized = existing_normalized[:-5]
+        url_normalized = url_filename.lower()
+        if url_normalized.endswith(".gguf"):
+            url_normalized = url_normalized[:-5]
+        
+        # Normalize separators: replace dots with hyphens for consistent comparison
+        existing_normalized = existing_normalized.replace('.', '-')
+        url_normalized = url_normalized.replace('.', '-')
+        
+        # Only create a new variant if the filename is truly different
+        if url_filename and url_normalized != existing_normalized:
+            # Create a new model entry for the variant
+            # Derive new model name from filename
+            base_filename = url_filename[:-5] if url_filename.lower().endswith(".gguf") else url_filename
+            # Create a display name by replacing separators with spaces
+            new_model_name = base_filename.replace("_", " ").replace("-", " ").replace(".", " ")
+            # Ensure uniqueness
+            counter = 1
+            original_name = new_model_name
+            while new_model_name in models:
+                new_model_name = f"{original_name} {counter}"
+                counter += 1
+            
+            # Create the new model entry
+            model_dir = BASE_DIR / "models" / new_model_name.lower().replace(" ", "-")
+            model_dir.mkdir(parents=True, exist_ok=True)
+            model_path = model_dir / url_filename
+            rel_path = model_path.relative_to(BASE_DIR)
+            
+            # Extract repo from URL
+            repo = ""
+            if "huggingface.co/" in url:
+                parts = url.split("huggingface.co/")[1].split("/")
+                repo = "/".join(parts[:2]) if len(parts) >= 2 else ""
+            
+            # Get default port for new model
+            port = 11000 + len(models) * 10
+            
+            new_meta = {
+                "model_path": str(rel_path),
+                "repo": repo,
+                "filename": url_filename,
+                "expected_size": expected_size,
+                "port": port,
+                "cache_size": DEFAULTS["cache_size"],
+                "threads": DEFAULTS["threads"],
+                "threads_batch": DEFAULTS["threads_batch"],
+                "timeout": DEFAULTS["timeout"],
+                "mlock": DEFAULTS["mlock"],
+                "flash_attn": DEFAULTS["flash_attn"],
+                "no_mmap": DEFAULTS["no_mmap"],
+                "parallel": DEFAULTS["parallel"],
+                "ubatch_size": DEFAULTS["ubatch_size"],
+            }
+            
+            models[new_model_name] = new_meta
+            save_models(models)
+            log.info(f"Created new model entry for variant: {new_model_name}")
+            
+            # Start download for the new model
+            start_download(new_model_name, url, expected_size, force=True)
+            return jsonify({"status": "download started", "model": new_model_name, "is_variant": True})
+    
+    # Original logic for existing model
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     # Ensure target directory exists
@@ -1182,6 +1289,143 @@ def api_download_search():
         return jsonify({"status": "multiple_results", "model": model, "results": results})
     except Exception as e:
         log.error(f"HF search error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/download-search-filename", methods=["POST"])
+def api_download_search_filename():
+    """Search HF for a specific GGUF filename and return matching files.
+    Expected JSON: { "filename": "model.Q4_K_M.gguf", "force": true }
+    Strategy: Extract model name from filename, search for model, match exact filename.
+    """
+    data = request.get_json(force=True) or {}
+    filename = data.get("filename", "").strip()
+    force = data.get("force", False)
+    if not filename:
+        return jsonify({"error": "Missing filename"}), 400
+    
+    # Normalize the target filename for comparison (lowercase, no .gguf)
+    target_filename = filename.lower()
+    if target_filename.endswith(".gguf"):
+        target_filename = target_filename[:-5]
+    
+    try:
+        # Extract model name from filename
+        # Common patterns:
+        # - model.Q4_K_M.gguf -> model
+        # - model-q4_0.gguf -> model
+        # - Model-Name-v1.5-Q4_K_M.gguf -> Model-Name-v1.5
+        base_name = filename[:-5] if filename.lower().endswith(".gguf") else filename
+        
+        # Remove common quantization suffixes
+        quant_patterns = ['Q2_K', 'Q2_K_S', 'Q2_K_M', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
+                         'Q4_0', 'Q4_K_S', 'Q4_K_M', 'Q4_K_L',
+                         'Q5_0', 'Q5_K_S', 'Q5_K_M', 'Q5_K_L',
+                         'Q6_K', 'Q8_0', 'Q8_K', 'F16', 'BF16', 'F32']
+        
+        search_term = base_name  # Keep original format for HF search (hyphens work better)
+        # Try to strip quantization suffix for comparison, but KEEP it in search term
+        # because GGUF repos on HF include the quantization suffix in their names
+        # e.g., "deepseek-coder-7b-instruct-v1.5-Q4_K_M-GGUF"
+        stripped = False
+        for sep in ['_', '-', '.']:
+            for quant in quant_patterns:
+                if base_name.upper().endswith(sep + quant):
+                    stripped = True
+                    break
+            if stripped:
+                break
+        if not stripped:
+            for quant in quant_patterns:
+                if base_name.upper().endswith(quant):
+                    stripped = True
+                    break
+        
+        if not search_term:
+            # Fallback: use first segment before any separator
+            fallback = base_name.split('_')[0].split('-')[0].split('.')[0]
+            search_term = fallback if fallback else base_name
+        
+        log.info(f"Filename search: original='{filename}', extracted='{search_term}'")
+        
+        # Search Hugging Face for the model name
+        resp = requests.get(
+            "https://huggingface.co/api/models",
+            params={"search": search_term, "limit": 20, "full": "true"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"HF search failed: HTTP {resp.status_code}"}), 500
+        
+        hf_models = resp.json()
+        if not hf_models:
+            return jsonify({"error": f"No model found on Hugging Face for '{search_term}'"}), 404
+        
+        # Collect all GGUF files that match the filename exactly (normalized)
+        results = []
+        debug_candidates = []  # For logging
+        
+        # Normalize target_filename for comparison: replace dots with hyphens before quant suffixes
+        # This handles cases like: deepseek-coder-7b-instruct-v1.5.Q4_K_M -> deepseek-coder-7b-instruct-v1-5-q4_k_m
+        target_normalized = target_filename.replace('.', '-')
+        # Also normalize to handle any remaining dot-separator before quantization
+        for quant in ['q4_k_m', 'q4_k_s', 'q5_k_m', 'q8_0', 'f16', 'bf16', 'f32']:
+            # Replace patterns like v1.5.q4_k_m with v1-5-q4_k_m
+            target_normalized = target_normalized.replace('.' + quant, '-' + quant)
+        
+        for hf_model in hf_models:
+            repo = hf_model["id"]
+            for file in hf_model.get("siblings", []):
+                file_rfilename = file.get("rfilename", "")
+                if file_rfilename.lower().endswith(".gguf"):
+                    # Normalize candidate filename
+                    candidate = file_rfilename[:-5].lower() if file_rfilename.lower().endswith(".gguf") else file_rfilename.lower()
+                    # Normalize candidate similarly
+                    candidate_normalized = candidate.replace('.', '-')
+                    for quant in ['q4_k_m', 'q4_k_s', 'q5_k_m', 'q8_0', 'f16', 'bf16', 'f32']:
+                        candidate_normalized = candidate_normalized.replace('.' + quant, '-' + quant)
+                    
+                    debug_candidates.append({
+                        "file_rfilename": file_rfilename,
+                        "candidate_normalized": candidate_normalized,
+                        "target_normalized": target_normalized,
+                        "match": candidate_normalized == target_normalized
+                    })
+                    # Check for exact match (normalized)
+                    if candidate_normalized == target_normalized:
+                        size = file.get("size", 0)
+                        if not size:
+                            size = estimate_gguf_size(repo, file_rfilename)
+                        url = f"https://huggingface.co/{repo}/resolve/main/{file_rfilename}"
+                        results.append({
+                            "repo": repo,
+                            "filename": file_rfilename,
+                            "size": size,
+                            "url": url,
+                            "downloads": hf_model.get("downloads", 0),
+                            "likes": hf_model.get("likes", 0)
+                        })
+        
+        # Detailed logging for debugging
+        log.info(f"Filename search debug: target='{filename}', target_normalized='{target_filename}', search_term='{search_term}'")
+        log.info(f"HF returned {len(hf_models)} models, {len(debug_candidates)} GGUF files total")
+        for dbg in debug_candidates[:10]:  # Log up to 10 candidates
+            log.info(f"  Candidate: {dbg['file_rfilename']} -> normalized='{dbg['candidate_normalized']}' match={dbg['match']}")
+        
+        if not results:
+            return jsonify({"error": f"No GGUF file matching '{filename}' found on Hugging Face"}), 404
+        
+        # If only one exact match, start download automatically
+        if len(results) == 1:
+            url = results[0]["url"]
+            size = results[0]["size"]
+            # We don't have a model name to check, so just return success and let frontend handle it
+            return jsonify({"status": "single_result", "filename": filename, "results": results})
+        
+        # Multiple exact matches? Return all for user selection.
+        return jsonify({"status": "multiple_results", "filename": filename, "results": results})
+    except Exception as e:
+        log.error(f"HF filename search error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1293,6 +1537,19 @@ def api_logs():
          return jsonify([])
      lines = LOG_FILE.read_text("utf-8", errors="replace").strip().splitlines()
      return jsonify(lines[-100:])
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+     """Gracefully shutdown the Flask server."""
+     log.info("Shutdown requested via API")
+     # Use a thread to allow response to be sent before shutdown
+     def shutdown():
+         time.sleep(0.1)
+         import os
+         os._exit(0)
+     threading.Thread(target=shutdown, daemon=True).start()
+     return jsonify({"status": "shutdown"})
 
 @app.route("/api/next-port")
 def api_next_port():
@@ -1467,6 +1724,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<meta name="cache-version" content="{{ cache_version }}">
 <style>
    :root {
      --bg: #1a1a2e; --surface: #16213e; --surface2: #0f3460;
@@ -1589,6 +1847,7 @@ TEMPLATE = r"""<!DOCTYPE html>
    }
    .btn-goto { background: var(--blue); }
    #loading {
+     display: none;
      text-align: center;
      padding: 2rem;
      color: var(--text2);
@@ -1620,15 +1879,13 @@ TEMPLATE = r"""<!DOCTYPE html>
   <span class="badge">{{ host }}:{{ flask_port }}</span>
 </header>
 <main>
-  <p class="banner">
-    Access from other devices on your LAN using <b>http://{{ host }}:{{ flask_port }}</b>
-    ({{ host }} is bound to 0.0.0.0).
-  </p>
- <div class="toolbar">
- <input type="search" id="search" placeholder="Filter models…">
- <button class="btn-goto" id="refreshBtn" style="background: var(--btn-goto); color: var(--bg);">↻ Refresh</button>
- <button class="btn-add" id="addModelBtn">➕ Add Model</button>
- <a class="btn-goto" href="/api/logs" target="_blank">📜 Logs</a>
+
+<div class="toolbar">
+  <input type="search" id="search" placeholder="Filter models…">
+  <button class="btn-goto" id="refreshBtn" style="background: var(--btn-goto); color: var(--bg);">↻ Refresh</button>
+  <button class="btn-del" id="shutdownBtn" style="background: var(--btn-stop);">⏻ Shutdown</button>
+  <button class="btn-add" id="addModelBtn">➕ Add Model</button>
+  <a class="btn-goto" href="/api/logs" target="_blank">📜 Logs</a>
 </div>
 
 <!-- Download Selection Modal -->
@@ -1676,14 +1933,10 @@ TEMPLATE = r"""<!DOCTYPE html>
         <button type="button" class="btn-cancel" onclick="toggleAddForm()">Cancel</button>
       </div>
     </form>
-   </div>
-   <div id="loading">
-     <div class="spinner"></div>
-     <div>Loading models…</div>
-   </div>
-<div style="margin-bottom: 10px;">
-      <button onclick="refresh(true)" style="padding: 5px 10px;">🔄 Refresh Now</button>
-      <button onclick="testStatus()" style="padding: 5px 10px;">🧪 Test Status</button>
+    </div>
+    <div id="loading">
+      <div class="spinner"></div>
+      <div>Loading models…</div>
     </div>
     <table>
      <thead>
@@ -1699,6 +1952,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <script>
 const HOST = "{{ host }}";
 const FLAVOR = "{{ flask_port }}";
+const CACHE_VERSION = "{{ cache_version }}";
 
 function fmtGb(v) {
   if (v == null) return '<span class="chip warn">missing</span>';
@@ -1709,16 +1963,26 @@ function jsEscape(str) {
 }
 function portUrl(p) { return 'http://' + HOST + ':' + p; }
 
+let isRefreshing = false;
 async function refresh(showLoading=true) {
+  if (isRefreshing) {
+    console.log('Refresh already in progress, skipping');
+    return;
+  }
+  isRefreshing = true;
   console.log('refresh() called, showLoading:', showLoading);
   if (showLoading) {
     const loadingEl = document.getElementById('loading');
     if (loadingEl) loadingEl.style.display = 'block';
   }
   try {
-    // Timeout after 8 seconds
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 8000));
-    const res = await Promise.race([fetch('/api/status?' + Date.now(), { cache: 'no-store' }), timeoutPromise]);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch('/api/status?' + Date.now(), { 
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
     console.log('Fetched /api/status, status:', res.status);
     if (!res.ok) {
       throw new Error('HTTP ' + res.status + ': ' + res.statusText);
@@ -1733,7 +1997,10 @@ async function refresh(showLoading=true) {
       throw e;
     }
     console.log('Received', rows.length, 'models');
-    const dlRes = await Promise.race([fetch('/api/download-status?' + Date.now(), { cache: 'no-store' }), timeoutPromise]);
+    const dlRes = await fetch('/api/download-status?' + Date.now(), { 
+      cache: 'no-store',
+      signal: controller.signal 
+    });
     const dlText = await dlRes.text();
     const dlMap = {};
     let dlJson;
@@ -1746,7 +2013,7 @@ async function refresh(showLoading=true) {
     for (const [k, v] of Object.entries(dlJson)) {
       dlMap[k] = v;
     }
-const q = document.getElementById('search').value.toLowerCase();
+    const q = document.getElementById('search').value.toLowerCase();
     const tb = document.getElementById('tbody');
     console.log('tbody element:', tb);
     console.log('rows to render:', rows.length);
@@ -1760,35 +2027,37 @@ const q = document.getElementById('search').value.toLowerCase();
         : r.file_exists
           ? '<span class="chip ok">● stopped</span>'
           : '<span class="chip bad">✕ missing</span>';
-        const dl = dlMap[r.model] || {};
-        const partial = r.partial_download || 0;
-        let dlHtml = '';
-        if (dl.status === 'downloading') {
-          dlHtml = `<button class="download" disabled>⬇ ${dl.progress}%</button>`;
-        } else if (dl.status === 'complete') {
-          dlHtml = `<button class="download" disabled>✓ Done</button>`;
-        } else if (dl.status === 'error') {
-          dlHtml = `<button class="download" onclick="retryDownload('${jsEscape(r.model)}', true)">🔄 Retry</button>`;
-        } else if (partial > 0) {
-          dlHtml = `<button class="download" onclick="resumeDownload('${jsEscape(r.model)}', ${partial})">▶ Resume</button>`;
-        } else {
-          dlHtml = `<button class="download" onclick="downloadModel('${jsEscape(r.model)}', true)">⬇ ${r.file_exists ? 'Re-download' : 'Download'}</button>`;
-        }
-      return `<tr class="${running ? 'running' : ''}">
-        <td>${i + 1}</td>
-        <td>${statusChip}<br><small style="color:var(--text2)">${r.status}${r.pid ? ' · pid ' + r.pid : ''}</small></td>
-        <td><b>${r.model}</b></td>
-        <td title="${r.model_path}"><code>${r.model_path.split('/').pop()}</code></td>
-        <td>${fmtGb(r.file_size_gb)}</td>
-        <td>${r.file_exists ? `<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="${portUrl(r.port)}" target="_blank">:${r.port}</a>` : `<span class="chip bad">-</span>`}</td>
-        <td><div class="actions">
-          ${dlHtml}
-<button class="run" onclick="act('${jsEscape(r.model)}','start')" ${running || !r.file_exists ? 'disabled' : ''}>▶ Start</button>
-          <button class="stop" onclick="act('${jsEscape(r.model)}','stop')"   ${!running ? 'disabled' : ''}>■ Stop</button>
-          <button class="add" onclick="promptAddModel('${jsEscape(r.model)}')">➕ Add Variant</button>
-          <button class="del" onclick="promptDeleteModel('${jsEscape(r.model)}')">🗑 Delete</button>
-        </div></td>
-      </tr>`;
+      const dl = dlMap[r.model] || {};
+      const partial = r.partial_download || 0;
+      let dlHtml = '';
+      if (dl.status === 'downloading') {
+        dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
+      } else if (dl.status === 'complete') {
+        dlHtml = '<button class="download" disabled>✓ Done</button>';
+      } else if (dl.status === 'error') {
+        dlHtml = '<button class="download" onclick="retryDownload(jsEscape(r.model), true)">🔄 Retry</button>';
+      } else if (partial > 0) {
+        dlHtml = '<button class="download" onclick="resumeDownload(jsEscape(r.model), ' + partial + ')">▶ Resume</button>';
+      } else {
+        // Use filename if available, otherwise extract from model_path or use model name as fallback
+        const filename = r.filename || (r.model_path ? r.model_path.split('/').pop() : r.model);
+        dlHtml = '<button class="download" onclick="downloadByFilename(\'' + jsEscape(r.model) + '\', \'' + jsEscape(filename) + '\', true)">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
+      }
+      return '<tr class="' + (running ? 'running' : '') + '">\n' +
+        '<td>' + (i + 1) + '</td>\n' +
+        '<td>' + statusChip + '<br><small style="color:var(--text2)">' + r.status + (r.pid ? ' · pid ' + r.pid : '') + '</small></td>\n' +
+        '<td><b>' + r.model + '</b></td>\n' +
+        '<td title="' + r.model_path + '"><code>' + (r.model_path ? r.model_path.split('/').pop() : r.filename) + '</code></td>\n' +
+        '<td>' + fmtGb(r.file_size_gb) + '</td>\n' +
+        '<td>' + (r.file_exists ? '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>' : '<span class="chip bad">-</span>') + '</td>\n' +
+'<td><div class="actions">\n' +
+        dlHtml + '\n' +
+'<button class="run" onclick="act(\'' + jsEscape(r.model) + '\', \'start\')"  ' + (running || !r.file_exists ? 'disabled' : '') + '>\u25b6 Start</button>\n' +
+        '<button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')"    ' + (!running ? 'disabled' : '') + '>\u25a0 Stop</button>\n' +
+        '<button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">\ufe55 Add Variant</button>\n' +
+        '<button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">\u2671 Delete</button>\n' +
+        '</div></td>\n' +
+        '</tr>';
     }).join('');
     console.log('Setting innerHTML, length:', html.length);
     tb.innerHTML = html;
@@ -1797,6 +2066,7 @@ const q = document.getElementById('search').value.toLowerCase();
   } finally {
     const loadingEl = document.getElementById('loading');
     if (loadingEl) loadingEl.style.display = 'none';
+    isRefreshing = false;
   }
 }
 
@@ -1897,6 +2167,42 @@ async function downloadModel(model, force = false) {
     // If multiple results, show modal for selection
     if (data.status === 'multiple_results') {
       console.log('Showing modal with', data.results.length, 'results');
+      showDownloadModal(model, data.results, force);
+    }
+  } catch (err) {
+    log('<b>Error:</b> ' + err, 'red');
+  }
+}
+
+async function downloadByFilename(model, filename, force = false) {
+  console.log('downloadByFilename called for:', model, 'filename:', filename, 'force:', force);
+  // Search HF for the specific filename
+  try {
+    const res = await fetch('/api/download-search-filename', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ filename, force })
+    });
+    const data = await res.json();
+    console.log('download-search-filename response:', data);
+    
+    if (data.error) {
+      log('<b>Download error:</b> ' + data.error, 'red');
+      return;
+    }
+    
+     // If single exact match, trigger download automatically
+     if (data.status === 'single_result') {
+       console.log('Single result found, starting download automatically');
+       const result = data.results[0];
+       _triggerDownload(model, result.url, result.size, force);
+       return;
+     }
+    
+    // If multiple results, show modal for selection
+    if (data.status === 'multiple_results') {
+      console.log('Showing modal with', data.results.length, 'results for filename:', filename);
+      // Pass the model name (not filename) to the modal so the download uses the correct entry
       showDownloadModal(model, data.results, force);
     }
   } catch (err) {
@@ -2084,6 +2390,16 @@ function startProgressListener(model) {
       if (data.status === 'complete' || data.status === 'error') {
         setTimeout(() => {
           if (bar) bar.style.width = '100%';
+          if (text) text.textContent = data.status === 'complete' ? 'Complete!' : 'Failed';
+          // Remove the progress bar after completion
+          const progressContainer = document.getElementById('progress-' + safeModel);
+          if (progressContainer && data.status === 'complete') {
+            setTimeout(() => {
+              if (progressContainer.parentNode) {
+                progressContainer.parentNode.removeChild(progressContainer);
+              }
+            }, 1500);
+          }
           eventSource.close();
         }, 500);
       }
@@ -2100,7 +2416,6 @@ function startProgressListener(model) {
 
 async function _triggerDownload(model, url, size, force = false) {
   console.log('_triggerDownload called:', { model, url, size, force });
-  log(`<b>Download:</b> ${model} starting...`, 'green');
   
   try {
     const res = await fetch('/api/download', {
@@ -2116,16 +2431,24 @@ async function _triggerDownload(model, url, size, force = false) {
       return;
     }
     
+    // Show appropriate message for variant vs regular download
+    if (data.is_variant) {
+      log(`<b>New variant created:</b> ${data.model}`, 'green');
+    } else {
+      log(`<b>Download:</b> ${model} starting...`, 'green');
+    }
+    
     // Show progress bar for active downloads
-    showProgressBar(model, size || 0);
+    showProgressBar(data.model, size || 0);
     
     if (data.status === 'complete') {
       log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
       // Update progress bar to show complete
       setTimeout(() => {
-        const bar = document.getElementById('progress-bar-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
-        const text = document.getElementById('progress-text-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
-        const details = document.getElementById('progress-details-' + model.replace(/[^a-zA-Z0-9]/g, '_'));
+        const safeModelId = data.model.replace(/[^a-zA-Z0-9]/g, '_');
+        const bar = document.getElementById('progress-bar-' + safeModelId);
+        const text = document.getElementById('progress-text-' + safeModelId);
+        const details = document.getElementById('progress-details-' + safeModelId);
         if (bar) bar.style.width = '100%';
         if (text) text.textContent = '100% (already downloaded)';
         if (details) details.textContent = 'Complete!';
@@ -2136,7 +2459,8 @@ async function _triggerDownload(model, url, size, force = false) {
     // Small delay to ensure progress bar is rendered before SSE starts
     await new Promise(resolve => setTimeout(resolve, 50));
     
-    startProgressListener(model);
+    // Use data.model for progress listener (handles variant case)
+    startProgressListener(data.model);
     refresh();
   } catch (e) {
     log('<b>Error:</b> ' + e, 'red');
@@ -2297,14 +2621,30 @@ document.getElementById('searchBtn').addEventListener('click', async function() 
   }
  });
 
-document.getElementById('search').addEventListener('input', refresh);
+// Debounce search input to avoid excessive requests
+let searchTimeout;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(refresh, 300);
+});
 document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.getElementById('shutdownBtn').addEventListener('click', async function() {
+  if (!confirm('Shutdown the web application? This will stop the Flask server.')) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/shutdown', { method: 'POST' });
+    const data = await res.json();
+    console.log('Shutdown response:', data);
+    alert('Server shutting down...');
+  } catch (e) {
+    console.error('Shutdown error:', e);
+  }
+});
 document.getElementById('addModelBtn').addEventListener('click', showAddForm);
 refresh();
 setInterval(() => refresh(false), 5000);
-// Also periodically update download status (no spinner)
-setInterval(async () => { try { await refresh(false); } catch (_) {}
-}, 3000);
+
 </script>
 </body>
 </html>"""
