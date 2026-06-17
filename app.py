@@ -1324,13 +1324,15 @@ def api_download_search_filename():
                          'Q6_K', 'Q8_0', 'Q8_K', 'F16', 'BF16', 'F32']
         
         search_term = base_name  # Keep original format for HF search (hyphens work better)
-        # Try to strip quantization suffix for comparison, but KEEP it in search term
+        # Try to strip quantization suffix for comparison
         # because GGUF repos on HF include the quantization suffix in their names
         # e.g., "deepseek-coder-7b-instruct-v1.5-Q4_K_M-GGUF"
         stripped = False
         for sep in ['_', '-', '.']:
             for quant in quant_patterns:
                 if base_name.upper().endswith(sep + quant):
+                    # Strip the quantization suffix from search term
+                    search_term = base_name[:-len(sep + quant)]
                     stripped = True
                     break
             if stripped:
@@ -1338,6 +1340,8 @@ def api_download_search_filename():
         if not stripped:
             for quant in quant_patterns:
                 if base_name.upper().endswith(quant):
+                    # Strip the quantization suffix from search term
+                    search_term = base_name[:-len(quant)]
                     stripped = True
                     break
         
@@ -1734,6 +1738,26 @@ TEMPLATE = r"""<!DOCTYPE html>
      --btn-add: #9b59b6; --btn-del: #e67e22; --btn-search: #3498db;
      --btn-goto: #00bcd4;
    }
+  /* Theme: Dark (default) */
+  [data-theme="dark"] {
+    --bg: #1a1a2e; --surface: #16213e; --surface2: #0f3460;
+    --text: #e0e0e0; --text2: #a0a0b8;
+  }
+  /* Theme: Light */
+  [data-theme="light"] {
+    --bg: #f5f5f5; --surface: #ffffff; --surface2: #e0e0e0;
+    --text: #333333; --text2: #666666;
+  }
+  /* Theme: Solarized Dark */
+  [data-theme="solarized-dark"] {
+    --bg: #002b36; --surface: #073642; --surface2: #586e75;
+    --text: #839496; --text2: #93a1a1;
+  }
+  /* Theme: Nord */
+  [data-theme="nord"] {
+    --bg: #2e3440; --surface: #3b4252; --surface2: #4c566a;
+    --text: #d8dee9; --text2: #a5abb6;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1770,12 +1794,51 @@ TEMPLATE = r"""<!DOCTYPE html>
    .btn-del   { background: var(--btn-del); }
    .btn-search { background: var(--btn-search); }
    .btn-goto { background: var(--btn-goto); }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; color: var(--text2); font-weight: 500;
-       border-bottom: 1px solid var(--surface2); padding: .5rem .4rem; }
-  td { padding: .55rem .4rem; border-bottom: 1px solid var(--surface2); vertical-align: middle; }
-  tr.running { background: rgba(46,204,113,.06); }
-  tr:hover { background: rgba(255,255,255,.03); }
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+.tile.running {
+  border-left: 4px solid var(--green);
+  opacity: .98;
+}
+.tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .4rem;
+}
+.tile-header b {
+  font-size: 1.05rem;
+  word-break: break-word;
+  flex: 1;
+}
+.tile-body {
+  font-size: .87rem;
+  color: var(--text2);
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+}
+.tile-body code {
+  color: var(--text);
+}
+.tile-actions {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: .1rem;
+}
   .chip {
     display: inline-block; padding: .15rem .55rem; border-radius: 10px;
     font-size: .78rem; font-weight: 600;
@@ -1866,17 +1929,23 @@ TEMPLATE = r"""<!DOCTYPE html>
      0% { transform: rotate(0deg); }
      100% { transform: rotate(360deg); }
    }
-   @media (max-width: 640px) {
-     main { padding: 1rem; }
-     header { flex-direction: column; align-items: flex-start; gap: .4rem; }
-     th, td { font-size: .82rem; }
-    }
+@media (max-width: 640px) {
+  main { padding: 1rem; }
+  header { flex-direction: column; align-items: flex-start; gap: .4rem; }
+  .tile-header, .tile-actions { font-size: .82rem; }
+}
 </style>
 </head>
 <body>
 <header>
   <h1>🐘 llama.cpp</h1>
   <span class="badge">{{ host }}:{{ flask_port }}</span>
+  <select id="themeSelector" style="padding: .3rem .6rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text); font-size: .85rem; margin-left: auto;">
+    <option value="dark">Dark</option>
+    <option value="light">Light</option>
+    <option value="solarized-dark">Solarized Dark</option>
+    <option value="nord">Nord</option>
+  </select>
 </header>
 <main>
 
@@ -1938,15 +2007,7 @@ TEMPLATE = r"""<!DOCTYPE html>
       <div class="spinner"></div>
       <div>Loading models…</div>
     </div>
-    <table>
-     <thead>
-       <tr>
-         <th>#</th><th>Status</th><th>Model</th><th>File</th><th>File size</th>
-         <th>Port</th><th>Actions</th>
-       </tr>
-     </thead>
-     <tbody id="tbody"></tbody>
-   </table>
+<div id="tile-grid" class="tile-grid"></div>
    <div id="log"></div>
 </main>
 <script>
@@ -1964,6 +2025,8 @@ function jsEscape(str) {
 function portUrl(p) { return 'http://' + HOST + ':' + p; }
 
 let isRefreshing = false;
+// Store download progress state to preserve across refreshes
+const downloadProgressState = {};
 async function refresh(showLoading=true) {
   if (isRefreshing) {
     console.log('Refresh already in progress, skipping');
@@ -2013,54 +2076,83 @@ async function refresh(showLoading=true) {
     for (const [k, v] of Object.entries(dlJson)) {
       dlMap[k] = v;
     }
-    const q = document.getElementById('search').value.toLowerCase();
-    const tb = document.getElementById('tbody');
-    console.log('tbody element:', tb);
-    console.log('rows to render:', rows.length);
-    const filtered = rows.filter(r => r.model.toLowerCase().includes(q) || String(r.port).includes(q));
-    console.log('filtered rows:', filtered.length);
-    const html = filtered.map((r, i) => {
-      const running = r.status.startsWith('running');
-      console.log('Model:', r.model, 'status:', r.status, 'running:', running);
-      const statusChip = running
-        ? '<span class="chip ok">● running</span>'
-        : r.file_exists
-          ? '<span class="chip ok">● stopped</span>'
-          : '<span class="chip bad">✕ missing</span>';
-      const dl = dlMap[r.model] || {};
-      const partial = r.partial_download || 0;
-      let dlHtml = '';
-      if (dl.status === 'downloading') {
-        dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
-      } else if (dl.status === 'complete') {
-        dlHtml = '<button class="download" disabled>✓ Done</button>';
-      } else if (dl.status === 'error') {
-        dlHtml = '<button class="download" onclick="retryDownload(jsEscape(r.model), true)">🔄 Retry</button>';
-      } else if (partial > 0) {
-        dlHtml = '<button class="download" onclick="resumeDownload(jsEscape(r.model), ' + partial + ')">▶ Resume</button>';
-      } else {
-        // Use filename if available, otherwise extract from model_path or use model name as fallback
-        const filename = r.filename || (r.model_path ? r.model_path.split('/').pop() : r.model);
-        dlHtml = '<button class="download" onclick="downloadByFilename(\'' + jsEscape(r.model) + '\', \'' + jsEscape(filename) + '\', true)">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
-      }
-      return '<tr class="' + (running ? 'running' : '') + '">\n' +
-        '<td>' + (i + 1) + '</td>\n' +
-        '<td>' + statusChip + '<br><small style="color:var(--text2)">' + r.status + (r.pid ? ' · pid ' + r.pid : '') + '</small></td>\n' +
-        '<td><b>' + r.model + '</b></td>\n' +
-        '<td title="' + r.model_path + '"><code>' + (r.model_path ? r.model_path.split('/').pop() : r.filename) + '</code></td>\n' +
-        '<td>' + fmtGb(r.file_size_gb) + '</td>\n' +
-        '<td>' + (r.file_exists ? '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>' : '<span class="chip bad">-</span>') + '</td>\n' +
-'<td><div class="actions">\n' +
-        dlHtml + '\n' +
-'<button class="run" onclick="act(\'' + jsEscape(r.model) + '\', \'start\')"  ' + (running || !r.file_exists ? 'disabled' : '') + '>\u25b6 Start</button>\n' +
-        '<button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')"    ' + (!running ? 'disabled' : '') + '>\u25a0 Stop</button>\n' +
-        '<button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">\ufe55 Add Variant</button>\n' +
-        '<button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">\u2671 Delete</button>\n' +
-        '</div></td>\n' +
-        '</tr>';
-    }).join('');
-    console.log('Setting innerHTML, length:', html.length);
-    tb.innerHTML = html;
+const q = document.getElementById('search').value.toLowerCase();
+const grid = document.getElementById('tile-grid');
+console.log('tile-grid element:', grid);
+console.log('rows to render:', rows.length);
+const filtered = rows.filter(r => r.model.toLowerCase().includes(q) || String(r.port).includes(q));
+// Sort by model name, then by filename
+filtered.sort((a, b) => {
+  const modelCompare = a.model.localeCompare(b.model);
+  if (modelCompare !== 0) return modelCompare;
+  const aFilename = a.filename || (a.model_path ? a.model_path.split('/').pop() : a.model);
+  const bFilename = b.filename || (b.model_path ? b.model_path.split('/').pop() : b.model);
+  return aFilename.localeCompare(bFilename);
+});
+console.log('filtered rows:', filtered.length);
+const html = filtered.map((r) => {
+  const running = r.status.startsWith('running');
+  console.log('Model:', r.model, 'status:', r.status, 'running:', running);
+  const statusChip = running
+    ? '<span class="chip ok">● running</span>'
+    : r.file_exists
+    ? '<span class="chip ok">● stopped</span>'
+    : '<span class="chip bad">✕ missing</span>';
+  const dl = dlMap[r.model] || {};
+  const partial = r.partial_download || 0;
+  let dlHtml = '';
+  if (dl.status === 'downloading') {
+    dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
+  } else if (dl.status === 'complete') {
+    dlHtml = '<button class="download" disabled>✓ Done</button>';
+  } else if (dl.status === 'error') {
+    dlHtml = '<button class="download" onclick="retryDownload(jsEscape(r.model), true)">🔄 Retry</button>';
+  } else if (partial > 0) {
+    dlHtml = '<button class="download" onclick="resumeDownload(jsEscape(r.model), ' + partial + ')">▶ Resume</button>';
+  } else {
+    const filename = r.filename || (r.model_path ? r.model_path.split('/').pop() : r.model);
+    dlHtml = '<button class="download" onclick="downloadByFilename(\'' + jsEscape(r.model) + '\', \'' + jsEscape(filename) + '\', true)">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
+  }
+  const portCell = r.file_exists
+    ? '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>'
+    : '<span class="chip bad">-</span>';
+  // Check if there's an active download - use dl from API or stored progress state
+  const apiProgress = dlMap[r.model];
+  const dlProgress = (apiProgress && apiProgress.status) 
+    ? apiProgress 
+    : (downloadProgressState[r.model] || {});
+  // Show progress bar if status is downloading OR if there's active progress (progress > 0)
+  const showProgress = dlProgress.status === 'downloading' || (dlProgress.progress && dlProgress.progress > 0);
+  const progressHtml = showProgress
+    ? '<div id="progress-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
+      + '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem;">'
+      + '<strong style="font-size: .85rem;">Download Progress</strong>'
+      + '<span id="progress-text-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" style="font-size: .75rem;">' + (dlProgress.progress || 0) + '%</span>'
+      + '</div>'
+      + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
+      + '<div id="progress-bar-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" style="background: var(--btn-download); height: 100%; width: ' + (dlProgress.progress || 0) + '%; transition: width 0.2s;"></div>'
+      + '</div>'
+      + '<div id="progress-details-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;">' + (dlProgress.speed_mbps ? dlProgress.speed_mbps + ' MB/s' : '') + '</div>'
+      + '</div>'
+    : '';
+return '<div class="tile ' + (running ? 'running' : '') + '" data-model="' + jsEscape(r.model) + '">'
+    + '<div class="tile-header"><b>' + jsEscape(r.model) + '</b>' + statusChip + '</div>'
+    + '<div class="tile-body"><code title="' + jsEscape(r.model_path) + '">' + jsEscape(r.model_path ? r.model_path.split('/').pop() : r.filename) + '</code>'
+    + '<div>' + fmtGb(r.file_size_gb) + ' · ' + r.status + (r.pid ? ' · pid ' + r.pid : '') + '</div>'
+    + '<div>' + portCell + '</div>'
+    + '</div>'
+    + '<div class="tile-actions actions">'
+    + dlHtml
+    + ' <button class="run" onclick="act(\'' + jsEscape(r.model) + '\', \'start\')" ' + (running || !r.file_exists ? 'disabled' : '') + '>▶ Start</button>'
+    + ' <button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')" ' + (!running ? 'disabled' : '') + '>■ Stop</button>'
+    + ' <button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">＋ Add Variant</button>'
+    + ' <button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">✕ Delete</button>'
+    + '</div>'
+    + progressHtml
+    + '</div>';
+  }).join('');
+  console.log('Setting innerHTML, length:', html.length);
+  grid.innerHTML = html;
   } catch (e) {
     console.error('Refresh failed:', e);
   } finally {
@@ -2311,50 +2403,25 @@ function fmtSpeed(bytesPerSecond) {
   return mbps.toFixed(1) + ' MB/s';
 }
 
-// Progress bar UI
+// Progress bar UI - updates state, progress bar is rendered by refresh()
 function showProgressBar(model, expectedSize) {
   console.log('showProgressBar called for:', model, 'size:', expectedSize);
-  const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
-  const existing = document.getElementById('progress-' + safeId);
-  if (existing) existing.remove();
   
-  const progressDiv = document.createElement('div');
-  progressDiv.id = 'progress-' + safeId;
-  progressDiv.style.cssText = 'margin: 1rem 0; padding: 1rem; background: var(--surface, #16213e); border-radius: 6px; border: 1px solid var(--surface2, #0f3460); display: block; visibility: visible;';
-  progressDiv.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-      <strong>${model}</strong>
-      <span id="progress-text-${safeId}">0%</span>
-    </div>
-    <div style="background: var(--surface2, #0f3460); border-radius: 4px; height: 8px; overflow: hidden;">
-      <div id="progress-bar-${safeId}" style="background: var(--btn-download, #ff9800); height: 100%; width: 0%; transition: width 0.2s;"></div>
-    </div>
-    <div id="progress-details-${safeId}" style="font-size: 0.8rem; color: var(--text2, #a0a0b8); margin-top: 0.5rem;">Starting download...</div>
-  `;
-  
-  const logEl = document.getElementById('log');
-  console.log('log element:', logEl);
-  if (logEl && logEl.parentNode) {
-    logEl.parentNode.insertBefore(progressDiv, logEl);
-    console.log('Progress bar inserted before log');
-  } else {
-    console.log('log element not found, appending to main');
-    const mainEl = document.querySelector('main');
-    if (mainEl) {
-      mainEl.insertBefore(progressDiv, mainEl.firstChild);
-    } else {
-      document.body.appendChild(progressDiv);
-    }
-  }
-  // Force visibility
-  progressDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Initialize progress state for this model
+  downloadProgressState[model] = {
+    status: 'downloading',
+    progress: 0,
+    downloaded: 0,
+    size: expectedSize || 0,
+    speed_mbps: 0
+  };
+  console.log('Progress state initialized for', model);
 }
 
 // SSE listener for download progress
 function startProgressListener(model) {
   console.log('startProgressListener called for:', model);
   const eventSource = new EventSource(`/api/download-stream/${encodeURIComponent(model)}`);
-  const safeModel = model.replace(/[^a-zA-Z0-9]/g, '_');
   
   eventSource.onopen = function(e) {
     console.log('SSE connection opened for', model);
@@ -2369,38 +2436,30 @@ function startProgressListener(model) {
       const size = data.size || 0;
       const speed = data.speed_mbps || 0;
       
-      const bar = document.getElementById('progress-bar-' + safeModel);
-      const text = document.getElementById('progress-text-' + safeModel);
-      const details = document.getElementById('progress-details-' + safeModel);
-      
-      console.log('Progress elements:', { bar: !!bar, text: !!text, details: !!details });
-      
-      if (bar) {
-        bar.style.width = progress + '%';
-        text.textContent = progress + '%';
-        if (size) {
-          text.textContent = progress + '% (' + fmtSize(downloaded) + ' / ' + fmtSize(size) + ')';
-        }
-        if (details) {
-          details.textContent = fmtSpeed(speed * 1024 * 1024) + (speed ? ' · ' : '') + 
-            (data.status === 'error' ? 'Error: ' + data.error : data.status === 'complete' ? 'Complete!' : '');
-        }
+      // Initialize or update the stored state for persistence across refreshes
+      if (!downloadProgressState[model]) {
+        downloadProgressState[model] = { status: 'downloading', progress: 0, downloaded: 0, size: 0, speed_mbps: 0 };
       }
+      downloadProgressState[model].status = data.status || 'downloading';
+      downloadProgressState[model].progress = progress;
+      downloadProgressState[model].downloaded = downloaded;
+      downloadProgressState[model].size = size;
+      downloadProgressState[model].speed_mbps = speed;
+      // Sanitize details to prevent XSS
+      const detailsText = data.status === 'error' 
+        ? 'Error: ' + (data.error || 'Unknown error')
+        : data.status === 'complete' 
+          ? 'Complete!' 
+          : (speed ? speed.toFixed(1) + ' MB/s' + ' · ' : '');
+      downloadProgressState[model].details = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       
       if (data.status === 'complete' || data.status === 'error') {
         setTimeout(() => {
-          if (bar) bar.style.width = '100%';
-          if (text) text.textContent = data.status === 'complete' ? 'Complete!' : 'Failed';
-          // Remove the progress bar after completion
-          const progressContainer = document.getElementById('progress-' + safeModel);
-          if (progressContainer && data.status === 'complete') {
-            setTimeout(() => {
-              if (progressContainer.parentNode) {
-                progressContainer.parentNode.removeChild(progressContainer);
-              }
-            }, 1500);
-          }
           eventSource.close();
+          // Clean up progress state after completion
+          setTimeout(() => {
+            delete downloadProgressState[model];
+          }, 5000);
         }, 500);
       }
     } catch (err) {
@@ -2627,6 +2686,17 @@ document.getElementById('search').addEventListener('input', () => {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(refresh, 300);
 });
+// Theme switching
+  const themeSelector = document.getElementById('themeSelector');
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  themeSelector.value = savedTheme;
+  themeSelector.addEventListener('change', function() {
+    const theme = this.value;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  });
+
 document.getElementById('refreshBtn').addEventListener('click', refresh);
 document.getElementById('shutdownBtn').addEventListener('click', async function() {
   if (!confirm('Shutdown the web application? This will stop the Flask server.')) {
