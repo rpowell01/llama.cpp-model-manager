@@ -1809,20 +1809,25 @@ def api_chat():
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-    meta = models[model]
-    port = meta.get("port")
-    if not port:
-        return jsonify({"error": "Model has no assigned port"}), 400
+     meta = models[model]
+     port = meta.get("port")
+     if not port:
+         return jsonify({"error": "Model has no assigned port"}), 400
+     try:
+         port_int = int(port)
+     except (TypeError, ValueError):
+         log.error(f"Invalid port type for model {model}: {port!r}")
+         return jsonify({"error": "Model has invalid port configuration"}), 500
 
-    if not check_port_active(port):
-        return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+     if not check_port_active(port_int):
+         return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
-    payload = dict(data)
-    payload["stream"] = False
-    if "messages" not in payload:
-        return jsonify({"error": "Missing 'messages' field"}), 400
+     payload = dict(data)
+     payload["stream"] = False
+     if "messages" not in payload:
+         return jsonify({"error": "Missing 'messages' field"}), 400
 
-     target_url = f"http://127.0.0.1:{port}/v1/chat/completions"
+     target_url = f"http://127.0.0.1:{port_int}/v1/chat/completions"
      try:
          # Use client-provided timeout if available, else default to 300 seconds
          client_timeout = data.get("timeout")
@@ -1836,9 +1841,14 @@ def api_chat():
          resp = requests.post(target_url, json=payload, timeout=timeout)
          if resp.status_code != 200:
              return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
-         return jsonify(resp.json())
+         try:
+             json_data = resp.json()
+         except json.JSONDecodeError as e:
+             log.error(f"Invalid JSON from model {model} on port {port_int}: {resp.text[:500]}")
+             return jsonify({"error": "Model returned invalid JSON response", "details": resp.text[:500]}), 500
+         return jsonify(json_data)
      except requests.exceptions.RequestException as e:
-         log.error(f"Chat proxy error for {model} on port {port}: {e}")
+         log.error(f"Chat proxy error for {model} on port {port_int}: {e}")
          return jsonify({"error": str(e)}), 500
 
 
@@ -2536,15 +2546,21 @@ TEMPLATE = r"""<!DOCTYPE html>
          background: var(--surface2);
          outline: none;
        }
-       #chat-modal-content {
-         display: flex;
-         flex-direction: column;
-         height: 100%;
-         padding: 1rem;
-         padding-top: 2.5rem;
-         overflow: hidden;
-       }
-       .chat-params {
+        #chat-modal-content {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          padding: 1rem;
+          padding-top: 2.5rem;
+          overflow: hidden;
+        }
+        #chat-modal .modal-chat {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          min-height: 0;
+        }
+        .chat-params {
          display: grid;
          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
          gap: 0.5rem;
@@ -2562,17 +2578,17 @@ TEMPLATE = r"""<!DOCTYPE html>
          text-transform: uppercase;
          letter-spacing: 0.5px;
        }
-       .chat-messages {
-         flex: 1 1 auto;
-         overflow-y: auto;
-         display: flex;
-         flex-direction: column;
-         gap: 0.75rem;
-         padding-right: 0.5rem;
-         margin-bottom: 0.75rem;
-         min-height: 0;
-         max-height: calc(90vh - 180px);
-       }
+        .chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          padding-right: 0.5rem;
+          margin-bottom: 0.75rem;
+          min-height: 0;
+          max-height: none;
+        }
        .chat-input-area {
          display: flex;
          gap: 0.5rem;
@@ -2830,6 +2846,7 @@ TEMPLATE = r"""<!DOCTYPE html>
    <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
     <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
       <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
+      <button id="chat-modal-clear" style="position: absolute; top: 0.5rem; left: 0.5rem; background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 4px; padding: 0.25rem 0.5rem; font-size: 0.8rem; cursor: pointer; z-index: 10;">Clear</button>
       <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
     </div>
   </div>
@@ -4115,9 +4132,33 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
     
     if (chatCloseBtn) {
       chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
-    }
-    
-    // Render chat interface inside modal (bead web-e7r.3)
+     }
+
+     // Clear chat button handler
+     const chatClearBtn = document.getElementById('chat-modal-clear');
+     if (chatClearBtn) {
+       chatClearBtn.addEventListener('click', () => {
+         const modelName = chatModal.getAttribute('data-model-name');
+         if (modelName) {
+           if (chatHistory[modelName]) {
+             chatHistory[modelName] = [];
+           }
+           const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+           const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+           if (messagesDiv) {
+             messagesDiv.innerHTML = '';
+           }
+           const input = document.getElementById(`chat-input-${safeId}`);
+           if (input) {
+             input.value = '';
+           }
+           localStorage.removeItem('chat_input_' + modelName);
+           localStorage.removeItem('chat_history_' + modelName);
+         }
+       });
+     }
+
+     // Render chat interface inside modal (bead web-e7r.3)
     function renderChatInModal(modelName) {
       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
       const contentDiv = document.getElementById('chat-modal-content');
