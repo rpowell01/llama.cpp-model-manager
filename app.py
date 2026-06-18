@@ -1786,8 +1786,9 @@ def api_hf_metadata():
             "tags": data.get("tags", []),
             "author": repo.split("/")[0] if "/" in repo else repo,
             "lastModified": data.get("lastModified", ""),
-            "description": data.get("description", "")[:500] if data.get("description") else "",
-        }
+             "description": data.get("description", "")[:500] if data.get("description") else "",
+             "pipeline_tag": data.get("pipeline_tag", ""),
+         }
         return jsonify(result)
     except requests.exceptions.RequestException as e:
         log.error(f"HF metadata request error for {repo}: {e}")
@@ -2872,6 +2873,7 @@ const CACHE_VERSION = "{{ cache_version }}";
 // Panel state
 let selectedModel = null;
 let currentModelRows = []; // Cache of model data from latest refresh
+let autoSearchAttempted = new Set(); // Track auto-search attempts per model (web-iet)
 
 function selectModel(modelName) {
   selectedModel = modelName;
@@ -2976,6 +2978,18 @@ function closePanel() {
   
     content.innerHTML = html;
 
+    // Auto-search for HF repo if not configured and not already attempted (web-iet)
+    if (!data.repo && !autoSearchAttempted.has(modelName)) {
+      autoSearchAttempted.add(modelName);
+      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+      const statusEl = document.getElementById(`hf-search-status-${safeId}`);
+      if (statusEl) {
+        statusEl.textContent = 'Automatically searching Hugging Face...';
+        statusEl.style.display = 'block';
+      }
+      autoSearchAndSelectRepo(modelName);
+    }
+
     // Fetch HF metadata asynchronously
   try {
     const resp = await fetch(`/api/hf-metadata?model=${encodeURIComponent(modelName)}`);
@@ -3026,7 +3040,11 @@ function closePanel() {
       }
       metaHtml += `</span></div>`;
     }
-    
+    // Pipeline tag
+    if (meta.pipeline_tag) {
+      metaHtml += `<div class="panel-item"><span class="label">Type</span><span class="value">${meta.pipeline_tag}</span></div>`;
+    }
+
     // Description (truncated)
     if (meta.description) {
       const maxLen = 200;
@@ -3036,6 +3054,11 @@ function closePanel() {
       metaHtml += `<div class="panel-item full-width"><span class="label">Description</span><span class="value" style="white-space: pre-wrap;">${desc}</span></div>`;
     }
     
+    // Link to Hugging Face
+    if (meta.repo) {
+      metaHtml += `<div class="panel-item full-width"><a href="https://huggingface.co/${meta.repo}" target="_blank" rel="noopener">View on Hugging Face ↗</a></div>`;
+    }
+
     metaHtml += `</div>`;
     document.getElementById('hf-metadata-content').innerHTML = metaHtml;
     document.getElementById('hf-metadata-content').style.display = 'block';
@@ -3908,23 +3931,23 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
  const hfRepoList = document.getElementById('hf-repo-list');
  const hfModalCancel = document.getElementById('hf-modal-cancel');
 
- function updateModelRepo(modelName, repo) {
-   fetch('/api/update-model-repo', {
-     method: 'POST',
-     headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ model: modelName, repo: repo })
-   })
-   .then(resp => resp.json())
-   .then(data => {
-     if (data.error) throw new Error(data.error);
-     // Refresh panel to show metadata
-     selectModel(modelName);
-   })
-   .catch(err => {
-     const statusEl = document.getElementById(`hf-search-status-${modelName.replace(/[^a-zA-Z0-9]/g, '_')}`);
-     if (statusEl) statusEl.textContent = 'Error: ' + err.message;
-   });
- }
+function updateModelRepo(modelName, repo) {
+  fetch('/api/update-model-repo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelName, repo: repo })
+  })
+  .then(resp => resp.json())
+  .then(data => {
+    if (data.error) throw new Error(data.error);
+    // Refresh model list and panel will update via refresh's completion
+    return refresh(false);
+  })
+  .catch(err => {
+    const statusEl = document.getElementById(`hf-search-status-${modelName.replace(/[^a-zA-Z0-9]/g, '_')}`);
+    if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+  });
+}
 
  function showRepoSelectionModal(modelName, results) {
    currentRepoSearchModel = modelName;
@@ -3969,26 +3992,53 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
    hfModal.style.display = 'flex';
   }
 
-  // Select the best Hugging Face repo based on downloads and likes
-  function selectBestRepo(results) {
-    const reposMap = new Map();
-    results.forEach(r => {
-      if (!reposMap.has(r.repo)) {
-        reposMap.set(r.repo, { repo: r.repo, downloads: r.downloads, likes: r.likes, fileCount: 0 });
-      }
-      reposMap.get(r.repo).fileCount++;
-    });
-    const repos = Array.from(reposMap.values());
-    repos.sort((a, b) => {
-      const scoreA = a.downloads + a.likes;
-      const scoreB = b.downloads + b.likes;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-      return b.downloads - a.downloads;
-    });
-    return repos[0];
-  }
+   // Select the best Hugging Face repo based on downloads and likes
+   function selectBestRepo(results) {
+     const reposMap = new Map();
+     results.forEach(r => {
+       if (!reposMap.has(r.repo)) {
+         reposMap.set(r.repo, { repo: r.repo, downloads: r.downloads, likes: r.likes, fileCount: 0 });
+       }
+       reposMap.get(r.repo).fileCount++;
+     });
+     const repos = Array.from(reposMap.values());
+     repos.sort((a, b) => {
+       const scoreA = a.downloads + a.likes;
+       const scoreB = b.downloads + b.likes;
+       if (scoreB !== scoreA) return scoreB - scoreA;
+       return b.downloads - a.downloads;
+     });
+     return repos[0];
+   }
 
-  // Attach click handlers to "Find on Hugging Face" buttons
+   // Automatically search and select best HF repo for a model (web-iet)
+   async function autoSearchAndSelectRepo(modelName) {
+     try {
+       const resp = await fetch('/api/hf-repo-search', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ model: modelName })
+       });
+       if (!resp.ok) {
+         const err = await resp.json().catch(() => ({}));
+         throw new Error(err.error || 'Search failed');
+       }
+       const data = await resp.json();
+       if (!data.results || data.results.length === 0) {
+         throw new Error('No repositories found');
+       }
+       const best = selectBestRepo(data.results);
+       // Update model repo with the best candidate
+       updateModelRepo(modelName, best.repo);
+     } catch (err) {
+       console.error('Auto-search error:', err);
+       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+       const statusEl = document.getElementById(`hf-search-status-${safeId}`);
+       if (statusEl) statusEl.textContent = 'Auto-search failed: ' + err.message;
+     }
+   }
+
+   // Attach click handlers to "Find on Hugging Face" buttons
   document.addEventListener('click', function(e) {
    if (e.target && e.target.id && e.target.id.startsWith('hf-find-btn-')) {
      const modelName = e.target.getAttribute('data-model');
