@@ -1809,47 +1809,47 @@ def api_chat():
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-     meta = models[model]
-     port = meta.get("port")
-     if not port:
-         return jsonify({"error": "Model has no assigned port"}), 400
-     try:
-         port_int = int(port)
-     except (TypeError, ValueError):
-         log.error(f"Invalid port type for model {model}: {port!r}")
-         return jsonify({"error": "Model has invalid port configuration"}), 500
+    meta = models[model]
+    port = meta.get("port")
+    if not port:
+        return jsonify({"error": "Model has no assigned port"}), 400
+    try:
+        port_int = int(port)
+    except (TypeError, ValueError):
+        log.error(f"Invalid port type for model {model}: {port!r}")
+        return jsonify({"error": "Model has invalid port configuration"}), 500
 
-     if not check_port_active(port_int):
-         return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+    if not check_port_active(port_int):
+        return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
-     payload = dict(data)
-     payload["stream"] = False
-     if "messages" not in payload:
-         return jsonify({"error": "Missing 'messages' field"}), 400
+    payload = dict(data)
+    payload["stream"] = False
+    if "messages" not in payload:
+        return jsonify({"error": "Missing 'messages' field"}), 400
 
-     target_url = f"http://127.0.0.1:{port_int}/v1/chat/completions"
-     try:
-         # Use client-provided timeout if available, else default to 300 seconds
-         client_timeout = data.get("timeout")
-         if client_timeout is not None:
-             try:
-                 timeout = max(1, min(int(client_timeout), 600))  # clamp 1-600
-             except (ValueError, TypeError):
-                 timeout = 300
-         else:
-             timeout = 300
-         resp = requests.post(target_url, json=payload, timeout=timeout)
-         if resp.status_code != 200:
-             return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
-         try:
-             json_data = resp.json()
-         except json.JSONDecodeError as e:
-             log.error(f"Invalid JSON from model {model} on port {port_int}: {resp.text[:500]}")
-             return jsonify({"error": "Model returned invalid JSON response", "details": resp.text[:500]}), 500
-         return jsonify(json_data)
-     except requests.exceptions.RequestException as e:
-         log.error(f"Chat proxy error for {model} on port {port_int}: {e}")
-         return jsonify({"error": str(e)}), 500
+    target_url = f"http://127.0.0.1:{port_int}/v1/chat/completions"
+    try:
+        # Use client-provided timeout if available, else default to 300 seconds
+        client_timeout = data.get("timeout")
+        if client_timeout is not None:
+            try:
+                timeout = max(1, min(int(client_timeout), 600))  # clamp 1-600
+            except (ValueError, TypeError):
+                timeout = 300
+        else:
+            timeout = 300
+        resp = requests.post(target_url, json=payload, timeout=timeout)
+        if resp.status_code != 200:
+            return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
+        try:
+            json_data = resp.json()
+        except json.JSONDecodeError as e:
+            log.error(f"Invalid JSON from model {model} on port {port_int}: {resp.text[:500]}")
+            return jsonify({"error": "Model returned invalid JSON response", "details": resp.text[:500]}), 500
+        return jsonify(json_data)
+    except requests.exceptions.RequestException as e:
+        log.error(f"Chat proxy error for {model} on port {port_int}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/search-models", methods=["POST"])
@@ -2220,12 +2220,13 @@ TEMPLATE = r"""<!DOCTYPE html>
    .panel-close-btn:hover {
      color: var(--text);
    }
-   .panel-section {
-     margin-bottom: 1rem;
-   }
-   .panel-section:last-child {
-     margin-bottom: 0;
-   }
+    .panel-section {
+      margin-bottom: 1rem;
+      flex-shrink: 0;
+    }
+    .panel-section:last-child {
+      margin-bottom: 0;
+    }
    .panel-section h3 {
      margin: 0 0 .5rem;
      font-size: .9rem;
@@ -2641,14 +2642,15 @@ TEMPLATE = r"""<!DOCTYPE html>
          opacity: 0.5;
          cursor: not-allowed;
        }
-       .chat-stats {
-         font-variant-numeric: tabular-nums;
-         letter-spacing: 0.02em;
-         font-size: 0.75rem;
-         color: var(--text2);
-         text-align: right;
-         margin-top: 0.25rem;
-       }
+        .chat-stats {
+          font-variant-numeric: tabular-nums;
+          letter-spacing: 0.02em;
+          font-size: 0.75rem;
+          color: var(--text2);
+          text-align: right;
+          margin-top: 0.25rem;
+          flex-shrink: 0;
+        }
        .chat-messages {
          scroll-behavior: smooth;
        }
