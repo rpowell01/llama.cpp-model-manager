@@ -1535,6 +1535,28 @@ def api_delete_model():
     return jsonify({"status": "model deleted", "name": name, "delete_files": delete_files})
 
 
+@app.route("/api/update-model-repo", methods=["POST"])
+def api_update_model_repo():
+    """Update the Hugging Face repo field for a model."""
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    repo = data.get("repo", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    if not repo:
+        return jsonify({"error": "Missing repo"}), 400
+
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    # Update repo field
+    models[model]["repo"] = repo
+    save_models(models)
+
+    return jsonify({"status": "repo updated", "model": model, "repo": repo})
+
+
 @app.route("/api/logs")
 def api_logs():
      if not LOG_FILE.exists():
@@ -1597,6 +1619,131 @@ def api_model_file():
             return jsonify({"error": str(e)}), 500
     
     return jsonify({"error": "Model has no repo/filename configured"}), 400
+
+
+@app.route("/api/hf-repo-search", methods=["POST"])
+def api_hf_repo_search():
+    """Search Hugging Face for model GGUF files and return repo candidates (no download)."""
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    try:
+        resp = requests.get(
+            "https://huggingface.co/api/models",
+            params={"search": model, "limit": 10, "full": "true"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"HF search failed: HTTP {resp.status_code}"}), 500
+        hf_models = resp.json()
+        if not hf_models:
+            return jsonify({"error": f"No model found on Hugging Face for '{model}'"}), 404
+
+        results = []
+        for hf_model in hf_models:
+            repo = hf_model["id"]
+            for file in hf_model.get("siblings", []):
+                if file.get("rfilename", "").lower().endswith(".gguf"):
+                    filename = file["rfilename"]
+                    size = file.get("size", 0)
+                    if not size:
+                        size = estimate_gguf_size(repo, filename)
+                    results.append({
+                        "repo": repo,
+                        "filename": filename,
+                        "size": size,
+                        "downloads": hf_model.get("downloads", 0),
+                        "likes": hf_model.get("likes", 0)
+                    })
+        if not results:
+            return jsonify({"error": f"No GGUF file found for '{model}' on Hugging Face"}), 404
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        log.error(f"HF search error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/hf-metadata", methods=["GET"])
+def api_hf_metadata():
+    """Get Hugging Face metadata for a model."""
+    model = request.args.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    meta = models[model]
+    repo = meta.get("repo", "")
+    if not repo:
+        return jsonify({"error": "Model has no Hugging Face repo configured"}), 400
+
+    try:
+        resp = requests.get(f"https://huggingface.co/api/models/{repo}", timeout=10)
+        if resp.status_code != 200:
+            log.warning(f"HF metadata fetch failed for {repo}: HTTP {resp.status_code}")
+            return jsonify({"error": f"Failed to fetch metadata: HTTP {resp.status_code}"}), 502
+
+        data = resp.json()
+        # Extract useful fields
+        result = {
+            "repo": repo,
+            "downloads": data.get("downloads", 0),
+            "likes": data.get("likes", 0),
+            "tags": data.get("tags", []),
+            "author": repo.split("/")[0] if "/" in repo else repo,
+            "lastModified": data.get("lastModified", ""),
+            "description": data.get("description", "")[:500] if data.get("description") else "",
+        }
+        return jsonify(result)
+    except requests.exceptions.RequestException as e:
+        log.error(f"HF metadata request error for {repo}: {e}")
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        log.error(f"HF metadata unexpected error for {repo}: {e}")
+        return jsonify({"error": "Unexpected error"}), 500
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    """Proxy chat requests to a running model."""
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    meta = models[model]
+    port = meta.get("port")
+    if not port:
+        return jsonify({"error": "Model has no assigned port"}), 400
+
+    if not check_port_active(port):
+        return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+
+    payload = dict(data)
+    payload["stream"] = False
+    if "messages" not in payload:
+        return jsonify({"error": "Missing 'messages' field"}), 400
+
+    target_url = f"http://127.0.0.1:{port}/v1/chat/completions"
+    try:
+        resp = requests.post(target_url, json=payload, timeout=60)
+        if resp.status_code != 200:
+            return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
+        return jsonify(resp.json())
+    except requests.exceptions.RequestException as e:
+        log.error(f"Chat proxy error for {model} on port {port}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/search-models", methods=["POST"])
@@ -1929,12 +2076,292 @@ TEMPLATE = r"""<!DOCTYPE html>
      0% { transform: rotate(0deg); }
      100% { transform: rotate(360deg); }
    }
-@media (max-width: 640px) {
-  main { padding: 1rem; }
-  header { flex-direction: column; align-items: flex-start; gap: .4rem; }
-  .tile-header, .tile-actions { font-size: .82rem; }
-}
-</style>
+    @media (max-width: 640px) {
+   main { padding: 1rem; }
+   header { flex-direction: column; align-items: flex-start; gap: .4rem; }
+   .tile-header, .tile-actions { font-size: .82rem; }
+ }
+   #content-area {
+     display: grid;
+     grid-template-columns: 1fr;
+     gap: 1.5rem;
+   }
+   #content-area.has-panel {
+     grid-template-columns: 1fr 340px;
+   }
+   @media (max-width: 1024px) {
+     #content-area.has-panel {
+       grid-template-columns: 1fr;
+     }
+   }
+   .properties-panel {
+     background: var(--surface);
+     border: 1px solid var(--surface2);
+     border-radius: 8px;
+     padding: 1rem;
+     position: relative;
+     max-height: calc(100vh - 220px);
+     overflow-y: auto;
+   }
+   .panel-header {
+     display: flex;
+     justify-content: space-between;
+     align-items: flex-start;
+     position: relative;
+     padding-right: 1.5rem;
+   }
+   .panel-close-btn:hover {
+     color: var(--text);
+   }
+   .panel-section {
+     margin-bottom: 1rem;
+   }
+   .panel-section:last-child {
+     margin-bottom: 0;
+   }
+   .panel-section h3 {
+     margin: 0 0 .5rem;
+     font-size: .9rem;
+     color: var(--text2);
+     text-transform: uppercase;
+     letter-spacing: .5px;
+   }
+   .panel-grid {
+     display: grid;
+     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+     gap: .5rem;
+   }
+   .panel-item {
+     display: flex;
+     flex-direction: column;
+     gap: .2rem;
+   }
+   .panel-item .label {
+     font-size: .75rem;
+     color: var(--text2);
+   }
+   .panel-item .value {
+     font-size: .9rem;
+     color: var(--text);
+     word-break: break-word;
+   }
+   .panel-item .value code {
+     background: var(--surface2);
+     padding: .1rem .3rem;
+     border-radius: 3px;
+     font-family: monospace;
+     font-size: .85rem;
+   }
+    .chip.running {
+      background: rgba(46,204,113,.2);
+      color: var(--green);
+      font-weight: 600;
+      padding: .2rem .6rem;
+      border-radius: 10px;
+      display: inline-block;
+      font-size: .8rem;
+    }
+    .loading {
+      color: var(--text2);
+      font-style: italic;
+      padding: .5rem 0;
+    }
+    .error {
+      color: #e74c3c;
+      padding: .5rem 0;
+      font-size: .9rem;
+    }
+    .tag {
+      display: inline-block;
+      background: var(--surface2);
+      color: var(--text);
+      padding: .15rem .5rem;
+      border-radius: 4px;
+      font-size: .75rem;
+      margin: 0 .2rem .2rem 0;
+    }
+     .panel-item.full-width {
+       grid-column: 1 / -1;
+     }
+     /* Chat Interface Styles */
+     .chat-section {
+       border: 1px solid var(--surface2);
+       border-radius: 8px;
+       padding: 0.75rem;
+       background: rgba(0,0,0,0.1);
+     }
+     .chat-params {
+       display: grid;
+       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+       gap: 0.5rem;
+       margin-bottom: 0.75rem;
+     }
+     .chat-params .panel-item {
+       display: flex;
+       flex-direction: column;
+       gap: 0.3rem;
+     }
+     .chat-params input[type="range"] {
+       width: 100%;
+       height: 4px;
+       background: var(--surface2);
+       border-radius: 2px;
+       outline: none;
+       -webkit-appearance: none;
+     }
+     .chat-params input[type="range"]::-webkit-slider-thumb {
+       -webkit-appearance: none;
+       width: 14px;
+       height: 14px;
+       background: var(--blue);
+       border-radius: 50%;
+       cursor: pointer;
+     }
+     .chat-params input[type="number"] {
+       background: var(--surface);
+       border: 1px solid var(--surface2);
+       color: var(--text);
+       padding: 0.2rem 0.4rem;
+       border-radius: 4px;
+       font-size: 0.85rem;
+       width: 70px;
+     }
+     .chat-messages {
+       max-height: 200px;
+       overflow-y: auto;
+       background: var(--surface);
+       border: 1px solid var(--surface2);
+       border-radius: 6px;
+       padding: 0.5rem;
+       margin-bottom: 0.5rem;
+       display: flex;
+       flex-direction: column;
+       gap: 0.5rem;
+       font-size: 0.85rem;
+     }
+     .chat-message {
+       padding: 0.4rem 0.6rem;
+       border-radius: 8px;
+       max-width: 90%;
+       word-wrap: break-word;
+       line-height: 1.4;
+     }
+     .chat-message.user {
+       align-self: flex-end;
+       background: var(--btn-add);
+       color: #fff;
+     }
+     .chat-message.assistant {
+       align-self: flex-start;
+       background: var(--surface2);
+       color: var(--text);
+     }
+     .chat-message.error {
+       align-self: center;
+       background: var(--btn-del);
+       color: #fff;
+       font-size: 0.8rem;
+     }
+     .chat-input-area {
+       display: flex;
+       gap: 0.5rem;
+       margin-bottom: 0.5rem;
+     }
+     .chat-input-area textarea {
+       flex: 1;
+       background: var(--surface);
+       border: 1px solid var(--surface2);
+       color: var(--text);
+       padding: 0.5rem;
+       border-radius: 6px;
+       resize: vertical;
+       min-height: 60px;
+       font-family: inherit;
+       font-size: 0.9rem;
+     }
+     .chat-input-area textarea:focus {
+       outline: none;
+       border-color: var(--blue);
+     }
+     .btn-chat-send {
+       background: var(--btn-add);
+       color: #fff;
+       border: none;
+       border-radius: 6px;
+       padding: 0.5rem 1rem;
+       cursor: pointer;
+       font-size: 0.85rem;
+       align-self: flex-end;
+     }
+     .btn-chat-send:hover {
+       opacity: 0.9;
+     }
+      .btn-chat-send:disabled {
+        background: var(--text2);
+        cursor: not-allowed;
+      }
+      .chat-stats {
+        font-size: 0.75rem;
+        color: var(--text2);
+        text-align: right;
+      }
+      .btn-primary {
+        background: var(--blue);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: opacity 0.2s;
+      }
+      .btn-primary:hover {
+        opacity: 0.9;
+      }
+      .hf-repo-card:hover {
+        border-color: var(--blue) !important;
+      }
+
+      /* Tile chat styles */
+      .tile .tile-chat {
+        border-top: 1px solid var(--surface2);
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+      }
+      .tile .chat-params {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+      }
+      .tile .chat-params .panel-item {
+        min-width: 100px;
+        font-size: 0.8rem;
+      }
+      .tile .chat-messages {
+        max-height: 120px;
+        font-size: 0.85rem;
+      }
+      .tile .chat-input-area {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.4rem;
+      }
+      .tile .chat-input-area textarea {
+        min-height: 40px;
+        font-size: 0.85rem;
+        resize: vertical;
+      }
+      .tile .btn-chat-send {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.8rem;
+      }
+      .tile .chat-stats {
+        font-size: 0.75rem;
+        text-align: right;
+        margin-top: 0.25rem;
+      }
+    </style>
 </head>
 <body>
 <header>
@@ -2002,20 +2429,328 @@ TEMPLATE = r"""<!DOCTYPE html>
         <button type="button" class="btn-cancel" onclick="toggleAddForm()">Cancel</button>
       </div>
     </form>
+     </div>
+     <div id="loading">
+       <div class="spinner"></div>
+       <div>Loading models…</div>
+     </div>
+     <div id="content-area" style="display: grid; gap: 1.5rem;">
+       <div id="tile-grid" class="tile-grid"></div>
+       <div id="properties-panel" class="properties-panel" style="display: none;">
+         <div class="panel-header">
+           <h2 id="panel-model-name" style="margin:0;font-size:1.1rem;"></h2>
+           <button id="panel-close" class="panel-close-btn" style="position:absolute;top:.5rem;right:.5rem;background:none;border:none;color:var(--text2);font-size:1.5rem;cursor:pointer;line-height:1;">&times;</button>
+         </div>
+         <div id="panel-content" style="padding-top:1rem;"></div>
+       </div>
+     </div>
+    <div id="log"></div>
+  </main>
+
+  <!-- Modal for Hugging Face repo selection -->
+  <div id="hf-repo-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+      <h3 style="margin-top: 0; margin-bottom: 1rem;">Select Hugging Face Repository</h3>
+      <p id="hf-modal-description" style="color: var(--muted); margin-bottom: 1rem;"></p>
+      <div id="hf-repo-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+        <button id="hf-modal-cancel" class="btn-secondary" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Cancel</button>
+      </div>
     </div>
-    <div id="loading">
-      <div class="spinner"></div>
-      <div>Loading models…</div>
-    </div>
-<div id="tile-grid" class="tile-grid"></div>
-   <div id="log"></div>
-</main>
+  </div>
+
 <script>
 const HOST = "{{ host }}";
 const FLAVOR = "{{ flask_port }}";
 const CACHE_VERSION = "{{ cache_version }}";
 
-function fmtGb(v) {
+// Panel state
+let selectedModel = null;
+let currentModelRows = []; // Cache of model data from latest refresh
+
+function selectModel(modelName) {
+  selectedModel = modelName;
+  const panel = document.getElementById('properties-panel');
+  const contentArea = document.getElementById('content-area');
+  panel.style.display = 'block';
+  contentArea.classList.add('has-panel');
+  
+  // Find model data
+  const modelData = currentModelRows.find(r => r.model === modelName);
+  if (!modelData) {
+    console.error('Model data not found for', modelName);
+    return;
+  }
+  
+  // Set heading
+  document.getElementById('panel-model-name').textContent = modelName;
+  
+  // Render properties
+  renderPanelProperties(modelData, modelName);
+}
+
+function closePanel() {
+  selectedModel = null;
+  const panel = document.getElementById('properties-panel');
+  const contentArea = document.getElementById('content-area');
+  panel.style.display = 'none';
+  contentArea.classList.remove('has-panel');
+}
+
+ async function renderPanelProperties(data, modelName) {
+   const content = document.getElementById('panel-content');
+   
+   // Determine if running
+   const running = data.status && data.status.startsWith('running');
+   // Generate a safe ID for element IDs (no special characters)
+   const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+   
+   // Build HTML
+   let html = '';
+  
+  // Static Properties section
+  html += `<div class="panel-section">
+    <h3>Properties</h3>
+    <div class="panel-grid">`;
+  
+  // Helper to add item
+  const addItem = (label, value, isCode = false) => {
+    const valHtml = isCode ? `<code>${value}</code>` : value;
+    html += `<div class="panel-item">
+      <span class="label">${label}</span>
+      <span class="value">${valHtml}</span>
+    </div>`;
+  };
+  
+  addItem('File', data.model_path ? data.model_path.split('/').pop() : (data.filename || '-'));
+  addItem('Size', fmtGb(data.file_size_gb));
+  addItem('Port', data.port ? `:${data.port}` : '-');
+  addItem('Cache Size', data.cache_size + ' tokens');
+  addItem('Threads', data.threads);
+  addItem('Threads Batch', data.threads_batch);
+  addItem('Timeout', data.timeout + 's');
+  addItem('MLock', data.mlock ? 'Yes' : 'No');
+  addItem('Flash Attn', data.flash_attn || 'off');
+  addItem('No MMAP', data.no_mmap ? 'Yes' : 'No');
+  addItem('Parallel', data.parallel);
+  addItem('UBatch Size', data.ubatch_size);
+  
+  html += `</div></div>`;
+  
+   // Running Statistics section (only if running)
+   if (running) {
+     html += `<div class="panel-section">
+       <h3>Running Statistics</h3>
+       <div class="panel-grid">`;
+     addItem('Status', '<span class="chip running">● running</span>');
+     if (data.pid) addItem('PID', `<code>${data.pid}</code>`);
+     html += `</div></div>`;
+     
+    }
+   
+    // Hugging Face Metadata section
+   html += `<div class="panel-section">
+     <h3>Model Information</h3>`;
+
+   // If repo is not configured, show button to discover
+   if (!data.repo) {
+     html += `<div id="hf-metadata-missing" style="text-align: center; padding: 1rem 0;">
+       <p style="margin-bottom: 0.75rem; color: var(--muted);">Hugging Face repository not configured.</p>
+       <button id="hf-find-btn-${safeId}" class="btn-primary" data-model="${modelName}">Find on Hugging Face</button>
+       <div id="hf-search-status-${safeId}" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted);"></div>
+     </div>`;
+   }
+
+   html += `
+     <div id="hf-metadata-loading" class="loading" style="display: none;">Loading Hugging Face data...</div>
+     <div id="hf-metadata-content" style="display: none;"></div>
+     <div id="hf-metadata-error" class="error" style="display: none;"></div>
+   </div>`;
+  
+  content.innerHTML = html;
+  
+  // Fetch HF metadata asynchronously
+  try {
+    const resp = await fetch(`/api/hf-metadata?model=${encodeURIComponent(modelName)}`);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      const msg = err.error || 'Failed to load Hugging Face metadata';
+      document.getElementById('hf-metadata-error').textContent = msg;
+      document.getElementById('hf-metadata-error').style.display = 'block';
+      document.getElementById('hf-metadata-loading').style.display = 'none';
+      return;
+    }
+    const meta = await resp.json();
+    document.getElementById('hf-metadata-loading').style.display = 'none';
+    
+    let metaHtml = '<div class="panel-grid">';
+    
+    // Downloads
+    if (meta.downloads !== undefined) {
+      const dl = meta.downloads.toLocaleString();
+      metaHtml += `<div class="panel-item"><span class="label">Downloads</span><span class="value">${dl}</span></div>`;
+    }
+    
+    // Likes
+    if (meta.likes !== undefined) {
+      const likes = meta.likes.toLocaleString();
+      metaHtml += `<div class="panel-item"><span class="label">Likes</span><span class="value">${likes}</span></div>`;
+    }
+    
+    // Author
+    if (meta.author) {
+      metaHtml += `<div class="panel-item"><span class="label">Author</span><span class="value">${meta.author}</span></div>`;
+    }
+    
+    // Last modified
+    if (meta.lastModified) {
+      const date = new Date(meta.lastModified).toLocaleDateString();
+      metaHtml += `<div class="panel-item"><span class="label">Updated</span><span class="value">${date}</span></div>`;
+    }
+    
+    // Tags
+    if (Array.isArray(meta.tags) && meta.tags.length > 0) {
+      metaHtml += `<div class="panel-item full-width"><span class="label">Tags</span><span class="value">`;
+      meta.tags.slice(0, 8).forEach(tag => {
+        metaHtml += `<span class="tag">${tag}</span>`;
+      });
+      if (meta.tags.length > 8) {
+        metaHtml += `<span class="tag">+${meta.tags.length - 8} more</span>`;
+      }
+      metaHtml += `</span></div>`;
+    }
+    
+    // Description (truncated)
+    if (meta.description) {
+      const maxLen = 200;
+      const desc = meta.description.length > maxLen 
+        ? meta.description.substring(0, maxLen) + '...' 
+        : meta.description;
+      metaHtml += `<div class="panel-item full-width"><span class="label">Description</span><span class="value" style="white-space: pre-wrap;">${desc}</span></div>`;
+    }
+    
+    metaHtml += `</div>`;
+    document.getElementById('hf-metadata-content').innerHTML = metaHtml;
+    document.getElementById('hf-metadata-content').style.display = 'block';
+   } catch (e) {
+     document.getElementById('hf-metadata-loading').style.display = 'none';
+     document.getElementById('hf-metadata-error').textContent = 'Network error while fetching metadata';
+     document.getElementById('hf-metadata-error').style.display = 'block';
+    }
+    
+   }
+  
+  // Render chat messages for a specific model
+  function renderChatMessages(modelName) {
+    const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+    const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+    if (!messagesDiv) return;
+    
+    messagesDiv.innerHTML = '';
+    const history = chatHistory[modelName] || [];
+    
+    history.forEach(msg => {
+      const msgEl = document.createElement('div');
+      msgEl.className = `chat-message ${msg.role}`;
+      msgEl.textContent = msg.content;
+      messagesDiv.appendChild(msgEl);
+    });
+    
+    // Scroll to bottom
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+  
+  // Send a chat message to the model
+  async function sendChatMessage(modelName) {
+    const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+    const input = document.getElementById(`chat-input-${safeId}`);
+    const sendBtn = document.getElementById(`chat-send-${safeId}`);
+    const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+    const statsDiv = document.getElementById(`chat-stats-${safeId}`);
+    const content = input.value.trim();
+    if (!content) return;
+    
+    // Get parameters
+    const temperature = parseFloat(document.getElementById(`chat-temp-${safeId}`).value);
+    const top_p = parseFloat(document.getElementById(`chat-top-p-${safeId}`).value);
+    const max_tokens = parseInt(document.getElementById(`chat-max-tokens-${safeId}`).value, 10);
+    
+    // Add user message to history and UI
+    chatHistory[modelName].push({ role: 'user', content });
+    input.value = '';
+    renderChatMessages(modelName);
+    
+    // Disable input and show loading
+    sendBtn.disabled = true;
+    input.disabled = true;
+    const loadingMsg = document.createElement('div');
+    loadingMsg.className = 'chat-message assistant';
+    loadingMsg.textContent = 'Thinking...';
+    loadingMsg.id = 'chat-loading';
+    messagesDiv.appendChild(loadingMsg);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    const startTime = Date.now();
+    
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          messages: chatHistory[modelName].map(m => ({ role: m.role, content: m.content })),
+          temperature,
+          top_p,
+          max_tokens
+        })
+      });
+      
+      // Remove loading indicator
+      const loading = document.getElementById('chat-loading');
+      if (loading) loading.remove();
+      
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      
+      const data = await resp.json();
+      const responseTime = Date.now() - startTime;
+      
+      // Extract assistant message from OpenAI response format
+      const assistantMessage = data.choices?.[0]?.message?.content || '';
+      if (!assistantMessage) {
+        throw new Error('Empty response from model');
+      }
+      
+      // Add assistant response to history
+      chatHistory[modelName].push({ role: 'assistant', content: assistantMessage });
+      renderChatMessages(modelName);
+      
+      // Update stats - use completion_tokens or total_tokens
+      const usage = data.usage || {};
+      const tokens = usage.completion_tokens || usage.total_tokens || 0;
+      const tps = (tokens / (responseTime / 1000)).toFixed(1);
+      statsDiv.innerHTML = `<span>✓ ${tokens} tokens</span> <span>⏱ ${responseTime}ms</span> <span>🚀 ${tps} t/s</span>`;
+      
+    } catch (err) {
+      const loading = document.getElementById('chat-loading');
+      if (loading) loading.remove();
+      
+      const errorMsg = document.createElement('div');
+      errorMsg.className = 'chat-message error';
+      errorMsg.textContent = `Error: ${err.message}`;
+      messagesDiv.appendChild(errorMsg);
+      statsDiv.innerHTML = `<span style="color: var(--red);">❌ ${err.message}</span>`;
+      
+    } finally {
+      sendBtn.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  }
+  
+  function fmtGb(v) {
   if (v == null) return '<span class="chip warn">missing</span>';
   return v.toFixed(2) + ' GB';
 }
@@ -2027,6 +2762,8 @@ function portUrl(p) { return 'http://' + HOST + ':' + p; }
 let isRefreshing = false;
 // Store download progress state to preserve across refreshes
 const downloadProgressState = {};
+// Store chat message history per model
+const chatHistory = {};
 async function refresh(showLoading=true) {
   if (isRefreshing) {
     console.log('Refresh already in progress, skipping');
@@ -2059,7 +2796,9 @@ async function refresh(showLoading=true) {
       console.error('Failed to parse /api/status response:', text);
       throw e;
     }
-    console.log('Received', rows.length, 'models');
+     console.log('Received', rows.length, 'models');
+     // Cache model data for panel population
+     currentModelRows = rows;
     const dlRes = await fetch('/api/download-status?' + Date.now(), { 
       cache: 'no-store',
       signal: controller.signal 
@@ -2134,8 +2873,36 @@ const html = filtered.map((r) => {
       + '</div>'
       + '<div id="progress-details-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;">' + (dlProgress.speed_mbps ? dlProgress.speed_mbps + ' MB/s' : '') + '</div>'
       + '</div>'
-    : '';
-return '<div class="tile ' + (running ? 'running' : '') + '" data-model="' + jsEscape(r.model) + '">'
+     : '';
+    const safeId = r.model.replace(/[^a-zA-Z0-9]/g, '_');
+    let chatHtml = '';
+    if (running) {
+      chatHtml = `
+        <div class="tile-chat">
+          <div class="chat-params">
+            <div class="panel-item"><span class="label">Temperature</span>
+              <input type="range" id="chat-temp-${safeId}" min="0" max="2" step="0.1" value="0.7"
+                     oninput="document.getElementById('chat-temp-val-${safeId}').textContent = this.value">
+              <span class="value" id="chat-temp-val-${safeId}">0.7</span>
+            </div>
+            <div class="panel-item"><span class="label">Top P</span>
+              <input type="range" id="chat-top-p-${safeId}" min="0" max="1" step="0.05" value="0.9"
+                     oninput="document.getElementById('chat-top-p-val-${safeId}').textContent = this.value">
+              <span class="value" id="chat-top-p-val-${safeId}">0.9</span>
+            </div>
+            <div class="panel-item"><span class="label">Max Tokens</span>
+              <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
+            </div>
+          </div>
+          <div class="chat-messages" id="chat-messages-${safeId}"></div>
+          <div class="chat-input-area">
+            <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
+            <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
+          </div>
+          <div class="chat-stats" id="chat-stats-${safeId}"></div>
+        </div>`;
+    }
+    return '<div class="tile ' + (running ? 'running' : '') + '" data-model="' + jsEscape(r.model) + '" onclick="selectModel(\'' + jsEscape(r.model) + '\')">'
     + '<div class="tile-header"><b>' + jsEscape(r.model) + '</b>' + statusChip + '</div>'
     + '<div class="tile-body"><code title="' + jsEscape(r.model_path) + '">' + jsEscape(r.model_path ? r.model_path.split('/').pop() : r.filename) + '</code>'
     + '<div>' + fmtGb(r.file_size_gb) + ' · ' + r.status + (r.pid ? ' · pid ' + r.pid : '') + '</div>'
@@ -2147,12 +2914,72 @@ return '<div class="tile ' + (running ? 'running' : '') + '" data-model="' + jsE
     + ' <button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')" ' + (!running ? 'disabled' : '') + '>■ Stop</button>'
     + ' <button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">＋ Add Variant</button>'
     + ' <button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">✕ Delete</button>'
-    + '</div>'
-    + progressHtml
-    + '</div>';
+     + '</div>'
+     + progressHtml
+     + chatHtml
+     + '</div>';
   }).join('');
-  console.log('Setting innerHTML, length:', html.length);
-  grid.innerHTML = html;
+    console.log('Setting innerHTML, length:', html.length);
+    // Preserve chat input values before DOM replacement
+    const preservedInputs = new Map();
+    document.querySelectorAll('.tile .tile-chat textarea[id^="chat-input-"]').forEach(textarea => {
+      const tile = textarea.closest('.tile');
+      if (!tile) return;
+      const modelName = tile.getAttribute('data-model');
+      if (modelName) preservedInputs.set(modelName, textarea.value);
+    });
+    grid.innerHTML = html;
+
+    // Initialize chat in any running model tiles
+    document.querySelectorAll('.tile .tile-chat').forEach(tileChat => {
+      const tile = tileChat.closest('.tile');
+      const modelName = tile.getAttribute('data-model');
+      if (!modelName) return;
+
+      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+      const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+      const input = document.getElementById(`chat-input-${safeId}`);
+      const sendBtn = document.getElementById(`chat-send-${safeId}`);
+      const statsDiv = document.getElementById(`chat-stats-${safeId}`);
+
+      // Initialize chat history for this model if not exists
+      if (!chatHistory[modelName]) {
+        chatHistory[modelName] = [];
+      }
+
+      // Render existing messages
+      renderChatMessages(modelName);
+
+      // Bind send button
+      sendBtn.addEventListener('click', () => sendChatMessage(modelName));
+
+      // Enter to send (Shift+Enter for newline)
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendChatMessage(modelName);
+        }
+      });
+    });
+    // Restore preserved chat input values after rebinding
+    preservedInputs.forEach((value, modelName) => {
+      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+      const input = document.getElementById(`chat-input-${safeId}`);
+      if (input) {
+        input.value = value;
+      }
+    });
+
+    // If a model is selected, refresh the panel to reflect any state changes
+    if (selectedModel) {
+      const modelData = currentModelRows.find(r => r.model === selectedModel);
+      if (modelData) {
+        renderPanelProperties(modelData, selectedModel);
+      } else {
+        // Selected model no longer exists in the list
+        closePanel();
+      }
+    }
   } catch (e) {
     console.error('Refresh failed:', e);
   } finally {
@@ -2712,12 +3539,146 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
   }
 });
 document.getElementById('addModelBtn').addEventListener('click', showAddForm);
-refresh();
-setInterval(() => refresh(false), 5000);
+document.getElementById('panel-close').addEventListener('click', closePanel);
+   refresh();
+   setInterval(() => refresh(false), 5000);
 
-</script>
-</body>
-</html>"""
+ // Hugging Face repo discovery
+ let currentRepoSearchModel = null;
+ const hfModal = document.getElementById('hf-repo-modal');
+ const hfRepoList = document.getElementById('hf-repo-list');
+ const hfModalCancel = document.getElementById('hf-modal-cancel');
+
+ function updateModelRepo(modelName, repo) {
+   fetch('/api/update-model-repo', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ model: modelName, repo: repo })
+   })
+   .then(resp => resp.json())
+   .then(data => {
+     if (data.error) throw new Error(data.error);
+     // Refresh panel to show metadata
+     selectModel(modelName);
+   })
+   .catch(err => {
+     const statusEl = document.getElementById(`hf-search-status-${modelName.replace(/[^a-zA-Z0-9]/g, '_')}`);
+     if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+   });
+ }
+
+ function showRepoSelectionModal(modelName, results) {
+   currentRepoSearchModel = modelName;
+   hfRepoList.innerHTML = '';
+   const desc = document.getElementById('hf-modal-description');
+   desc.textContent = `Found ${results.length} result(s). Select the correct Hugging Face repository.`;
+
+   // Aggregate results by repo
+   const reposMap = new Map();
+   results.forEach(r => {
+     if (!reposMap.has(r.repo)) {
+       reposMap.set(r.repo, { repo: r.repo, files: [], downloads: r.downloads, likes: r.likes });
+     }
+     reposMap.get(r.repo).files.push(r);
+   });
+
+   reposMap.forEach(item => {
+     const card = document.createElement('div');
+     card.className = 'hf-repo-card';
+     card.style.cssText = 'padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface1); cursor: pointer; transition: background 0.2s;';
+     card.innerHTML = `
+       <div style="display: flex; justify-content: space-between; align-items: start;">
+         <div style="flex: 1;">
+           <div style="font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">${item.repo}</div>
+           <div style="font-size: 0.8rem; color: var(--muted);">${item.files.length} GGUF file(s)</div>
+         </div>
+         <div style="text-align: right; font-size: 0.85rem; color: var(--text2);">
+           <div>⬇ ${item.downloads.toLocaleString()}</div>
+           <div>♥ ${item.likes.toLocaleString()}</div>
+         </div>
+       </div>
+     `;
+     card.addEventListener('click', () => {
+       hfModal.style.display = 'none';
+       updateModelRepo(modelName, item.repo);
+     });
+     card.addEventListener('mouseenter', () => card.style.background = 'var(--surface2)');
+     card.addEventListener('mouseleave', () => card.style.background = 'var(--surface1)');
+     hfRepoList.appendChild(card);
+   });
+
+   hfModal.style.display = 'flex';
+  }
+
+  // Select the best Hugging Face repo based on downloads and likes
+  function selectBestRepo(results) {
+    const reposMap = new Map();
+    results.forEach(r => {
+      if (!reposMap.has(r.repo)) {
+        reposMap.set(r.repo, { repo: r.repo, downloads: r.downloads, likes: r.likes, fileCount: 0 });
+      }
+      reposMap.get(r.repo).fileCount++;
+    });
+    const repos = Array.from(reposMap.values());
+    repos.sort((a, b) => {
+      const scoreA = a.downloads + a.likes;
+      const scoreB = b.downloads + b.likes;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return b.downloads - a.downloads;
+    });
+    return repos[0];
+  }
+
+  // Attach click handlers to "Find on Hugging Face" buttons
+  document.addEventListener('click', function(e) {
+   if (e.target && e.target.id && e.target.id.startsWith('hf-find-btn-')) {
+     const modelName = e.target.getAttribute('data-model');
+     if (!modelName) return;
+     const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+     const statusEl = document.getElementById(`hf-search-status-${safeId}`);
+     if (statusEl) statusEl.textContent = 'Searching Hugging Face...';
+
+     fetch('/api/hf-repo-search', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ model: modelName })
+     })
+     .then(resp => resp.json())
+     .then(data => {
+       if (data.error) {
+         throw new Error(data.error);
+       }
+       if (statusEl) statusEl.textContent = '';
+        // Auto-select best repo based on downloads and likes
+        const best = selectBestRepo(data.results);
+        if (statusEl) {
+          statusEl.textContent = `Selected: ${best.repo} (↓${best.downloads.toLocaleString()} ♥${best.likes.toLocaleString()})`;
+        }
+        updateModelRepo(modelName, best.repo);
+     })
+     .catch(err => {
+       if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+     });
+   }
+ });
+
+ if (hfModalCancel) {
+   hfModalCancel.addEventListener('click', () => {
+     hfModal.style.display = 'none';
+     currentRepoSearchModel = null;
+   });
+ }
+ // Close modal on outside click
+ hfModal.addEventListener('click', (e) => {
+   if (e.target === hfModal) {
+     hfModal.style.display = 'none';
+     currentRepoSearchModel = null;
+   }
+ });
+
+  </script>
+  </body>
+  </html>"""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
