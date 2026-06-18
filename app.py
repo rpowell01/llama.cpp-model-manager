@@ -2404,10 +2404,23 @@ TEMPLATE = r"""<!DOCTYPE html>
      .btn-chat-send:hover {
        opacity: 0.9;
      }
-      .btn-chat-send:disabled {
-        background: var(--text2);
-        cursor: not-allowed;
-      }
+       .btn-chat-send:disabled {
+         background: var(--text2);
+         cursor: not-allowed;
+       }
+       .btn-chat-clear {
+         background: var(--red);
+         color: #fff;
+         border: none;
+         border-radius: 6px;
+         padding: 0.5rem 1rem;
+         cursor: pointer;
+         font-size: 0.85rem;
+         align-self: flex-end;
+       }
+       .btn-chat-clear:hover {
+         opacity: 0.9;
+       }
       .chat-stats {
         font-size: 0.75rem;
         color: var(--text2);
@@ -2848,7 +2861,6 @@ TEMPLATE = r"""<!DOCTYPE html>
    <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
     <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
       <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
-      <button id="chat-modal-clear" style="position: absolute; top: 0.5rem; left: 0.5rem; background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 4px; padding: 0.25rem 0.5rem; font-size: 0.8rem; cursor: pointer; z-index: 10;">Clear</button>
       <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
     </div>
   </div>
@@ -3128,11 +3140,19 @@ function closePanel() {
       localStorage.setItem('chat_history_' + modelName, JSON.stringify(chatHistory[modelName]));
       renderChatMessages(modelName);
       
-      // Update stats - use completion_tokens or total_tokens
-      const usage = data.usage || {};
-      const tokens = usage.completion_tokens || usage.total_tokens || 0;
-      const tps = (tokens / (responseTime / 1000)).toFixed(1);
-      statsDiv.innerHTML = `<span>✓ ${tokens} tokens</span> <span>⏱ ${responseTime}ms</span> <span>🚀 ${tps} t/s</span>`;
+       // Update stats - use completion_tokens or total_tokens
+       const usage = data.usage || {};
+       const tokens = usage.completion_tokens || usage.total_tokens || 0;
+       const tps = (tokens / (responseTime / 1000)).toFixed(1);
+       statsDiv.innerHTML = `<span>✓ ${tokens} tokens</span> <span>⏱ ${responseTime}ms</span> <span>🚀 ${tps} t/s</span>`;
+
+       // Sync performance metrics in modal (use per-request stats)
+       const ppEl = document.getElementById(`chat-pp-${safeId}`);
+       const tgEl = document.getElementById(`chat-tg-${safeId}`);
+       const pgEl = document.getElementById(`chat-pg-${safeId}`);
+       if (ppEl) ppEl.textContent = responseTime + ' ms';
+       if (tgEl) tgEl.textContent = tps + ' t/s';
+       if (pgEl) pgEl.textContent = tokens + ' tokens';
       
     } catch (err) {
       const loading = document.getElementById('chat-loading');
@@ -4136,29 +4156,39 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
       chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
      }
 
-     // Clear chat button handler
-     const chatClearBtn = document.getElementById('chat-modal-clear');
-     if (chatClearBtn) {
-       chatClearBtn.addEventListener('click', () => {
-         const modelName = chatModal.getAttribute('data-model-name');
-         if (modelName) {
-           if (chatHistory[modelName]) {
-             chatHistory[modelName] = [];
-           }
-           const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-           const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
-           if (messagesDiv) {
-             messagesDiv.innerHTML = '';
-           }
-           const input = document.getElementById(`chat-input-${safeId}`);
-           if (input) {
-             input.value = '';
-           }
-           localStorage.removeItem('chat_input_' + modelName);
-           localStorage.removeItem('chat_history_' + modelName);
-         }
-       });
-     }
+      // Clear chat button handler (event delegation for dynamic button)
+      chatModal.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'chat-modal-clear') {
+          const modelName = chatModal.getAttribute('data-model-name');
+          if (modelName) {
+            if (chatHistory[modelName]) {
+              chatHistory[modelName] = [];
+            }
+            const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+            const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+            if (messagesDiv) {
+              messagesDiv.innerHTML = '';
+            }
+            const input = document.getElementById(`chat-input-${safeId}`);
+            if (input) {
+              input.value = '';
+            }
+            const statsDiv = document.getElementById(`chat-stats-${safeId}`);
+            if (statsDiv) {
+              statsDiv.innerHTML = '';
+            }
+            // Reset performance metrics to placeholder
+            const ppEl = document.getElementById(`chat-pp-${safeId}`);
+            const tgEl = document.getElementById(`chat-tg-${safeId}`);
+            const pgEl = document.getElementById(`chat-pg-${safeId}`);
+            if (ppEl) ppEl.textContent = '-';
+            if (tgEl) tgEl.textContent = '-';
+            if (pgEl) pgEl.textContent = '-';
+            localStorage.removeItem('chat_input_' + modelName);
+            localStorage.removeItem('chat_history_' + modelName);
+          }
+        }
+      });
 
      // Render chat interface inside modal (bead web-e7r.3)
     function renderChatInModal(modelName) {
@@ -4199,19 +4229,20 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
                <input type="number" id="chat-timeout-${safeId}" min="1" max="600" value="300">
              </div>
             </div>
-           <div class="panel-section">
-             <h3>Performance Metrics</h3>
-             <div class="panel-grid">
-               <div class="panel-item"><span class="label">Prompt Processing</span><span class="value">${ppVal}</span></div>
-               <div class="panel-item"><span class="label">Text Generation</span><span class="value">${tgVal}</span></div>
-               <div class="panel-item"><span class="label">Combined</span><span class="value">${pgVal}</span></div>
-             </div>
-           </div>
+            <div class="panel-section">
+              <h3>Performance Metrics</h3>
+              <div class="panel-grid">
+                <div class="panel-item"><span class="label">Prompt Processing</span><span class="value" id="chat-pp-${safeId}">${ppVal}</span></div>
+                <div class="panel-item"><span class="label">Text Generation</span><span class="value" id="chat-tg-${safeId}">${tgVal}</span></div>
+                <div class="panel-item"><span class="label">Combined</span><span class="value" id="chat-pg-${safeId}">${pgVal}</span></div>
+              </div>
+            </div>
            <div class="chat-messages" id="chat-messages-${safeId}"></div>
-          <div class="chat-input-area">
-            <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
-            <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
-          </div>
+           <div class="chat-input-area">
+             <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
+             <button id="chat-modal-clear" class="btn-chat-clear">Clear</button>
+             <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
+           </div>
           <div class="chat-stats" id="chat-stats-${safeId}"></div>
         </div>
       `;
