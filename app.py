@@ -2408,16 +2408,15 @@ TEMPLATE = r"""<!DOCTYPE html>
          background: var(--text2);
          cursor: not-allowed;
        }
-       .btn-chat-clear {
-         background: var(--red);
-         color: #fff;
-         border: none;
-         border-radius: 6px;
-         padding: 0.5rem 1rem;
-         cursor: pointer;
-         font-size: 0.85rem;
-         align-self: flex-end;
-       }
+        .btn-chat-clear {
+          background: var(--red);
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          padding: 0.5rem 1rem;
+          cursor: pointer;
+          font-size: 0.85rem;
+        }
        .btn-chat-clear:hover {
          opacity: 0.9;
        }
@@ -3068,15 +3067,14 @@ function closePanel() {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
   
-  // Send a chat message to the model
-  async function sendChatMessage(modelName) {
-    const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-    const input = document.getElementById(`chat-input-${safeId}`);
-    const sendBtn = document.getElementById(`chat-send-${safeId}`);
-    const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
-    const statsDiv = document.getElementById(`chat-stats-${safeId}`);
-    const content = input.value.trim();
-    if (!content) return;
+   // Send a chat message to the model
+   async function sendChatMessage(modelName) {
+     const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+     const input = document.getElementById(`chat-input-${safeId}`);
+     const sendBtn = document.getElementById(`chat-send-${safeId}`);
+     const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+     const content = input.value.trim();
+     if (!content) return;
     
      // Get parameters
      const temperature = parseFloat(document.getElementById(`chat-temp-${safeId}`).value);
@@ -3140,31 +3138,27 @@ function closePanel() {
       localStorage.setItem('chat_history_' + modelName, JSON.stringify(chatHistory[modelName]));
       renderChatMessages(modelName);
       
-       // Update stats - use completion_tokens or total_tokens
-       const usage = data.usage || {};
-       const tokens = usage.completion_tokens || usage.total_tokens || 0;
-       const tps = (tokens / (responseTime / 1000)).toFixed(1);
-       statsDiv.innerHTML = `<span>✓ ${tokens} tokens</span> <span>⏱ ${responseTime}ms</span> <span>🚀 ${tps} t/s</span>`;
+        // Sync performance metrics in modal (use per-request stats)
+        const usage = data.usage || {};
+        const tokens = usage.completion_tokens || usage.total_tokens || 0;
+        const tps = (tokens / (responseTime / 1000)).toFixed(1);
+        const ppEl = document.getElementById(`chat-pp-${safeId}`);
+        const tgEl = document.getElementById(`chat-tg-${safeId}`);
+        const pgEl = document.getElementById(`chat-pg-${safeId}`);
+        if (ppEl) ppEl.textContent = responseTime + ' ms';
+        if (tgEl) tgEl.textContent = tps + ' t/s';
+        if (pgEl) pgEl.textContent = tokens + ' tokens';
+      
+     } catch (err) {
+       const loading = document.getElementById('chat-loading');
+       if (loading) loading.remove();
 
-       // Sync performance metrics in modal (use per-request stats)
-       const ppEl = document.getElementById(`chat-pp-${safeId}`);
-       const tgEl = document.getElementById(`chat-tg-${safeId}`);
-       const pgEl = document.getElementById(`chat-pg-${safeId}`);
-       if (ppEl) ppEl.textContent = responseTime + ' ms';
-       if (tgEl) tgEl.textContent = tps + ' t/s';
-       if (pgEl) pgEl.textContent = tokens + ' tokens';
-      
-    } catch (err) {
-      const loading = document.getElementById('chat-loading');
-      if (loading) loading.remove();
-      
-      const errorMsg = document.createElement('div');
-      errorMsg.className = 'chat-message error';
-      errorMsg.textContent = `Error: ${err.message}`;
-      messagesDiv.appendChild(errorMsg);
-      statsDiv.innerHTML = `<span style="color: var(--red);">❌ ${err.message}</span>`;
-      
-    } finally {
+       const errorMsg = document.createElement('div');
+       errorMsg.className = 'chat-message error';
+       errorMsg.textContent = `Error: ${err.message}`;
+       messagesDiv.appendChild(errorMsg);
+
+     } finally {
       sendBtn.disabled = false;
       input.disabled = false;
       input.focus();
@@ -4156,27 +4150,23 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
       chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
      }
 
-      // Clear chat button handler (event delegation for dynamic button)
-      chatModal.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'chat-modal-clear') {
-          const modelName = chatModal.getAttribute('data-model-name');
-          if (modelName) {
-            if (chatHistory[modelName]) {
-              chatHistory[modelName] = [];
-            }
-            const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-            const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
-            if (messagesDiv) {
-              messagesDiv.innerHTML = '';
-            }
-            const input = document.getElementById(`chat-input-${safeId}`);
-            if (input) {
-              input.value = '';
-            }
-            const statsDiv = document.getElementById(`chat-stats-${safeId}`);
-            if (statsDiv) {
-              statsDiv.innerHTML = '';
-            }
+       // Clear chat button handler (event delegation for dynamic button)
+       chatModal.addEventListener('click', function(e) {
+         if (e.target && e.target.id === 'chat-modal-clear') {
+           const modelName = chatModal.getAttribute('data-model-name');
+           if (modelName) {
+             if (chatHistory[modelName]) {
+               chatHistory[modelName] = [];
+             }
+             const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+             const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+             if (messagesDiv) {
+               messagesDiv.innerHTML = '';
+             }
+             const input = document.getElementById(`chat-input-${safeId}`);
+             if (input) {
+               input.value = '';
+             }
             // Reset performance metrics to placeholder
             const ppEl = document.getElementById(`chat-pp-${safeId}`);
             const tgEl = document.getElementById(`chat-tg-${safeId}`);
@@ -4237,14 +4227,17 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
                 <div class="panel-item"><span class="label">Combined</span><span class="value" id="chat-pg-${safeId}">${pgVal}</span></div>
               </div>
             </div>
-           <div class="chat-messages" id="chat-messages-${safeId}"></div>
-           <div class="chat-input-area">
-             <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
-             <button id="chat-modal-clear" class="btn-chat-clear">Clear</button>
-             <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
-           </div>
-          <div class="chat-stats" id="chat-stats-${safeId}"></div>
-        </div>
+            <!-- Chat header with title and clear button -->
+            <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h3 style="margin: 0;">Chat</h3>
+              <button id="chat-modal-clear" class="btn-chat-clear">Clear Conversation</button>
+            </div>
+            <div class="chat-messages" id="chat-messages-${safeId}"></div>
+            <div class="chat-input-area">
+              <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
+              <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
+            </div>
+         </div>
       `;
 
       // Render existing messages
