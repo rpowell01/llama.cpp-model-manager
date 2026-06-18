@@ -2005,8 +2005,9 @@ TEMPLATE = r"""<!DOCTYPE html>
   .actions .download { background: var(--btn-download); }
   .actions .add    { background: var(--btn-add); }
   .actions .del    { background: var(--btn-del); }
-  .actions .goto { background: var(--blue); }
-  #log {
+   .actions .goto { background: var(--blue); }
+   .actions .chat { background: var(--blue); }
+   #log {
     background: var(--surface); padding: .8rem 1rem;
     border-radius: 6px; font-family: monospace; font-size: .82rem;
     max-height: 260px; overflow-y: auto; margin-top: 1.4rem;
@@ -2381,9 +2382,192 @@ TEMPLATE = r"""<!DOCTYPE html>
       .tile .tile-chat :focus-visible {
         outline: 2px solid var(--blue);
         outline-offset: 2px;
-      }
+       }
 
-      /* Responsive adjustments for small screens */
+       /* Chat Modal styling (bead web-e7r.7) */
+       #chat-modal {
+         display: flex !important;
+         position: fixed;
+         inset: 0;
+         background: rgba(0, 0, 0, 0.6);
+         align-items: center;
+         justify-content: center;
+         backdrop-filter: blur(2px);
+         opacity: 0;
+         pointer-events: none;
+         transition: opacity 0.25s ease-out;
+       }
+       #chat-modal[aria-hidden="false"] {
+         opacity: 1;
+         pointer-events: auto;
+       }
+       #chat-modal .chat-section {
+         background: var(--surface);
+         border: 1px solid var(--surface2);
+         border-radius: 12px;
+         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+         display: flex;
+         flex-direction: column;
+         overflow: hidden;
+         width: min(800px, 90vw);
+         max-height: 90vh;
+         position: relative;
+         margin: 1rem;
+       }
+       #chat-modal-close {
+         position: absolute;
+         top: 0.75rem;
+         right: 0.75rem;
+         width: 2rem;
+         height: 2rem;
+         border-radius: 50%;
+         background: transparent;
+         border: none;
+         color: var(--text2);
+         font-size: 1.75rem;
+         line-height: 1;
+         cursor: pointer;
+         z-index: 10;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         padding: 0;
+         transition: color 0.2s ease, background-color 0.2s ease;
+       }
+       #chat-modal-close:hover,
+       #chat-modal-close:focus-visible {
+         color: var(--text);
+         background: var(--surface2);
+         outline: none;
+       }
+       #chat-modal-content {
+         display: flex;
+         flex-direction: column;
+         height: 100%;
+         padding: 1rem;
+         padding-top: 2.5rem;
+         overflow: hidden;
+       }
+       .chat-params {
+         display: grid;
+         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+         gap: 0.5rem;
+         margin-bottom: 0.75rem;
+         padding-bottom: 0.75rem;
+         border-bottom: 1px solid var(--surface2);
+         flex-shrink: 0;
+       }
+       .chat-params .panel-item {
+         min-width: 0;
+         font-size: 0.8rem;
+       }
+       .chat-params .panel-item .label {
+         font-size: 0.7rem;
+         text-transform: uppercase;
+         letter-spacing: 0.5px;
+       }
+       .chat-messages {
+         flex: 1 1 auto;
+         overflow-y: auto;
+         display: flex;
+         flex-direction: column;
+         gap: 0.75rem;
+         padding-right: 0.5rem;
+         margin-bottom: 0.75rem;
+         min-height: 0;
+         max-height: calc(90vh - 180px);
+       }
+       .chat-input-area {
+         display: flex;
+         gap: 0.5rem;
+         align-items: flex-end;
+         flex-shrink: 0;
+         padding-top: 0.5rem;
+         border-top: 1px solid var(--surface2);
+       }
+       .chat-input-area textarea {
+         flex: 1;
+         min-height: 60px;
+         max-height: 150px;
+         resize: vertical;
+         padding: 0.6rem;
+         border: 1px solid var(--surface2);
+         border-radius: 6px;
+         background: var(--bg);
+         color: var(--text);
+         font-family: inherit;
+         font-size: 0.95rem;
+         line-height: 1.4;
+         transition: border-color 0.2s ease;
+       }
+       .chat-input-area textarea:focus {
+         outline: none;
+         border-color: var(--blue);
+       }
+       .chat-input-area textarea::placeholder {
+         color: var(--text2);
+         opacity: 0.7;
+       }
+       .btn-chat-send {
+         flex-shrink: 0;
+         padding: 0.5rem 1rem;
+         border: none;
+         border-radius: 6px;
+         background: var(--btn-run);
+         color: #fff;
+         font-weight: 600;
+         cursor: pointer;
+         transition: background-color 0.2s ease, transform 0.1s ease;
+       }
+       .btn-chat-send:hover:not(:disabled) {
+         background: #219a52;
+       }
+       .btn-chat-send:active:not(:disabled) {
+         transform: translateY(1px);
+       }
+       .btn-chat-send:disabled {
+         opacity: 0.5;
+         cursor: not-allowed;
+       }
+       .chat-stats {
+         font-variant-numeric: tabular-nums;
+         letter-spacing: 0.02em;
+         font-size: 0.75rem;
+         color: var(--text2);
+         text-align: right;
+         margin-top: 0.25rem;
+       }
+       .chat-messages {
+         scroll-behavior: smooth;
+       }
+       .chat-messages::-webkit-scrollbar {
+         width: 8px;
+       }
+       .chat-messages::-webkit-scrollbar-track {
+         background: transparent;
+       }
+       .chat-messages::-webkit-scrollbar-thumb {
+         background: var(--surface2);
+         border-radius: 4px;
+       }
+       .chat-messages::-webkit-scrollbar-thumb:hover {
+         background: var(--text2);
+         opacity: 0.5;
+       }
+       @media (prefers-reduced-motion: reduce) {
+         #chat-modal {
+           transition: none;
+         }
+       }
+
+       /* Ensure chat modal overlay appears above other content (if used) */
+       .chat-section,
+       .modal-overlay.chat-modal {
+         z-index: 1100; /* above hf-repo-modal (1000) */
+       }
+
+       
+       /* Responsive adjustments for small screens */
       @media (max-width: 600px) {
         /* Modal-like chat container (if used as modal) */
         .chat-section {
@@ -2447,12 +2631,8 @@ TEMPLATE = r"""<!DOCTYPE html>
         letter-spacing: 0.02em;
       }
 
-      /* Ensure chat modal overlay appears above other content (if used) */
-      .chat-section,
-      .modal-overlay.chat-modal {
-        z-index: 1100; /* above hf-repo-modal (1000) */
-      }
-    </style>
+
+     </style>
 </head>
 <body>
 <header>
@@ -2647,16 +2827,7 @@ function closePanel() {
      
      }
 
-     // Performance Metrics section (only if running)
-     if (running) {
-       html += `<div class="panel-section">
-         <h3>Performance Metrics</h3>
-         <div class="panel-grid">`;
-       addItem('Prompt Processing', data.pp ? data.pp + ' ms' : '-');
-       addItem('Text Generation', data.tg ? data.tg + ' t/s' : '-');
-       addItem('Combined', data.pg ? data.pg : '-');
-       html += `</div></div>`;
-     }
+
 
      // Hugging Face Metadata section
    html += `<div class="panel-section">
@@ -3859,8 +4030,15 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
         chatHistory[modelName] = [];
       }
 
-      // Build chat UI
-      contentDiv.innerHTML = `
+       // Get model data for performance metrics
+       const modelData = currentModelRows.find(r => r.model === modelName);
+       const isRunning = modelData && modelData.status && modelData.status.startsWith('running');
+       const ppVal = isRunning && modelData.pp ? modelData.pp + ' ms' : '-';
+       const tgVal = isRunning && modelData.tg ? modelData.tg + ' t/s' : '-';
+       const pgVal = isRunning && modelData.pg ? modelData.pg : '-';
+
+       // Build chat UI
+       contentDiv.innerHTML = `
         <div class="tile-chat modal-chat">
           <div class="chat-params">
             <div class="panel-item"><span class="label">Temperature</span>
@@ -3876,8 +4054,16 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
             <div class="panel-item"><span class="label">Max Tokens</span>
               <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
             </div>
-          </div>
-          <div class="chat-messages" id="chat-messages-${safeId}"></div>
+           </div>
+           <div class="panel-section">
+             <h3>Performance Metrics</h3>
+             <div class="panel-grid">
+               <div class="panel-item"><span class="label">Prompt Processing</span><span class="value">${ppVal}</span></div>
+               <div class="panel-item"><span class="label">Text Generation</span><span class="value">${tgVal}</span></div>
+               <div class="panel-item"><span class="label">Combined</span><span class="value">${pgVal}</span></div>
+             </div>
+           </div>
+           <div class="chat-messages" id="chat-messages-${safeId}"></div>
           <div class="chat-input-area">
             <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
             <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
