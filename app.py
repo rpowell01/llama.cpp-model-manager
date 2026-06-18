@@ -2974,15 +2974,9 @@ function closePanel() {
      <div id="hf-metadata-error" class="error" style="display: none;"></div>
    </div>`;
   
-   content.innerHTML = html;
+    content.innerHTML = html;
 
-   // If HF repo not configured, automatically trigger search (web-s4n)
-   if (!data.repo) {
-     const autoBtn = document.getElementById(`hf-find-btn-${safeId}`);
-     if (autoBtn) autoBtn.click();
-   }
-
-   // Fetch HF metadata asynchronously
+    // Fetch HF metadata asynchronously
   try {
     const resp = await fetch(`/api/hf-metadata?model=${encodeURIComponent(modelName)}`);
     if (!resp.ok) {
