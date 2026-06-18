@@ -562,6 +562,8 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["--parallel", str(meta["parallel"])]
     if meta.get("ubatch_size"):
         cmd += ["--ubatch-size", str(meta["ubatch_size"])]
+    # Enable Prometheus metrics endpoint for performance monitoring
+    cmd += ["--metrics"]
     
     log.info(f"Build command for {model}: {cmd}")
     return cmd
@@ -804,15 +806,39 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
             except ValueError:
                 continue
         # Map to expected fields
-        # pp: prompt processing time (ms)
+        # llama-server uses colon-separated names; support both separators
+        # pp: prompt processing time (ms). llama-server gives: llamacpp:prompt_seconds_total
+        prompt_ms = None
         if "llamacpp_prompt_processing_time_ms" in values:
-            result["pp"] = round(values["llamacpp_prompt_processing_time_ms"], 2)
-        # tg: tokens per second
+            prompt_ms = values["llamacpp_prompt_processing_time_ms"]
+        elif "llamacpp:prompt_seconds_total" in values:
+            prompt_ms = values["llamacpp:prompt_seconds_total"] * 1000.0
+        if prompt_ms is not None:
+            result["pp"] = round(prompt_ms, 2)
+
+        # tg: tokens per second (generation throughput)
+        # llama-server gives total time and total tokens; we compute the rate
+        gen_tokens = None
+        gen_seconds = None
+        # Accept both underscore and colon metric names for tokens
+        if "llamacpp_generated_tokens_total" in values:
+            gen_tokens = values["llamacpp_generated_tokens_total"]
+        elif "llamacpp:predicted_tokens_total" in values:
+            gen_tokens = values["llamacpp:predicted_tokens_total"]
+        # Accept both possible names for generation time
         if "llamacpp_tokens_per_second" in values:
+            # Some builds may still expose a direct tokens_per_second metric
             result["tg"] = round(values["llamacpp_tokens_per_second"], 2)
+        elif "llamacpp:tokens_predicted_seconds_total" in values:
+            gen_seconds = values["llamacpp:tokens_predicted_seconds_total"]
+        # Compute tg if we have tokens and seconds
+        if "tg" not in result and gen_tokens is not None and gen_seconds and gen_seconds > 0:
+            result["tg"] = round(gen_tokens / gen_seconds, 2)
+
         # pg: combined total tokens (prompt + generated)
         prompt_tokens = values.get("llamacpp_prompt_tokens_total")
-        gen_tokens = values.get("llamacpp_generated_tokens_total")
+        if prompt_tokens is None and "llamacpp:prompt_tokens_total" in values:
+            prompt_tokens = values["llamacpp:prompt_tokens_total"]
         if prompt_tokens is not None and gen_tokens is not None:
             result["pg"] = int(prompt_tokens + gen_tokens)
         elif prompt_tokens is not None:
@@ -1796,15 +1822,24 @@ def api_chat():
     if "messages" not in payload:
         return jsonify({"error": "Missing 'messages' field"}), 400
 
-    target_url = f"http://127.0.0.1:{port}/v1/chat/completions"
-    try:
-        resp = requests.post(target_url, json=payload, timeout=60)
-        if resp.status_code != 200:
-            return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
-        return jsonify(resp.json())
-    except requests.exceptions.RequestException as e:
-        log.error(f"Chat proxy error for {model} on port {port}: {e}")
-        return jsonify({"error": str(e)}), 500
+     target_url = f"http://127.0.0.1:{port}/v1/chat/completions"
+     try:
+         # Use client-provided timeout if available, else default to 300 seconds
+         client_timeout = data.get("timeout")
+         if client_timeout is not None:
+             try:
+                 timeout = max(1, min(int(client_timeout), 600))  # clamp 1-600
+             except (ValueError, TypeError):
+                 timeout = 300
+         else:
+             timeout = 300
+         resp = requests.post(target_url, json=payload, timeout=timeout)
+         if resp.status_code != 200:
+             return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
+         return jsonify(resp.json())
+     except requests.exceptions.RequestException as e:
+         log.error(f"Chat proxy error for {model} on port {port}: {e}")
+         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/search-models", methods=["POST"])
@@ -2792,12 +2827,12 @@ TEMPLATE = r"""<!DOCTYPE html>
  </div>
 
   <!-- Chat Modal (bead web-e7r.1: modal container) -->
-  <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-   <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow-y: auto; position: relative;">
-     <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
-     <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
-   </div>
- </div>
+   <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+    <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
+      <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
+      <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
+    </div>
+  </div>
 
  <script>
 const HOST = "{{ host }}";
@@ -3012,13 +3047,14 @@ function closePanel() {
     const content = input.value.trim();
     if (!content) return;
     
-    // Get parameters
-    const temperature = parseFloat(document.getElementById(`chat-temp-${safeId}`).value);
-    const top_p = parseFloat(document.getElementById(`chat-top-p-${safeId}`).value);
-    const max_tokens = parseInt(document.getElementById(`chat-max-tokens-${safeId}`).value, 10);
-    
-    // Add user message to history and UI
-    chatHistory[modelName].push({ role: 'user', content });
+     // Get parameters
+     const temperature = parseFloat(document.getElementById(`chat-temp-${safeId}`).value);
+     const top_p = parseFloat(document.getElementById(`chat-top-p-${safeId}`).value);
+     const max_tokens = parseInt(document.getElementById(`chat-max-tokens-${safeId}`).value, 10);
+     const timeout = parseInt(document.getElementById(`chat-timeout-${safeId}`).value, 10) || 300;
+     
+     // Add user message to history and UI
+     chatHistory[modelName].push({ role: 'user', content });
     localStorage.setItem('chat_history_' + modelName, JSON.stringify(chatHistory[modelName]));
     input.value = '';
     localStorage.removeItem('chat_input_' + modelName);
@@ -3037,17 +3073,18 @@ function closePanel() {
     const startTime = Date.now();
     
     try {
-      const resp = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: modelName,
-          messages: chatHistory[modelName].map(m => ({ role: m.role, content: m.content })),
-          temperature,
-          top_p,
-          max_tokens
-        })
-      });
+       const resp = await fetch('/api/chat', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+           model: modelName,
+           messages: chatHistory[modelName].map(m => ({ role: m.role, content: m.content })),
+           temperature,
+           top_p,
+           max_tokens,
+           timeout
+         })
+       });
       
       // Remove loading indicator
       const loading = document.getElementById('chat-loading');
@@ -4112,10 +4149,13 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
                      oninput="document.getElementById('chat-top-p-val-${safeId}').textContent = this.value">
               <span class="value" id="chat-top-p-val-${safeId}">0.9</span>
             </div>
-            <div class="panel-item"><span class="label">Max Tokens</span>
-              <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
+             <div class="panel-item"><span class="label">Max Tokens</span>
+               <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
+             </div>
+             <div class="panel-item"><span class="label">Timeout (s)</span>
+               <input type="number" id="chat-timeout-${safeId}" min="1" max="600" value="300">
+             </div>
             </div>
-           </div>
            <div class="panel-section">
              <h3>Performance Metrics</h3>
              <div class="panel-grid">
