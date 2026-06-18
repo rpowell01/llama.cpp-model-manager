@@ -3003,33 +3003,7 @@ const html = filtered.map((r) => {
       + '</div>'
      : '';
     const safeId = r.model.replace(/[^a-zA-Z0-9]/g, '_');
-    let chatHtml = '';
-    if (running) {
-      chatHtml = `
-        <div class="tile-chat">
-          <div class="chat-params">
-            <div class="panel-item"><span class="label">Temperature</span>
-              <input type="range" id="chat-temp-${safeId}" min="0" max="2" step="0.1" value="0.7"
-                     oninput="document.getElementById('chat-temp-val-${safeId}').textContent = this.value">
-              <span class="value" id="chat-temp-val-${safeId}">0.7</span>
-            </div>
-            <div class="panel-item"><span class="label">Top P</span>
-              <input type="range" id="chat-top-p-${safeId}" min="0" max="1" step="0.05" value="0.9"
-                     oninput="document.getElementById('chat-top-p-val-${safeId}').textContent = this.value">
-              <span class="value" id="chat-top-p-val-${safeId}">0.9</span>
-            </div>
-            <div class="panel-item"><span class="label">Max Tokens</span>
-              <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
-            </div>
-          </div>
-          <div class="chat-messages" id="chat-messages-${safeId}"></div>
-          <div class="chat-input-area">
-            <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
-            <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
-          </div>
-          <div class="chat-stats" id="chat-stats-${safeId}"></div>
-        </div>`;
-    }
+
     return '<div class="tile ' + (running ? 'running' : '') + '" data-model="' + jsEscape(r.model) + '" onclick="selectModel(\'' + jsEscape(r.model) + '\')">'
     + '<div class="tile-header"><b>' + jsEscape(r.model) + '</b>' + statusChip + '</div>'
     + '<div class="tile-body"><code title="' + jsEscape(r.model_path) + '">' + jsEscape(r.model_path ? r.model_path.split('/').pop() : r.filename) + '</code>'
@@ -3042,96 +3016,17 @@ const html = filtered.map((r) => {
     + ' <button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')" ' + (!running ? 'disabled' : '') + '>■ Stop</button>'
     + ' <button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">＋ Add Variant</button>'
     + ' <button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">✕ Delete</button>'
-     + '</div>'
-     + progressHtml
-     + chatHtml
-     + '</div>';
+    + (running ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' + jsEscape(r.model) + '\')">💬 Chat</button>' : '')
+    + '</div>'
+    + progressHtml
+    + '</div>';
   }).join('');
     console.log('Setting innerHTML, length:', html.length);
-     // Preserve chat input values and chat DOM elements before DOM replacement
-     const preservedInputs = new Map();
-     document.querySelectorAll('.tile .tile-chat textarea[id^="chat-input-"]').forEach(textarea => {
-       const tile = textarea.closest('.tile');
-       if (!tile) return;
-       const modelName = tile.getAttribute('data-model');
-       if (modelName) preservedInputs.set(modelName, textarea.value);
-     });
 
-     // Preserve chat dialog elements (including messages and controls) to skip re-render
-     const preservedChats = new Map(); // modelName -> { element: HTMLElement, scrollTop: number }
-     document.querySelectorAll('.tile .tile-chat').forEach(chatEl => {
-       const tile = chatEl.closest('.tile');
-       if (!tile) return;
-       const modelName = tile.getAttribute('data-model');
-       if (!modelName) return;
-       const messagesDiv = chatEl.querySelector('.chat-messages');
-       const scrollTop = messagesDiv ? messagesDiv.scrollTop : 0;
-       preservedChats.set(modelName, { element: chatEl, scrollTop });
-     });
 
      grid.innerHTML = html;
 
-     // Restore preserved chat elements into the new grid
-     const preservedModels = new Set(preservedChats.keys());
-     preservedChats.forEach((data, modelName) => {
-       const newTile = document.querySelector(`.tile[data-model="${CSS.escape(modelName)}"]`);
-       if (!newTile) return;
-       const newChat = newTile.querySelector('.tile-chat');
-       if (newChat) {
-         newChat.replaceWith(data.element);
-         const messagesDiv = data.element.querySelector('.chat-messages');
-         if (messagesDiv) messagesDiv.scrollTop = data.scrollTop;
-       }
-     });
 
-     // Initialize chat in any running model tiles that were not preserved
-     document.querySelectorAll('.tile .tile-chat').forEach(tileChat => {
-       const tile = tileChat.closest('.tile');
-       const modelName = tile.getAttribute('data-model');
-       if (!modelName || preservedModels.has(modelName)) return;
-
-       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-       const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
-       const input = document.getElementById(`chat-input-${safeId}`);
-       const sendBtn = document.getElementById(`chat-send-${safeId}`);
-       const statsDiv = document.getElementById(`chat-stats-${safeId}`);
-
-       // Initialize chat history for this model if not exists
-       if (!chatHistory[modelName]) {
-         chatHistory[modelName] = [];
-       }
-
-       // Render existing messages
-       renderChatMessages(modelName);
-
-       // Bind send button
-       sendBtn.addEventListener('click', () => sendChatMessage(modelName));
-
-       // Enter to send (Shift+Enter for newline)
-       input.addEventListener('keydown', (e) => {
-         if (e.key === 'Enter' && !e.shiftKey) {
-           e.preventDefault();
-           sendChatMessage(modelName);
-         }
-       });
-       // Restore draft input from localStorage if not already preserved
-       const savedDraft = localStorage.getItem('chat_input_' + modelName);
-       if (savedDraft !== null) {
-         input.value = savedDraft;
-       }
-       // Save draft on input changes
-       input.addEventListener('input', () => {
-         localStorage.setItem('chat_input_' + modelName, input.value);
-       });
-     });
-    // Restore preserved chat input values after rebinding
-    preservedInputs.forEach((value, modelName) => {
-      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-      const input = document.getElementById(`chat-input-${safeId}`);
-      if (input) {
-        input.value = value;
-      }
-    });
 
     // If a model is selected, refresh the panel to reflect any state changes
     if (selectedModel) {
@@ -3953,20 +3848,87 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
       chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
     }
     
+    // Render chat interface inside modal (bead web-e7r.3)
+    function renderChatInModal(modelName) {
+      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+      const contentDiv = document.getElementById('chat-modal-content');
+      if (!contentDiv) return;
+
+      // Ensure chat history exists
+      if (!chatHistory[modelName]) {
+        chatHistory[modelName] = [];
+      }
+
+      // Build chat UI
+      contentDiv.innerHTML = `
+        <div class="tile-chat modal-chat">
+          <div class="chat-params">
+            <div class="panel-item"><span class="label">Temperature</span>
+              <input type="range" id="chat-temp-${safeId}" min="0" max="2" step="0.1" value="0.7"
+                     oninput="document.getElementById('chat-temp-val-${safeId}').textContent = this.value">
+              <span class="value" id="chat-temp-val-${safeId}">0.7</span>
+            </div>
+            <div class="panel-item"><span class="label">Top P</span>
+              <input type="range" id="chat-top-p-${safeId}" min="0" max="1" step="0.05" value="0.9"
+                     oninput="document.getElementById('chat-top-p-val-${safeId}').textContent = this.value">
+              <span class="value" id="chat-top-p-val-${safeId}">0.9</span>
+            </div>
+            <div class="panel-item"><span class="label">Max Tokens</span>
+              <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
+            </div>
+          </div>
+          <div class="chat-messages" id="chat-messages-${safeId}"></div>
+          <div class="chat-input-area">
+            <textarea id="chat-input-${safeId}" placeholder="Type your message..." rows="3"></textarea>
+            <button id="chat-send-${safeId}" class="btn-chat-send">Send</button>
+          </div>
+          <div class="chat-stats" id="chat-stats-${safeId}"></div>
+        </div>
+      `;
+
+      // Render existing messages
+      renderChatMessages(modelName);
+
+      // Restore input from localStorage
+      const savedInput = localStorage.getItem('chat_input_' + modelName);
+      const input = document.getElementById(`chat-input-${safeId}`);
+      if (input && savedInput !== null) {
+        input.value = savedInput;
+      }
+
+      // Attach send button handler
+      const sendBtn = document.getElementById(`chat-send-${safeId}`);
+      if (sendBtn) {
+        sendBtn.onclick = () => sendChatMessage(modelName);
+      }
+
+      // Attach textarea Enter-to-send (Shift+Enter for newline)
+      if (input) {
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage(modelName);
+          }
+        });
+        // Save draft on input changes
+        input.addEventListener('input', () => {
+          localStorage.setItem('chat_input_' + modelName, input.value);
+        });
+        // Focus input
+        input.focus();
+      }
+    }
+
     // Global function to open chat modal (called by tile button)
     window.openChatModal = function(modelName) {
       // Store model name on modal for later use
       chatModal.setAttribute('data-model-name', modelName);
-      
+
+      // Render chat UI in modal
+      renderChatInModal(modelName);
+
       // Open modal using manager
       ModalManager.open('chat-modal');
-      
-      // Placeholder: populate modal content later (web-e7r.3)
-      const contentDiv = document.getElementById('chat-modal-content');
-      if (contentDiv) {
-        // For now just show placeholder; will be replaced with actual chat UI
-        contentDiv.innerHTML = '<p>Loading chat for ' + modelName + '...</p>';
-      }
     };
   });
 
