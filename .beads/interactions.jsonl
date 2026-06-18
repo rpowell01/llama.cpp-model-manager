@@ -32,3 +32,10 @@
 {"id":"int-d80ae444","kind":"field_change","created_at":"2026-06-17T22:06:55.950181341Z","actor":"Russell Powell","issue_id":"web-06c","extra":{"field":"status","new_value":"closed","old_value":"open"}}
 {"id":"int-49b61d8e","kind":"field_change","created_at":"2026-06-17T22:07:01.924815326Z","actor":"Russell Powell","issue_id":"web-c2v","extra":{"field":"status","new_value":"closed","old_value":"open"}}
 {"id":"int-f8af4c41","kind":"field_change","created_at":"2026-06-17T22:07:08.74985412Z","actor":"Russell Powell","issue_id":"web-0r9","extra":{"field":"status","new_value":"closed","old_value":"open"}}
+{"id":"int-7102520f","kind":"field_change","created_at":"2026-06-18T00:25:36.469175349Z","actor":"Russell Powell","issue_id":"web-vgu","extra":{"field":"status","new_value":"deferred","old_value":"open"}}
+{"id":"int-bde1b829","kind":"field_change","created_at":"2026-06-18T00:25:36.532588661Z","actor":"Russell Powell","issue_id":"web-vl4","extra":{"field":"status","new_value":"deferred","old_value":"open"}}
+{"id":"int-e7bd8b38","kind":"field_change","created_at":"2026-06-18T00:31:14.814632855Z","actor":"Russell Powell","issue_id":"web-4mb","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-23868cd1","kind":"field_change","created_at":"2026-06-18T00:31:27.767979338Z","actor":"Russell Powell","issue_id":"web-g3t","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-79cf84a7","kind":"field_change","created_at":"2026-06-18T00:43:21.368972963Z","actor":"Russell Powell","issue_id":"web-rb7","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-b16b22c3","kind":"field_change","created_at":"2026-06-18T00:50:05.778180351Z","actor":"Russell Powell","issue_id":"web-6mj","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
+{"id":"int-441c8a98","kind":"field_change","created_at":"2026-06-18T01:09:24.208611924Z","actor":"Russell Powell","issue_id":"web-3s8","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}

@@ -2546,9 +2546,20 @@ function closePanel() {
      if (data.pid) addItem('PID', `<code>${data.pid}</code>`);
      html += `</div></div>`;
      
-    }
-   
-    // Hugging Face Metadata section
+     }
+
+     // Performance Metrics section (only if running)
+     if (running) {
+       html += `<div class="panel-section">
+         <h3>Performance Metrics</h3>
+         <div class="panel-grid">`;
+       addItem('Prompt Processing', data.pp ? data.pp + ' ms' : '-');
+       addItem('Text Generation', data.tg ? data.tg + ' t/s' : '-');
+       addItem('Combined', data.pg ? data.pg : '-');
+       html += `</div></div>`;
+     }
+
+     // Hugging Face Metadata section
    html += `<div class="panel-section">
      <h3>Model Information</h3>`;
 
@@ -2677,7 +2688,9 @@ function closePanel() {
     
     // Add user message to history and UI
     chatHistory[modelName].push({ role: 'user', content });
+    localStorage.setItem('chat_history_' + modelName, JSON.stringify(chatHistory[modelName]));
     input.value = '';
+    localStorage.removeItem('chat_input_' + modelName);
     renderChatMessages(modelName);
     
     // Disable input and show loading
@@ -2725,6 +2738,7 @@ function closePanel() {
       
       // Add assistant response to history
       chatHistory[modelName].push({ role: 'assistant', content: assistantMessage });
+      localStorage.setItem('chat_history_' + modelName, JSON.stringify(chatHistory[modelName]));
       renderChatMessages(modelName);
       
       // Update stats - use completion_tokens or total_tokens
@@ -2764,6 +2778,21 @@ let isRefreshing = false;
 const downloadProgressState = {};
 // Store chat message history per model
 const chatHistory = {};
+// Load saved chat histories from localStorage
+for (let i = 0; i < localStorage.length; i++) {
+  const key = localStorage.key(i);
+  if (key && key.startsWith('chat_history_')) {
+    const modelName = key.slice('chat_history_'.length);
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(saved)) {
+        chatHistory[modelName] = saved;
+      }
+    } catch (e) {
+      console.error('Failed to parse saved chat history for model', modelName, e);
+    }
+  }
+}
 async function refresh(showLoading=true) {
   if (isRefreshing) {
     console.log('Refresh already in progress, skipping');
@@ -2920,47 +2949,82 @@ const html = filtered.map((r) => {
      + '</div>';
   }).join('');
     console.log('Setting innerHTML, length:', html.length);
-    // Preserve chat input values before DOM replacement
-    const preservedInputs = new Map();
-    document.querySelectorAll('.tile .tile-chat textarea[id^="chat-input-"]').forEach(textarea => {
-      const tile = textarea.closest('.tile');
-      if (!tile) return;
-      const modelName = tile.getAttribute('data-model');
-      if (modelName) preservedInputs.set(modelName, textarea.value);
-    });
-    grid.innerHTML = html;
+     // Preserve chat input values and chat DOM elements before DOM replacement
+     const preservedInputs = new Map();
+     document.querySelectorAll('.tile .tile-chat textarea[id^="chat-input-"]').forEach(textarea => {
+       const tile = textarea.closest('.tile');
+       if (!tile) return;
+       const modelName = tile.getAttribute('data-model');
+       if (modelName) preservedInputs.set(modelName, textarea.value);
+     });
 
-    // Initialize chat in any running model tiles
-    document.querySelectorAll('.tile .tile-chat').forEach(tileChat => {
-      const tile = tileChat.closest('.tile');
-      const modelName = tile.getAttribute('data-model');
-      if (!modelName) return;
+     // Preserve chat dialog elements (including messages and controls) to skip re-render
+     const preservedChats = new Map(); // modelName -> { element: HTMLElement, scrollTop: number }
+     document.querySelectorAll('.tile .tile-chat').forEach(chatEl => {
+       const tile = chatEl.closest('.tile');
+       if (!tile) return;
+       const modelName = tile.getAttribute('data-model');
+       if (!modelName) return;
+       const messagesDiv = chatEl.querySelector('.chat-messages');
+       const scrollTop = messagesDiv ? messagesDiv.scrollTop : 0;
+       preservedChats.set(modelName, { element: chatEl, scrollTop });
+     });
 
-      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-      const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
-      const input = document.getElementById(`chat-input-${safeId}`);
-      const sendBtn = document.getElementById(`chat-send-${safeId}`);
-      const statsDiv = document.getElementById(`chat-stats-${safeId}`);
+     grid.innerHTML = html;
 
-      // Initialize chat history for this model if not exists
-      if (!chatHistory[modelName]) {
-        chatHistory[modelName] = [];
-      }
+     // Restore preserved chat elements into the new grid
+     const preservedModels = new Set(preservedChats.keys());
+     preservedChats.forEach((data, modelName) => {
+       const newTile = document.querySelector(`.tile[data-model="${CSS.escape(modelName)}"]`);
+       if (!newTile) return;
+       const newChat = newTile.querySelector('.tile-chat');
+       if (newChat) {
+         newChat.replaceWith(data.element);
+         const messagesDiv = data.element.querySelector('.chat-messages');
+         if (messagesDiv) messagesDiv.scrollTop = data.scrollTop;
+       }
+     });
 
-      // Render existing messages
-      renderChatMessages(modelName);
+     // Initialize chat in any running model tiles that were not preserved
+     document.querySelectorAll('.tile .tile-chat').forEach(tileChat => {
+       const tile = tileChat.closest('.tile');
+       const modelName = tile.getAttribute('data-model');
+       if (!modelName || preservedModels.has(modelName)) return;
 
-      // Bind send button
-      sendBtn.addEventListener('click', () => sendChatMessage(modelName));
+       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+       const messagesDiv = document.getElementById(`chat-messages-${safeId}`);
+       const input = document.getElementById(`chat-input-${safeId}`);
+       const sendBtn = document.getElementById(`chat-send-${safeId}`);
+       const statsDiv = document.getElementById(`chat-stats-${safeId}`);
 
-      // Enter to send (Shift+Enter for newline)
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendChatMessage(modelName);
-        }
-      });
-    });
+       // Initialize chat history for this model if not exists
+       if (!chatHistory[modelName]) {
+         chatHistory[modelName] = [];
+       }
+
+       // Render existing messages
+       renderChatMessages(modelName);
+
+       // Bind send button
+       sendBtn.addEventListener('click', () => sendChatMessage(modelName));
+
+       // Enter to send (Shift+Enter for newline)
+       input.addEventListener('keydown', (e) => {
+         if (e.key === 'Enter' && !e.shiftKey) {
+           e.preventDefault();
+           sendChatMessage(modelName);
+         }
+       });
+       // Restore draft input from localStorage if not already preserved
+       const savedDraft = localStorage.getItem('chat_input_' + modelName);
+       if (savedDraft !== null) {
+         input.value = savedDraft;
+       }
+       // Save draft on input changes
+       input.addEventListener('input', () => {
+         localStorage.setItem('chat_input_' + modelName, input.value);
+       });
+     });
     // Restore preserved chat input values after rebinding
     preservedInputs.forEach((value, modelName) => {
       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
