@@ -770,6 +770,60 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
 # ──────────────────────────────────────────────────────────────────────────────
 # Status and control endpoints
 # ──────────────────────────────────────────────────────────────────────────────
+def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
+    """Fetch performance metrics from a running llama-server's /metrics endpoint.
+
+    Returns a dict with keys 'pp', 'tg', 'pg' (or None if not available).
+    """
+    host = DEFAULTS["host"]
+    url = f"http://{host}:{port}/metrics"
+    result: dict[str, float | None] = {"pp": None, "tg": None, "pg": None}
+    try:
+        resp = requests.get(url, timeout=0.5)
+        if resp.status_code != 200:
+            return result
+        text = resp.text
+        # Parse Prometheus text format
+        # We'll collect raw values by metric name (strip labels)
+        values: dict[str, float] = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Format: metric_name{labels...} value timestamp?
+            # We only want the first two tokens
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            name_full = parts[0]
+            # Strip label suffix if present (everything from first '{' to matching '}')
+            name = name_full.split("{", 1)[0]
+            try:
+                val = float(parts[1])
+                values[name] = val
+            except ValueError:
+                continue
+        # Map to expected fields
+        # pp: prompt processing time (ms)
+        if "llamacpp_prompt_processing_time_ms" in values:
+            result["pp"] = round(values["llamacpp_prompt_processing_time_ms"], 2)
+        # tg: tokens per second
+        if "llamacpp_tokens_per_second" in values:
+            result["tg"] = round(values["llamacpp_tokens_per_second"], 2)
+        # pg: combined total tokens (prompt + generated)
+        prompt_tokens = values.get("llamacpp_prompt_tokens_total")
+        gen_tokens = values.get("llamacpp_generated_tokens_total")
+        if prompt_tokens is not None and gen_tokens is not None:
+            result["pg"] = int(prompt_tokens + gen_tokens)
+        elif prompt_tokens is not None:
+            result["pg"] = int(prompt_tokens)
+        elif gen_tokens is not None:
+            result["pg"] = int(gen_tokens)
+    except Exception as e:
+        log.debug(f"Failed to fetch metrics for port {port}: {e}")
+    return result
+
+
 def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
     port = int(meta.get("port", 11000))
     model_path_str = meta.get("model_path", "")
@@ -779,7 +833,7 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
     active = check_port_active(port)
     pid = None
     status = "stopped"
-    
+
     if WSL:
         with _wsl_pids_lock:
             stored_pid_debug = _wsl_pids.get(model)
@@ -836,6 +890,10 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
     dl_status = None
     with download_lock:
         dl_status = download_status.get(model)
+    # Fetch performance metrics if model is running
+    metrics: dict[str, float | None] = {}
+    if status.startswith("running"):
+        metrics = _fetch_metrics_from_model(port)
     return {
         "model": model,
         "port": port,
@@ -846,6 +904,9 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
         "model_path": model_path_str,
         "download_status": dl_status,
         "partial_download": partial_download,
+        "pp": metrics.get("pp"),
+        "tg": metrics.get("tg"),
+        "pg": metrics.get("pg"),
         **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
     }
 
