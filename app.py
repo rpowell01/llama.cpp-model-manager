@@ -3898,10 +3898,9 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
     console.error('Shutdown error:', e);
   }
 });
-document.getElementById('addModelBtn').addEventListener('click', showAddForm);
-document.getElementById('panel-close').addEventListener('click', closePanel);
-   refresh();
-   setInterval(() => refresh(false), 5000);
+ document.getElementById('addModelBtn').addEventListener('click', showAddForm);
+ document.getElementById('panel-close').addEventListener('click', closePanel);
+    refresh();
 
  // Hugging Face repo discovery
  let currentRepoSearchModel = null;
