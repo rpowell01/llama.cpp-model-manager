@@ -4190,12 +4190,14 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
         chatHistory[modelName] = [];
       }
 
-       // Get model data for performance metrics
-       const modelData = currentModelRows.find(r => r.model === modelName);
-       const isRunning = modelData && modelData.status && modelData.status.startsWith('running');
-       const ppVal = isRunning && modelData.pp ? modelData.pp + ' ms' : '-';
-       const tgVal = isRunning && modelData.tg ? modelData.tg + ' t/s' : '-';
-       const pgVal = isRunning && modelData.pg ? modelData.pg : '-';
+        // Get model data for performance metrics
+        const modelData = currentModelRows.find(r => r.model === modelName);
+        const isRunning = modelData && modelData.status && modelData.status.startsWith('running');
+        const ppVal = isRunning && modelData.pp ? modelData.pp + ' ms' : '-';
+        const tgVal = isRunning && modelData.tg ? modelData.tg + ' t/s' : '-';
+        const pgVal = isRunning && modelData.pg ? modelData.pg : '-';
+        // Determine max tokens: default to model's cache_size (context length) if available, else 512
+        const maxTokens = modelData?.cache_size || 512;
 
        // Build chat UI
        contentDiv.innerHTML = `
@@ -4212,8 +4214,8 @@ document.getElementById('shutdownBtn').addEventListener('click', async function(
               <span class="value" id="chat-top-p-val-${safeId}">0.9</span>
             </div>
              <div class="panel-item"><span class="label">Max Tokens</span>
-               <input type="number" id="chat-max-tokens-${safeId}" min="1" max="4096" value="512">
-             </div>
+                <input type="number" id="chat-max-tokens-${safeId}" min="1" max="${maxTokens}" value="${maxTokens}">
+              </div>
              <div class="panel-item"><span class="label">Timeout (s)</span>
                <input type="number" id="chat-timeout-${safeId}" min="1" max="600" value="300">
              </div>
