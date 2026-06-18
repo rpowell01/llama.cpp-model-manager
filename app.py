@@ -2361,6 +2361,97 @@ TEMPLATE = r"""<!DOCTYPE html>
         text-align: right;
         margin-top: 0.25rem;
       }
+
+      /* ──────────────────────────────────────────────────────────────
+         Chat dialog responsive styling (bead web-28d)
+         ────────────────────────────────────────────────────────────── */
+
+      /* Smooth transitions for interactive elements */
+      .chat-section,
+      .tile .tile-chat,
+      .chat-params input[type="range"],
+      .chat-params input[type="number"],
+      .chat-input-area textarea,
+      .btn-chat-send {
+        transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      /* Focus-visible for accessibility */
+      .chat-section :focus-visible,
+      .tile .tile-chat :focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+      }
+
+      /* Responsive adjustments for small screens */
+      @media (max-width: 600px) {
+        /* Modal-like chat container (if used as modal) */
+        .chat-section {
+          width: 95% !important;
+          max-width: none !important;
+          max-height: 90vh !important;
+          overflow-y: auto;
+          padding: 0.5rem;
+        }
+
+        /* Tile-embedded chat */
+        .tile .tile-chat {
+          padding: 0.4rem;
+        }
+        .tile .chat-params {
+          grid-template-columns: 1fr; /* Stack parameters vertically */
+          gap: 0.4rem;
+        }
+        .tile .chat-params .panel-item {
+          min-width: auto;
+          font-size: 0.75rem;
+        }
+        .tile .chat-messages {
+          max-height: 150px;
+          font-size: 0.8rem;
+        }
+        .tile .chat-input-area {
+          flex-direction: column;
+          gap: 0.4rem;
+        }
+        .tile .chat-input-area textarea {
+          min-height: 70px;
+          font-size: 0.85rem;
+        }
+        .tile .btn-chat-send {
+          width: 100%;
+          padding: 0.5rem;
+        }
+      }
+
+      /* Medium screens */
+      @media (max-width: 768px) and (min-width: 601px) {
+        .tile .tile-chat {
+          padding: 0.6rem;
+        }
+      }
+
+      /* Visual hierarchy: improve message bubbles */
+      .chat-message {
+        padding: 0.5rem 0.75rem;
+        border-radius: 12px;
+        max-width: 85%;
+        line-height: 1.5;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      /* Stats with monospaced numbers for alignment */
+      .chat-stats {
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.02em;
+      }
+
+      /* Ensure chat modal overlay appears above other content (if used) */
+      .chat-section,
+      .modal-overlay.chat-modal {
+        z-index: 1100; /* above hf-repo-modal (1000) */
+      }
     </style>
 </head>
 <body>
