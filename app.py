@@ -1026,13 +1026,32 @@ def api_start():
                 str(meta.get("ubatch_size", DEFAULTS["ubatch_size"])),
             ]
             log.info(f"args: {args}")
-            # Build the command with Windows path for bash
+            # Create logs directory if it doesn't exist
+            logs_dir = BASE_DIR / "logs"
+            logs_dir.mkdir(exist_ok=True)
+            # Build log file path (use WSL-friendly path for bash)
+            log_file = logs_dir / f"{model}.log"
+            log_file_wsl = log_file.as_posix()
+            log.info(f"Server output will be logged to: {log_file}")
+            # Build the command with Windows path for bash, redirecting output to log file
+            # Build the optional flags based on meta (consistent with build_cmd)
+            optional_flags = []
+            if meta.get("mlock", DEFAULTS["mlock"]):
+                optional_flags.append("--mlock")
+            if meta.get("no_mmap", DEFAULTS["no_mmap"]):
+                optional_flags.append("--no-mmap")
+            # parallel and ubatch_size are always included (have defaults)
+            optional_flags.append(f"--parallel {args[8]}")
+            optional_flags.append(f"--ubatch-size {args[9]}")
+            # metrics flag
+            optional_flags.append("--metrics")
+            optional_str = " ".join(optional_flags)
             bash_cmd = (
                 f'nohup "{cmd[0]}" -m "{args[0]}" --alias "{args[1]}" '
                 f'--host "{args[2]}" --port {args[3]} --threads {args[4]} '
                 f'--threads-batch {args[5]} -c {args[6]} --timeout {args[7]} '
-                f'--mlock --no-mmap --parallel {args[8]} --ubatch-size {args[9]} '
-                '> /dev/null 2>&1 & echo $!'
+                f'{optional_str} '
+                f'> "{log_file_wsl}" 2>&1 & echo $!'
             )
             log.info(f"Starting Windows process via bash: nohup")
             log.info(f"bash_cmd: {bash_cmd}")
