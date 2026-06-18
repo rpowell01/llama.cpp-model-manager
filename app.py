@@ -2547,10 +2547,18 @@ TEMPLATE = r"""<!DOCTYPE html>
       <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
         <button id="hf-modal-cancel" class="btn-secondary" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Cancel</button>
       </div>
-    </div>
-  </div>
+   </div>
+ </div>
 
-<script>
+  <!-- Chat Modal (bead web-e7r.1: modal container) -->
+  <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+   <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow-y: auto; position: relative;">
+     <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
+     <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
+   </div>
+ </div>
+
+ <script>
 const HOST = "{{ host }}";
 const FLAVOR = "{{ flask_port }}";
 const CACHE_VERSION = "{{ cache_version }}";
@@ -3824,14 +3832,145 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
    });
  }
  // Close modal on outside click
- hfModal.addEventListener('click', (e) => {
-   if (e.target === hfModal) {
-     hfModal.style.display = 'none';
-     currentRepoSearchModel = null;
-   }
- });
+  hfModal.addEventListener('click', (e) => {
+    if (e.target === hfModal) {
+      hfModal.style.display = 'none';
+      currentRepoSearchModel = null;
+    }
+  });
 
-  </script>
+  // Modal Manager (web-e7r.2)
+  const ModalManager = {
+    activeModal: null,
+    lastFocusedElement: null,
+    focusableSelector: 'a, button, textarea, input, select, [tabindex]:not([tabindex="-1"])',
+    
+    open(modalId) {
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+      
+      // Save current focus
+      this.lastFocusedElement = document.activeElement;
+      
+      // Show modal
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      
+      // Trap focus - find all focusable elements
+      const focusable = Array.from(modal.querySelectorAll(this.focusableSelector));
+      if (focusable.length > 0) {
+        // Use setTimeout to ensure modal is visible before focusing
+        setTimeout(() => focusable[0].focus(), 0);
+      }
+      
+      // Attach event listeners
+      this._attachHandlers(modal);
+      
+      this.activeModal = modal;
+    },
+    
+    close(modalId) {
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+      
+      // Hide modal
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+      
+      // Remove event listeners
+      this._detachHandlers(modal);
+      
+      // Restore focus to the element that opened the modal
+      if (this.lastFocusedElement) {
+        this.lastFocusedElement.focus();
+      }
+      
+      this.activeModal = null;
+    },
+    
+    _attachHandlers(modal) {
+      const handleKeydown = (e) => this._onKeyDown(e, modal);
+      const handleClick = (e) => this._onClick(e, modal);
+      
+      // Store references for removal
+      modal._modalKeydownHandler = handleKeydown;
+      modal._modalClickHandler = handleClick;
+      
+      modal.addEventListener('keydown', handleKeydown);
+      modal.addEventListener('click', handleClick);
+    },
+    
+    _detachHandlers(modal) {
+      if (modal._modalKeydownHandler) {
+        modal.removeEventListener('keydown', modal._modalKeydownHandler);
+        delete modal._modalKeydownHandler;
+      }
+      if (modal._modalClickHandler) {
+        modal.removeEventListener('click', modal._modalClickHandler);
+        delete modal._modalClickHandler;
+      }
+    },
+    
+    _onKeyDown(e, modal) {
+      // Escape key closes modal
+      if (e.key === 'Escape') {
+        this.close(modal.id);
+        return;
+      }
+      
+      // Tab key: trap focus within modal
+      if (e.key === 'Tab') {
+        const focusable = Array.from(modal.querySelectorAll(this.focusableSelector));
+        if (focusable.length === 0) return;
+        
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    
+    _onClick(e, modal) {
+      // Close when clicking on the backdrop (overlay)
+      if (e.target === modal) {
+        this.close(modal.id);
+      }
+    }
+  };
+
+  // Chat Modal Specific Setup
+  document.addEventListener('DOMContentLoaded', function() {
+    const chatModal = document.getElementById('chat-modal');
+    const chatCloseBtn = document.getElementById('chat-modal-close');
+    
+    if (chatCloseBtn) {
+      chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
+    }
+    
+    // Global function to open chat modal (called by tile button)
+    window.openChatModal = function(modelName) {
+      // Store model name on modal for later use
+      chatModal.setAttribute('data-model-name', modelName);
+      
+      // Open modal using manager
+      ModalManager.open('chat-modal');
+      
+      // Placeholder: populate modal content later (web-e7r.3)
+      const contentDiv = document.getElementById('chat-modal-content');
+      if (contentDiv) {
+        // For now just show placeholder; will be replaced with actual chat UI
+        contentDiv.innerHTML = '<p>Loading chat for ' + modelName + '...</p>';
+      }
+    };
+  });
+
+   </script>
   </body>
   </html>"""
 
