@@ -3429,9 +3429,12 @@ filtered.sort((a, b) => {
 console.log('filtered rows:', filtered.length);
 const html = filtered.map((r) => {
   const running = r.status.startsWith('running');
-  console.log('Model:', r.model, 'status:', r.status, 'running:', running);
+  const starting = r.status === 'starting';
+  console.log('Model:', r.model, 'status:', r.status, 'running:', running, 'starting:', starting);
   const statusChip = running
     ? '<span class="chip ok">● running</span>'
+    : starting
+    ? '<span class="chip warn">● starting</span>'
     : r.file_exists
     ? '<span class="chip ok">● stopped</span>'
     : '<span class="chip bad">✕ missing</span>';
