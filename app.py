@@ -39,18 +39,18 @@ LOG_FILE = BASE_DIR / "running_models.log"
 ENV_FILE = BASE_DIR / ".env"
 
 DEFAULTS: dict[str, Any] = {
-    "host": "127.0.0.1",
-    "port": 11000,
-    "cache_size": 32768,
-    "threads": 16,
-    "threads_batch": 22,
-    "timeout": 3600,
-    "mlock": True,
-    "flash_attn": "off",
-    "no_mmap": True,
-    "parallel": 4,
-    "ubatch_size": 512,
-}
+     "host": "127.0.0.1",
+     "port": 11000,
+     "cache_size": 32768,
+     "threads": 16,
+     "threads_batch": 22,
+     "timeout": 3600,
+     "mlock": False,
+     "flash_attn": "off",
+     "no_mmap": True,
+     "parallel": 2,
+     "ubatch_size": 256,
+ }
 
 WINDOWS = platform.system() == "Windows"
 # Check for WSL (Windows Subsystem for Linux) - must be done before LLAMA_SERVER assignment
@@ -128,6 +128,10 @@ _recent_stops_lock = threading.Lock()
 # Track PIDs for WSL models (since PowerShell can't see Windows process info from Linux)
 _wsl_pids: dict[str, int] = {}  # model_name -> pid
 _wsl_pids_lock = threading.Lock()
+
+# Track models that are currently starting
+_start_timestamps: dict[str, float] = {}
+_start_timestamps_lock = threading.Lock()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -894,6 +898,13 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
                     status = "running"
                 else:
                     status = "running (unknown pid)"
+    # Check if model is starting (has startup timestamp)
+    with _start_timestamps_lock:
+        if model in _start_timestamps:
+            if active:
+                status = "running"
+            else:
+                status = "starting"
     # File size if it exists
     size_gb: float | None = meta.get("file_size_gb")
     if exists and size_gb is None and model_path:
@@ -1001,7 +1012,11 @@ def api_start():
         model_file = BASE_DIR / meta["model_path"]
         if not model_file.is_file():
             return jsonify({"error": f"Model file not found: {meta['model_path']}"}), 404
-
+        
+        # Mark model as starting
+        with _start_timestamps_lock:
+            _start_timestamps[model] = time.time()
+        
         cmd = build_cmd(model, port, meta)
         proc = None
         pid = None
@@ -1118,6 +1133,10 @@ def api_start():
     except Exception as e:
         log.exception("Failed to start server for %s", model)
         return jsonify({"error": f"Failed to start server: {str(e)}"}), 500
+    finally:
+        # Clear startup timestamp if it exists
+        with _start_timestamps_lock:
+            _start_timestamps.pop(model, None)
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -1663,25 +1682,71 @@ def api_update_model_repo():
     return jsonify({"status": "repo updated", "model": model, "repo": repo})
 
 
+@app.route("/api/update-model-meta", methods=["POST"])
+def api_update_model_meta():
+    """Update start parameters (meta) for a model."""
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+
+    models = get_models()
+    if model not in models:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    meta = models[model]
+    allowed_fields = {
+        "cache_size": int,
+        "threads": int,
+        "threads_batch": int,
+        "timeout": int,
+        "mlock": bool,
+        "flash_attn": str,
+        "no_mmap": bool,
+        "parallel": int,
+        "ubatch_size": int,
+    }
+    changes = {}
+    for field, typ in allowed_fields.items():
+        if field in data:
+            value = data[field]
+            # Convert to expected type
+            try:
+                if typ is int:
+                    value = int(value)
+                elif typ is bool:
+                    value = bool(value)
+                else:
+                    value = str(value)
+                meta[field] = value
+                changes[field] = value
+            except Exception as e:
+                return jsonify({"error": f"Invalid value for {field}: {value}"}), 400
+
+    save_models(models)
+    log.info(f"Updated model {model} meta: {changes}")
+    return jsonify({"status": "meta updated", "model": model, "changes": changes})
+
+
 @app.route("/api/logs")
 def api_logs():
-     if not LOG_FILE.exists():
-         return jsonify([])
-     lines = LOG_FILE.read_text("utf-8", errors="replace").strip().splitlines()
-     return jsonify(lines[-100:])
+    if not LOG_FILE.exists():
+        return jsonify([])
+    lines = LOG_FILE.read_text("utf-8", errors="replace").strip().splitlines()
+    return jsonify(lines[-100:])
 
 
 @app.route("/api/shutdown", methods=["POST"])
 def api_shutdown():
-     """Gracefully shutdown the Flask server."""
-     log.info("Shutdown requested via API")
-     # Use a thread to allow response to be sent before shutdown
-     def shutdown():
-         time.sleep(0.1)
-         import os
-         os._exit(0)
-     threading.Thread(target=shutdown, daemon=True).start()
-     return jsonify({"status": "shutdown"})
+    """Gracefully shutdown the Flask server."""
+    log.info("Shutdown requested via API")
+    # Use a thread to allow response to be sent before shutdown
+    def shutdown():
+        time.sleep(0.1)
+        import os
+        os._exit(0)
+    threading.Thread(target=shutdown, daemon=True).start()
+    return jsonify({"status": "shutdown"})
 
 @app.route("/api/next-port")
 def api_next_port():
@@ -2894,26 +2959,27 @@ let selectedModel = null;
 let currentModelRows = []; // Cache of model data from latest refresh
 let autoSearchAttempted = new Set(); // Track auto-search attempts per model (web-iet)
 
-function selectModel(modelName) {
-  selectedModel = modelName;
-  const panel = document.getElementById('properties-panel');
-  const contentArea = document.getElementById('content-area');
-  panel.style.display = 'block';
-  contentArea.classList.add('has-panel');
-  
-  // Find model data
-  const modelData = currentModelRows.find(r => r.model === modelName);
-  if (!modelData) {
-    console.error('Model data not found for', modelName);
-    return;
-  }
-  
-  // Set heading
-  document.getElementById('panel-model-name').textContent = modelName;
-  
-  // Render properties
-  renderPanelProperties(modelData, modelName);
-}
+ function selectModel(modelName) {
+   selectedModel = modelName;
+   const panel = document.getElementById('properties-panel');
+   const contentArea = document.getElementById('content-area');
+   panel.style.display = 'block';
+   contentArea.classList.add('has-panel');
+   panel.dataset.modelName = modelName; // For meta update actions
+   
+   // Find model data
+   const modelData = currentModelRows.find(r => r.model === modelName);
+   if (!modelData) {
+     console.error('Model data not found for', modelName);
+     return;
+   }
+   
+   // Set heading
+   document.getElementById('panel-model-name').textContent = modelName;
+   
+   // Render properties
+   renderPanelProperties(modelData, modelName);
+ }
 
 function closePanel() {
   selectedModel = null;
@@ -2934,34 +3000,51 @@ function closePanel() {
    // Build HTML
    let html = '';
   
-  // Static Properties section
-  html += `<div class="panel-section">
-    <h3>Properties</h3>
-    <div class="panel-grid">`;
-  
-  // Helper to add item
-  const addItem = (label, value, isCode = false) => {
-    const valHtml = isCode ? `<code>${value}</code>` : value;
-    html += `<div class="panel-item">
-      <span class="label">${label}</span>
-      <span class="value">${valHtml}</span>
-    </div>`;
-  };
-  
-  addItem('File', data.model_path ? data.model_path.split('/').pop() : (data.filename || '-'));
-  addItem('Size', fmtGb(data.file_size_gb));
-  addItem('Port', data.port ? `:${data.port}` : '-');
-  addItem('Cache Size', data.cache_size + ' tokens');
-  addItem('Threads', data.threads);
-  addItem('Threads Batch', data.threads_batch);
-  addItem('Timeout', data.timeout + 's');
-  addItem('MLock', data.mlock ? 'Yes' : 'No');
-  addItem('Flash Attn', data.flash_attn || 'off');
-  addItem('No MMAP', data.no_mmap ? 'Yes' : 'No');
-  addItem('Parallel', data.parallel);
-  addItem('UBatch Size', data.ubatch_size);
-  
-  html += `</div></div>`;
+   // Static Properties section
+   html += `<div class="panel-section">
+     <h3>Properties</h3>
+     <div class="panel-grid">`;
+   
+   // Helper to add item
+   const addItem = (label, value, isCode = false) => {
+     const valHtml = isCode ? `<code>${value}</code>` : value;
+     html += `<div class="panel-item">
+       <span class="label">${label}</span>
+       <span class="value">${valHtml}</span>
+     </div>`;
+   };
+
+   // Helper to add editable item
+   const addEditable = (label, field, value, inputType = 'number', step = 1, min = undefined, max = undefined) => {
+     let input;
+     if (inputType === 'checkbox') {
+         input = `<input type="checkbox" class="meta-input" data-field="${field}" ${value ? 'checked' : ''}>`;
+     } else if (inputType === 'text') {
+         input = `<input type="text" class="meta-input" data-field="${field}" value="${value}">`;
+     } else {
+         input = `<input type="number" class="meta-input" data-field="${field}" value="${value}" step="${step}" ${min !== undefined ? `min="${min}"` : ''} ${max !== undefined ? `max="${max}"` : ''}>`;
+     }
+     html += `<div class="panel-item">
+       <span class="label">${label}</span>
+       <span class="value">${input}</span>
+     </div>`;
+   };
+   
+   addItem('File', data.model_path ? data.model_path.split('/').pop() : (data.filename || '-'));
+   addItem('Size', fmtGb(data.file_size_gb));
+   addItem('Port', data.port ? `:${data.port}` : '-');
+   // Editable start parameters
+   addEditable('Cache Size', 'cache_size', data.cache_size, 'number', 1, 0);
+   addEditable('Threads', 'threads', data.threads, 'number', 1, 0);
+   addEditable('Threads Batch', 'threads_batch', data.threads_batch, 'number', 1, 0);
+   addEditable('Timeout', 'timeout', data.timeout, 'number', 1, 0);
+   addEditable('MLock', 'mlock', data.mlock, 'checkbox');
+   addEditable('Flash Attn', 'flash_attn', data.flash_attn || 'off', 'text');
+   addEditable('No MMAP', 'no_mmap', data.no_mmap, 'checkbox');
+   addEditable('Parallel', 'parallel', data.parallel, 'number', 1, 1);
+   addEditable('UBatch Size', 'ubatch_size', data.ubatch_size, 'number', 1, 1);
+   
+   html += `</div></div>`;
   
    // Running Statistics section (only if running)
    if (running) {
@@ -2995,22 +3078,60 @@ function closePanel() {
      <div id="hf-metadata-error" class="error" style="display: none;"></div>
    </div>`;
   
-    content.innerHTML = html;
+     content.innerHTML = html;
 
-    // Auto-search for HF repo if not configured and not already attempted (web-iet)
-    if (!data.repo && !autoSearchAttempted.has(modelName)) {
-      autoSearchAttempted.add(modelName);
-      const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
-      const statusEl = document.getElementById(`hf-search-status-${safeId}`);
-      if (statusEl) {
-        statusEl.textContent = 'Automatically searching Hugging Face...';
-        statusEl.style.display = 'block';
-      }
-      autoSearchAndSelectRepo(modelName);
-    }
+      // Attach meta input listeners for auto-save
+      const panel = document.getElementById('properties-panel');
+      panel.dataset.modelName = modelName;
+      panel.querySelectorAll('.meta-input').forEach(input => {
+        input.addEventListener('change', async (e) => {
+          const field = e.target.dataset.field;
+          let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+          // Convert numeric fields to numbers
+          const numericFields = ['cache_size', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size'];
+          if (numericFields.includes(field)) {
+            value = Number(value);
+          }
+          const model = panel.dataset.modelName;
+          if (!model) return;
+          try {
+            const payload = { model };
+            payload[field] = value;
+            const resp = await fetch('/api/update-model-meta', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              alert(`Error updating ${field}: ${err.error || 'unknown'}`);
+            }
+          } catch (err) {
+            console.error('Failed to update meta', err);
+            alert('Network error while updating');
+          }
+        });
+      });
 
-    // Fetch HF metadata asynchronously
-  try {
+      // Auto-search for HF repo if not configured and not already attempted (web-iet)
+     if (!data.repo && !autoSearchAttempted.has(modelName)) {
+       autoSearchAttempted.add(modelName);
+       const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
+       const statusEl = document.getElementById(`hf-search-status-${safeId}`);
+       if (statusEl) {
+         statusEl.textContent = 'Automatically searching Hugging Face...';
+         statusEl.style.display = 'block';
+       }
+       autoSearchAndSelectRepo(modelName);
+     }
+
+     // If no repo after attempting auto-search, skip metadata fetch to avoid spurious errors (web-nvl.1)
+     if (!data.repo) {
+       return;
+     }
+
+     // Fetch HF metadata asynchronously
+   try {
     const resp = await fetch(`/api/hf-metadata?model=${encodeURIComponent(modelName)}`);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
