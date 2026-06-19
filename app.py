@@ -1904,6 +1904,11 @@ def api_chat():
         log.error(f"Invalid port type for model {model}: {port!r}")
         return jsonify({"error": "Model has invalid port configuration"}), 500
 
+    # Check if model is in starting state
+    status_info = _status_for_model(model, meta)
+    if status_info.get("status") == "starting":
+        return jsonify({"error": "Model is starting", "status": "starting"}), 503
+
     if not check_port_active(port_int):
         return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 

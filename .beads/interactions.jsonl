@@ -76,3 +76,4 @@
 {"id":"int-81e3e5af","kind":"field_change","created_at":"2026-06-19T01:07:12.550579501Z","actor":"Russell Powell","issue_id":"web-yvy","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-b65d8aa4","kind":"field_change","created_at":"2026-06-19T01:53:12.559029282Z","actor":"Russell Powell","issue_id":"web-cl2.1","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-c2fc6b1e","kind":"field_change","created_at":"2026-06-19T02:00:12.678655253Z","actor":"Russell Powell","issue_id":"web-cl2.2","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
+{"id":"int-888874cf","kind":"field_change","created_at":"2026-06-19T02:03:10.668837487Z","actor":"Russell Powell","issue_id":"web-cl2.3","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
