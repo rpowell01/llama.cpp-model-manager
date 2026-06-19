@@ -898,13 +898,15 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
                     status = "running"
                 else:
                     status = "running (unknown pid)"
-    # Check if model is starting (has startup timestamp)
-    with _start_timestamps_lock:
-        if model in _start_timestamps:
-            if active:
-                status = "running"
-            else:
-                status = "starting"
+            # Check if model is starting (has startup timestamp)
+            with _start_timestamps_lock:
+                if model in _start_timestamps:
+                    if active:
+                        status = "running"
+                        # Clear the timestamp since model is now ready
+                        _start_timestamps.pop(model, None)
+                    else:
+                        status = "starting"
     # File size if it exists
     size_gb: float | None = meta.get("file_size_gb")
     if exists and size_gb is None and model_path:
@@ -996,6 +998,7 @@ def api_debug(model_name):
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
+    start_success = False
     try:
         data = request.get_json(force=True) or {}
         model = data.get("model", "").strip()
@@ -1119,6 +1122,7 @@ def api_start():
             is_running = False
         
         if is_running:
+            start_success = True
             # Clear any recent stop entry so status reflects running state
             with _recent_stops_lock:
                 _recent_stops.pop(model, None)
@@ -1134,9 +1138,10 @@ def api_start():
         log.exception("Failed to start server for %s", model)
         return jsonify({"error": f"Failed to start server: {str(e)}"}), 500
     finally:
-        # Clear startup timestamp if it exists
-        with _start_timestamps_lock:
-            _start_timestamps.pop(model, None)
+        if not start_success:
+            # Clear startup timestamp if start failed
+            with _start_timestamps_lock:
+                _start_timestamps.pop(model, None)
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -1206,6 +1211,9 @@ def api_stop():
         log_event("stop", model, port, pid, "stopped")
     else:
         log_event("stop", model, port, pid, "kill_failed")
+    # Clear startup timestamp if model was starting
+    with _start_timestamps_lock:
+        _start_timestamps.pop(model, None)
     # Clear the WSL PID tracking for this model
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         with _wsl_pids_lock:
