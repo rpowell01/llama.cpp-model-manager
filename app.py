@@ -535,6 +535,17 @@ def check_port_active(port: int) -> bool:
         return False
 
 
+def _check_model_ready(port: int) -> bool:
+    """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
+    host = DEFAULTS["host"]
+    url = f"http://{host}:{port}/v1/models"
+    try:
+        resp = requests.get(url, timeout=0.5)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     cmd: list[str] = [
         str(LLAMA_SERVER),
@@ -902,9 +913,13 @@ def _status_for_model(model: str, meta: dict[str, Any]) -> dict[str, Any]:
             with _start_timestamps_lock:
                 if model in _start_timestamps:
                     if active:
-                        status = "running"
-                        # Clear the timestamp since model is now ready
-                        _start_timestamps.pop(model, None)
+                        # Verify model readiness via health endpoint before marking as running
+                        if _check_model_ready(port):
+                            status = "running"
+                            # Clear the timestamp since model is now ready
+                            _start_timestamps.pop(model, None)
+                        else:
+                            status = "starting"
                     else:
                         status = "starting"
     # File size if it exists
@@ -2971,6 +2986,7 @@ const CACHE_VERSION = "{{ cache_version }}";
 let selectedModel = null;
 let currentModelRows = []; // Cache of model data from latest refresh
 let autoSearchAttempted = new Set(); // Track auto-search attempts per model (web-iet)
+let startingIntervals = {}; // Track auto-refresh intervals for models in 'starting' state (web-rev)
 
  function selectModel(modelName) {
    selectedModel = modelName;
@@ -3493,8 +3509,8 @@ const html = filtered.map((r) => {
     + '</div>'
     + '<div class="tile-actions actions">'
     + dlHtml
-    + ' <button class="run" onclick="act(\'' + jsEscape(r.model) + '\', \'start\')" ' + (running || !r.file_exists ? 'disabled' : '') + '>▶ Start</button>'
-    + ' <button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')" ' + (!running ? 'disabled' : '') + '>■ Stop</button>'
+    + ' <button class="run" onclick="act(\'' + jsEscape(r.model) + '\', \'start\')" ' + (running || starting || !r.file_exists ? 'disabled' : '') + '>▶ Start</button>'
+    + ' <button class="stop" onclick="act(\'' + jsEscape(r.model) + '\', \'stop\')" ' + (!running && !starting ? 'disabled' : '') + '>■ Stop</button>'
     + ' <button class="add" onclick="downloadModel(\'' + jsEscape(r.model) + '\', true)">＋ Add Variant</button>'
     + ' <button class="del" onclick="promptDeleteModel(\'' + jsEscape(r.model) + '\')">✕ Delete</button>'
     + (running ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' + jsEscape(r.model) + '\')">💬 Chat</button>' : '')
@@ -3564,7 +3580,25 @@ async function act(model, verb) {
       capturedBtn.disabled = false; 
       capturedBtn.textContent = capturedPrev; 
       console.log('Calling refresh()');
-      refresh(true); 
+      refresh(true);
+      // If this was a start action, begin periodic refresh until model leaves 'starting' state (web-rev)
+      if (verb === 'start') {
+        // Clear any existing interval for this model to avoid duplicates
+        if (startingIntervals[model]) {
+          clearInterval(startingIntervals[model]);
+        }
+        // Set an interval that refreshes every 2 seconds (use showLoading=false to avoid annoying spinner)
+        const intervalId = setInterval(async () => {
+          await refresh(false);
+          // Check if model still starting
+          const modelData = currentModelRows.find(r => r.model === model);
+          if (modelData && modelData.status !== 'starting') {
+            clearInterval(intervalId);
+            delete startingIntervals[model];
+          }
+        }, 2000);
+        startingIntervals[model] = intervalId;
+      }
     }, delay);
   } catch (e) {
     console.error('act() error:', e);
