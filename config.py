@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+Configuration and platform detection for llama.cpp web frontend.
+
+This module centralizes all constants, paths, and platform-specific logic.
+"""
+
+from __future__ import annotations
+
+import platform
+import sys
+from pathlib import Path
+from typing import Any
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Paths
+# ──────────────────────────────────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODELS_DIR = BASE_DIR / "models"
+MODELS_JSON = BASE_DIR / "models.json"
+LOG_FILE = BASE_DIR / "running_models.log"
+ENV_FILE = BASE_DIR / ".env"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Default server parameters
+DEFAULTS: dict[str, Any] = {
+    "host": "127.0.0.1",
+    "port": 11000,
+    "cache_size": 32768,
+    "threads": 16,
+    "threads_batch": 22,
+    "timeout": 3600,
+    "mlock": False,
+    "flash_attn": "off",
+    "no_mmap": True,
+    "parallel": 2,
+    "ubatch_size": 256,
+}
+
+# Flask server port (set by app.py at runtime)
+FLASK_PORT: int = 5000
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Platform detection
+# ──────────────────────────────────────────────────────────────────────────────
+WINDOWS = platform.system() == "Windows"
+
+# Check for WSL (Windows Subsystem for Linux)
+WSL = False
+if not WINDOWS:
+    try:
+        proc_version = Path("/proc/version")
+        if proc_version.exists() and "microsoft" in proc_version.read_text().lower():
+            WSL = True
+    except Exception:
+        pass
+
+# ──────────────────────────────────────────────────────────────────────────────
+# llama-server binary location
+# ──────────────────────────────────────────────────────────────────────────────
+LLAMA_SERVER = None
+
+if WINDOWS:
+    candidate = BASE_DIR / "llama-server.exe"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+elif WSL:
+    # On WSL, prefer Windows binary for better compatibility
+    candidate = BASE_DIR / "llama-server.exe"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+else:
+    # On Linux, check for native binary first, then Windows binary
+    candidate = BASE_DIR / "llama-server"
+    if candidate.exists():
+        LLAMA_SERVER = candidate
+    else:
+        candidate = BASE_DIR / "llama-server.exe"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+
+PYTHON = sys.executable
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Utility functions
+# ──────────────────────────────────────────────────────────────────────────────
+def convert_path_for_binary(path: Path) -> str:
+    r"""Convert path for the binary being used.
+
+    On Linux with Windows binary (WSL), convert /mnt/c/... to C:/...
+    Windows APIs accept forward slashes, so we use C:/... format.
+
+    Args:
+        path: The Path object to convert
+
+    Returns:
+        String representation of the path, converted if necessary
+    """
+    path_str = str(path)
+    if LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe') and path_str.startswith('/mnt/'):
+        # Convert /mnt/X/... to X:/...
+        # Windows APIs accept forward slashes, avoiding backslash escaping issues
+        parts = path_str.split('/')
+        if len(parts) >= 3 and parts[1] == 'mnt':
+            drive = parts[2].upper()
+            # Use forward slashes - Windows APIs accept this format
+            windows_path = drive + ':/' + '/'.join(parts[3:])
+            return windows_path
+    return path_str
