@@ -23,6 +23,7 @@ lifecycle_bp = Blueprint("lifecycle", __name__)
 @lifecycle_bp.route("/api/start", methods=["POST"])
 def api_start():
     start_success = False
+    model = None  # Ensure model is defined for except/finally blocks
     try:
         data = request.get_json(force=True) or {}
         model = data.get("model", "").strip()
