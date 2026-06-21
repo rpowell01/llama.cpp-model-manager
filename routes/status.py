@@ -1,4 +1,5 @@
 """Status and health check endpoints."""
+import time
 from flask import Blueprint, render_template, jsonify, Response
 from typing import Generator
 

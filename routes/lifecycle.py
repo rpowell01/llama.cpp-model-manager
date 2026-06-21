@@ -1,4 +1,5 @@
 """Lifecycle management: start and stop models."""
+import logging
 from flask import Blueprint, jsonify, request
 import subprocess
 import threading
@@ -17,6 +18,8 @@ from state import (
     _start_timestamps_lock,
     log_event,
 )
+
+log = logging.getLogger("llamaweb")
 
 lifecycle_bp = Blueprint("lifecycle", __name__)
 
@@ -56,7 +59,8 @@ def api_start():
 
         # Build command
         model_path = BASE_DIR / meta["model_path"]
-        cmd, env = build_cmd(model_path, meta)
+        cmd = build_cmd(model, port, meta)
+        env = os.environ.copy()
 
         # Launch process
         log.info(f"Starting model {model}: {' '.join(cmd)}")
