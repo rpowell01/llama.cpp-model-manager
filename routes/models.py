@@ -1,8 +1,12 @@
 """Model CRUD operations."""
+import requests
 from flask import Blueprint, jsonify, request
+from logging import getLogger
 
 from config import DEFAULTS
 from models import get_models, save_models, add_model_entry, delete_model_entry
+
+log = getLogger("llamaweb")
 
 models_bp = Blueprint("models", __name__)
 

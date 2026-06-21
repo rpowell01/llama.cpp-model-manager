@@ -180,7 +180,7 @@ start_app() {
     cd "$SCRIPT_DIR"
     
     # Start the Flask application
-    exec python app.py "$@"
+    exec python main.py "$@"
 }
 
 # Cleanup on exit
