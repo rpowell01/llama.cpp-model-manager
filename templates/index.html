@@ -1395,10 +1395,10 @@ const html = filtered.map((r) => {
     dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
   } else if (dl.status === 'complete') {
     dlHtml = '<button class="download" disabled>✓ Done</button>';
-  } else if (dl.status === 'error') {
-    dlHtml = '<button class="download" onclick="retryDownload(jsEscape(r.model), true)">🔄 Retry</button>';
-  } else if (partial > 0) {
-    dlHtml = '<button class="download" onclick="resumeDownload(jsEscape(r.model), ' + partial + ')">▶ Resume</button>';
+   } else if (dl.status === 'error') {
+     dlHtml = '<button class="download" onclick="retryDownload(' + jsEscape(r.model) + ', true)">🔄 Retry</button>';
+   } else if (partial > 0) {
+     dlHtml = '<button class="download" onclick="resumeDownload(' + jsEscape(r.model) + ', ' + partial + ')">▶ Resume</button>';
    } else {
      const force = r.file_exists ? 'true' : 'false';
      dlHtml = '<button class="download" onclick="downloadWithResume(\'' + jsEscape(r.model) + '\', false, 0, ' + force + ')">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
@@ -1696,6 +1696,7 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
           + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
           + '<div id="progress-bar-' + safeId + '" style="background: var(--btn-download); height: 100%; width: 0%; transition: width 0.2s;"></div>'
           + '</div>'
+          + '<div id="progress-details-' + safeId + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;"></div>'
           + '</div>';
         tile.insertAdjacentHTML('beforeend', progressHtml);
       }
