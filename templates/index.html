@@ -1916,10 +1916,13 @@ document.getElementById('addForm').addEventListener('submit', async function(e) 
       alert('Error: ' + result.error);
     } else {
       log(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
+      // Auto-download the model after successful addition
+      const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
+      _triggerDownload(data.name, downloadUrl, data.expected_size, false);
       toggleAddForm();
-       e.target.reset();
-       refresh();
-     }
+      e.target.reset();
+      refresh();
+      }
    } catch (err) {
      log('<b>Error:</b> ' + err, 'red');
      alert('Error: ' + err);
