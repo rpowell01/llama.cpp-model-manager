@@ -1,13 +1,18 @@
 """Download management endpoints."""
-from flask import Blueprint, jsonify, request, Response
-from typing import Generator
+import json
+from logging import getLogger
 import time
+from typing import Generator
+
+from flask import Blueprint, jsonify, request, Response
 import requests
 
 from config import BASE_DIR, DEFAULTS
-from models import get_models, save_models
 from downloads import start_download, download_status, download_lock
+from models import get_models, save_models
 from utils import estimate_gguf_size
+
+log = getLogger("llamaweb")
 
 downloads_bp = Blueprint("downloads", __name__)
 
