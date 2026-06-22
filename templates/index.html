@@ -845,6 +845,7 @@
         </select>
       </label>
       <label>No MMap: <input type="checkbox" name="no_mmap" checked></label>
+      <label>Auto-download: <input type="checkbox" name="auto_download" checked></label>
       <label>Parallel: <input type="number" name="parallel" value="4" min="1"></label>
       <label>UBatch Size: <input type="number" name="ubatch_size" value="512" min="1"></label>
       <div>
@@ -1892,15 +1893,15 @@ document.getElementById('addForm').addEventListener('submit', async function(e) 
   e.preventDefault();
   const formData = new FormData(e.target);
   const data = {};
-  formData.forEach((value, key) => {
-    if (key === 'mlock' || key === 'no_mmap') {
-      data[key] = formData.get(key) === 'on';
-    } else if (['expected_size', 'port', 'cache_size', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size'].includes(key)) {
-      data[key] = parseInt(value, 10);
-    } else {
-      data[key] = value;
-    }
-  });
+   formData.forEach((value, key) => {
+     if (key === 'mlock' || key === 'no_mmap' || key === 'auto_download') {
+       data[key] = formData.get(key) === 'on';
+     } else if (['expected_size', 'port', 'cache_size', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size'].includes(key)) {
+       data[key] = parseInt(value, 10);
+     } else {
+       data[key] = value;
+     }
+   });
   const submitBtn = e.target.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Adding…';
@@ -1914,15 +1915,17 @@ document.getElementById('addForm').addEventListener('submit', async function(e) 
     if (result.error) {
       log('<b>Add error:</b> ' + result.error, 'red');
       alert('Error: ' + result.error);
-    } else {
-      log(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
-      // Auto-download the model after successful addition
-      const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
-      _triggerDownload(data.name, downloadUrl, data.expected_size, false);
-      toggleAddForm();
-      e.target.reset();
-      refresh();
-      }
+     } else {
+       log(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
+       // Auto-download the model after successful addition if checkbox is checked
+       if (data.auto_download) {
+         const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
+         _triggerDownload(data.name, downloadUrl, data.expected_size, false);
+       }
+       toggleAddForm();
+       e.target.reset();
+       refresh();
+       }
    } catch (err) {
      log('<b>Error:</b> ' + err, 'red');
      alert('Error: ' + err);
