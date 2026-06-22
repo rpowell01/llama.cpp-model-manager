@@ -1396,9 +1396,9 @@ const html = filtered.map((r) => {
   } else if (dl.status === 'complete') {
     dlHtml = '<button class="download" disabled>✓ Done</button>';
    } else if (dl.status === 'error') {
-     dlHtml = '<button class="download" onclick="retryDownload(' + jsEscape(r.model) + ', true)">🔄 Retry</button>';
+     dlHtml = '<button class="download" onclick="retryDownload(\'' + jsEscape(r.model) + '\', true)">🔄 Retry</button>';
    } else if (partial > 0) {
-     dlHtml = '<button class="download" onclick="resumeDownload(' + jsEscape(r.model) + ', ' + partial + ')">▶ Resume</button>';
+     dlHtml = '<button class="download" onclick="resumeDownload(\'' + jsEscape(r.model) + '\', ' + partial + ')">▶ Resume</button>';
    } else {
      const force = r.file_exists ? 'true' : 'false';
      dlHtml = '<button class="download" onclick="downloadWithResume(\'' + jsEscape(r.model) + '\', false, 0, ' + force + ')">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
