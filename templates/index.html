@@ -1779,6 +1779,22 @@ function startProgressListener(model) {
           : (speed ? speed.toFixed(1) + ' MB/s' + ' · ' : '');
       downloadProgressState[model].details = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       
+      // Update DOM directly for real-time progress
+      const safeModelId = model.replace(/[^a-zA-Z0-9]/g, '_');
+      const bar = document.getElementById('progress-bar-' + safeModelId);
+      const text = document.getElementById('progress-text-' + safeModelId);
+      const details = document.getElementById('progress-details-' + safeModelId);
+      if (bar) bar.style.width = progress + '%';
+      if (text) text.textContent = progress + '%';
+      if (details) {
+        const statusText = data.status === 'error'
+          ? 'Error: ' + (data.error || 'Unknown')
+          : data.status === 'complete'
+            ? 'Complete!'
+            : (speed ? speed.toFixed(1) + ' MB/s' : '');
+        details.textContent = statusText;
+      }
+
       if (data.status === 'complete' || data.status === 'error') {
         setTimeout(() => {
           eventSource.close();
