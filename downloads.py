@@ -18,6 +18,7 @@ import requests
 
 from config import BASE_DIR
 from models import get_models
+from state import log_event
 
 # Global download status tracking
 download_status: Dict[str, Dict[str, Any]] = {}
@@ -39,16 +40,7 @@ def load_env() -> dict[str, str]:
     return env
 
 
-def log_event(action: str, model: str, port: int | str, pid: int | str | None, status: str) -> None:
-    """Write a structured log entry to the event log and info logger."""
-    log_file = BASE_DIR / "running_models.log"
-    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    entry = json.dumps(
-        {"time": ts, "action": action, "model": model, "port": port, "pid": pid, "status": status}
-    )
-    with open(log_file, "a", encoding="utf-8") as fh:
-        fh.write(entry + "\n")
-    log.info(entry)
+
 
 
 def _download_worker(

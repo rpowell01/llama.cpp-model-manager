@@ -37,7 +37,7 @@ DEFAULTS: dict[str, Any] = {
     "ubatch_size": 256,
 }
 
-# Flask server port (set by app.py at runtime)
+# Flask server port (set by main.py at runtime)
 FLASK_PORT: int = 5000
 
 # ──────────────────────────────────────────────────────────────────────────────
