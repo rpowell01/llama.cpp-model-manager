@@ -1414,6 +1414,7 @@ const html = filtered.map((r) => {
      dlProgress = downloadProgressState[r.model];
    }
    // Show progress bar if status is downloading OR if there's active progress (progress > 0)
+   // Also show if client state has progress > 0 (handles resume case where API status might be 'resumed')
    const showProgress = dlProgress.status === 'downloading' || (dlProgress.progress && dlProgress.progress > 0);
   const progressHtml = showProgress
     ? '<div id="progress-' + r.model.replace(/[^a-zA-Z0-9]/g, '_') + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
@@ -1575,12 +1576,30 @@ async function downloadModel(model, force = false) {
     // If download started automatically (single result), show progress
     if (data.status === 'download started') {
       log(`<b>Download:</b> ${model} started`, 'green');
-      // Small delay to let the download worker set initial status
+      showProgressBar(model, data.results?.[0]?.size || 0);
+      // Inject progress bar HTML into tile DOM
+      const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+      const tile = document.querySelector('[data-model="' + model + '"]');
+      if (tile) {
+        const progressId = 'progress-' + safeId;
+        if (!document.getElementById(progressId)) {
+          const progressHtml = '<div id="' + progressId + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
+            + '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem;">'
+            + '<strong style="font-size: .85rem;">Download Progress</strong>'
+            + '<span id="progress-text-' + safeId + '" style="font-size: .75rem;">0%</span>'
+            + '</div>'
+            + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
+            + '<div id="progress-bar-' + safeId + '" style="background: var(--btn-download); height: 100%; width: 0%; transition: width 0.2s;"></div>'
+            + '</div>'
+            + '<div id="progress-details-' + safeId + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;"></div>'
+            + '</div>';
+          tile.insertAdjacentHTML('beforeend', progressHtml);
+        }
+      }
+      // Small delay to ensure progress bar is rendered before SSE starts
       setTimeout(() => {
-        showProgressBar(model, data.results?.[0]?.size || 0);
         startProgressListener(model);
-        refresh();
-      }, 100);
+      }, 50);
       return;
     }
     
@@ -1637,11 +1656,11 @@ async function retryDownload(model, resume = false) {
   const dlStatus = status[model] || {};
   
   if (dlStatus.status === 'error' && resume && confirm(`Resume interrupted download for ${model}?`)) {
-    downloadWithResume(model, true);
+    downloadWithResume(model, true, dlStatus.downloaded || 0);
   } else if (dlStatus.status === 'error' && confirm(`Retry failed download for ${model}?`)) {
-    downloadModel(model, true);  // Use force for retry
+    downloadWithResume(model, false, 0, true);  // Use force for retry
   } else {
-    downloadModel(model, true);  // Use force for retry
+    downloadWithResume(model, false, 0, true);  // Use force for retry
   }
 }
 
@@ -1681,14 +1700,32 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
   
   if (data.error) {
     log('<b>Resume error:</b> ' + data.error, 'red');
-   } else {
-     log(`<b>Download:</b> ${model} resumed`, 'green');
-     showProgressBar(model, fileInfo.size || 0);
-     // Small delay to ensure progress bar is rendered before refresh and SSE starts
-     await new Promise(resolve => setTimeout(resolve, 50));
-     startProgressListener(model);
-     refresh();
-   }
+  } else {
+    log(`<b>Download:</b> ${model} resumed`, 'green');
+    showProgressBar(model, fileInfo.size || 0);
+    // Inject progress bar HTML into tile DOM (fix for re-download visibility)
+    const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+    const tile = document.querySelector('[data-model="' + model + '"]');
+    if (tile) {
+      const progressId = 'progress-' + safeId;
+      if (!document.getElementById(progressId)) {
+        const progressHtml = '<div id="' + progressId + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
+          + '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem;">'
+          + '<strong style="font-size: .85rem;">Download Progress</strong>'
+          + '<span id="progress-text-' + safeId + '" style="font-size: .75rem;">0%</span>'
+          + '</div>'
+          + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
+          + '<div id="progress-bar-' + safeId + '" style="background: var(--btn-download); height: 100%; width: 0%; transition: width 0.2s;"></div>'
+          + '</div>'
+          + '<div id="progress-details-' + safeId + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;"></div>'
+          + '</div>';
+        tile.insertAdjacentHTML('beforeend', progressHtml);
+      }
+    }
+    // Small delay to ensure progress bar is rendered before SSE starts
+    await new Promise(resolve => setTimeout(resolve, 50));
+    startProgressListener(model);
+  }
 }
 
 function showDownloadModal(model, results, force = false) {
@@ -1771,7 +1808,10 @@ function startProgressListener(model) {
       if (!downloadProgressState[model]) {
         downloadProgressState[model] = { status: 'downloading', progress: 0, downloaded: 0, size: 0, speed_mbps: 0 };
       }
-      downloadProgressState[model].status = data.status || 'downloading';
+      // Keep status as 'downloading' if the download is still in progress (resumed, error, etc.)
+      // Only change to 'complete' or 'error' when truly finished
+      const isActiveStatus = ['downloading', 'resumed', 'error', 'starting'].includes(data.status);
+      downloadProgressState[model].status = isActiveStatus ? 'downloading' : (data.status || 'downloading');
       downloadProgressState[model].progress = progress;
       downloadProgressState[model].downloaded = downloaded;
       downloadProgressState[model].size = size;
@@ -1784,8 +1824,11 @@ function startProgressListener(model) {
           : (speed ? speed.toFixed(1) + ' MB/s' + ' · ' : '');
       downloadProgressState[model].details = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       
-      // Update DOM directly for real-time progress
+      // Update state for tile rendering (refresh() will update the DOM)
+      // This avoids race conditions between SSE updates and tile re-rendering
       const safeModelId = model.replace(/[^a-zA-Z0-9]/g, '_');
+      
+      // Update DOM directly for real-time progress
       const bar = document.getElementById('progress-bar-' + safeModelId);
       const text = document.getElementById('progress-text-' + safeModelId);
       const details = document.getElementById('progress-details-' + safeModelId);
@@ -1799,7 +1842,7 @@ function startProgressListener(model) {
             : (speed ? speed.toFixed(1) + ' MB/s' : '');
         details.textContent = statusText;
       }
-
+      
       if (data.status === 'complete' || data.status === 'error') {
         // Remove the progress bar from DOM
         const container = document.getElementById('progress-' + safeModelId);
@@ -1850,6 +1893,26 @@ async function _triggerDownload(model, url, size, force = false) {
     
     // Show progress bar for active downloads
     showProgressBar(data.model, size || 0);
+    
+    // Inject progress bar HTML into tile DOM
+    const safeId = data.model.replace(/[^a-zA-Z0-9]/g, '_');
+    const tile = document.querySelector('[data-model="' + data.model + '"]');
+    if (tile) {
+      const progressId = 'progress-' + safeId;
+      if (!document.getElementById(progressId)) {
+        const progressHtml = '<div id="' + progressId + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
+          + '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem;">'
+          + '<strong style="font-size: .85rem;">Download Progress</strong>'
+          + '<span id="progress-text-' + safeId + '" style="font-size: .75rem;">0%</span>'
+          + '</div>'
+          + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
+          + '<div id="progress-bar-' + safeId + '" style="background: var(--btn-download); height: 100%; width: 0%; transition: width 0.2s;"></div>'
+          + '</div>'
+          + '<div id="progress-details-' + safeId + '" style="font-size: .7rem; color: var(--text2); margin-top: .25rem;"></div>'
+          + '</div>';
+        tile.insertAdjacentHTML('beforeend', progressHtml);
+      }
+    }
     
     if (data.status === 'complete') {
       log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');

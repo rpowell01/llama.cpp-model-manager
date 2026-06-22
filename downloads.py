@@ -106,20 +106,30 @@ def _download_worker(
         # Stream download
         try:
             response = requests.get(url, headers=headers, stream=True, timeout=30)
-            response.raise_for_status()
         except requests.exceptions.RequestException as e:
             log.error(f"Failed to connect to download URL {url}: {e}")
             raise
 
         with response as r:
-            if r.status_code == 416:  # Range not satisfiable
+            if r.status_code == 416:  # Range not satisfiable - server doesn't support resume
+                log.info(f"Server doesn't support range requests for {model_name}, starting fresh download")
+                # Delete partial file and restart download without Range header
+                out_path.unlink()
+                resume_pos = 0
+                headers.pop("Range", None)
+                # Update status to show fresh start
                 with download_lock:
                     download_status[model_name] = {
-                        "status": "complete",
-                        "progress": 100,
-                        "size": out_path.stat().st_size,
+                        "status": "downloading",
+                        "progress": 0,
+                        "size": expected_size if expected_size > 0 else 0,
+                        "downloaded": 0,
                     }
-                return
+                # Restart the request without Range header
+                r.close()
+                response = requests.get(url, headers=headers, stream=True, timeout=30)
+                response.raise_for_status()
+                r = response
 
             r.raise_for_status()
             downloaded = resume_pos

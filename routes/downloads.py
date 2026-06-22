@@ -114,8 +114,9 @@ def api_download():
         else:
             return jsonify({"status": "complete", "model": model, "size": actual_size})
 
-    start_download(model, url, expected_size)
-    return jsonify({"status": "download started", "model": model})
+    # Start the download - the worker will handle resuming from existing file position
+    start_download(model, url, expected_size, force=force)
+    return jsonify({"status": "download started", "model": model, "resumed": resume})
 
 
 @downloads_bp.route("/api/download-search", methods=["POST"])
