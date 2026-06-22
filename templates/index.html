@@ -1682,6 +1682,24 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
   } else {
     log(`<b>Download:</b> ${model} resumed`, 'green');
     showProgressBar(model, fileInfo.size || 0);
+    // Inject progress bar HTML into tile DOM (fix for re-download visibility)
+    const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+    const tile = document.querySelector('[data-model="' + model + '"]');
+    if (tile) {
+      const progressId = 'progress-' + safeId;
+      if (!document.getElementById(progressId)) {
+        const progressHtml = '<div id="' + progressId + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
+          + '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem;">'
+          + '<strong style="font-size: .85rem;">Download Progress</strong>'
+          + '<span id="progress-text-' + safeId + '" style="font-size: .75rem;">0%</span>'
+          + '</div>'
+          + '<div style="background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden;">'
+          + '<div id="progress-bar-' + safeId + '" style="background: var(--btn-download); height: 100%; width: 0%; transition: width 0.2s;"></div>'
+          + '</div>'
+          + '</div>';
+        tile.insertAdjacentHTML('beforeend', progressHtml);
+      }
+    }
     startProgressListener(model);
   }
 }
@@ -1796,6 +1814,10 @@ function startProgressListener(model) {
       }
 
       if (data.status === 'complete' || data.status === 'error') {
+        // Remove the progress bar from DOM
+        const container = document.getElementById('progress-' + safeModelId);
+        if (container) container.remove();
+        
         setTimeout(() => {
           eventSource.close();
           // Clean up progress state after completion
