@@ -1399,10 +1399,10 @@ const html = filtered.map((r) => {
     dlHtml = '<button class="download" onclick="retryDownload(jsEscape(r.model), true)">🔄 Retry</button>';
   } else if (partial > 0) {
     dlHtml = '<button class="download" onclick="resumeDownload(jsEscape(r.model), ' + partial + ')">▶ Resume</button>';
-  } else {
-    const filename = r.filename || (r.model_path ? r.model_path.split('/').pop() : r.model);
-    dlHtml = '<button class="download" onclick="downloadByFilename(\'' + jsEscape(r.model) + '\', \'' + jsEscape(filename) + '\', true)">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
-  }
+   } else {
+     const force = r.file_exists ? 'true' : 'false';
+     dlHtml = '<button class="download" onclick="downloadWithResume(\'' + jsEscape(r.model) + '\', false, 0, ' + force + ')">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
+   }
   const portCell = r.file_exists
     ? '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>'
     : '<span class="chip bad">-</span>';
