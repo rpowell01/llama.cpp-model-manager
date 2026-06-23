@@ -1,0 +1,233 @@
+/* Chat Component Styles */
+/* Base chat interface (non-modal) - lines 332-464, 482-520, plus refinements */
+
+.chat-section {
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.chat-params {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-params .panel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.chat-params input[type="range"] {
+  width: 100%;
+  height: 4px;
+  background: var(--surface2);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.chat-params input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--blue);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.chat-params input[type="number"] {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  color: var(--text);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  width: 70px;
+}
+
+.chat-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chat-message {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  max-width: 90%;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: var(--btn-add);
+  color: #fff;
+}
+
+.chat-message.assistant {
+  align-self: flex-start;
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.chat-message.error {
+  align-self: center;
+  background: var(--btn-del);
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.chat-input-area {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  color: var(--text);
+  padding: 0.5rem;
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.chat-input-area textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.btn-chat-send {
+  background: var(--btn-add);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  align-self: flex-end;
+}
+
+.btn-chat-send:hover {
+  opacity: 0.9;
+}
+
+.btn-chat-send:disabled {
+  background: var(--text2);
+  cursor: not-allowed;
+}
+
+.btn-chat-clear {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-chat-clear:hover {
+  opacity: 0.9;
+}
+
+.chat-stats {
+  font-size: 0.75rem;
+  color: var(--text2);
+  text-align: right;
+}
+
+/* Tile-specific chat overrides - lines 482-520 */
+.tile .tile-chat {
+  border-top: 1px solid var(--surface2);
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.tile .chat-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.tile .chat-params .panel-item {
+  min-width: 100px;
+  font-size: 0.8rem;
+}
+
+.tile .chat-messages {
+  max-height: 120px;
+  font-size: 0.85rem;
+}
+
+.tile .chat-input-area {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.tile .chat-input-area textarea {
+  min-height: 40px;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.tile .btn-chat-send {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.tile .chat-stats {
+  font-size: 0.75rem;
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+/* Smooth transitions for interactive elements - lines 527-541 */
+.chat-section,
+.tile .tile-chat,
+.chat-params input[type="range"],
+.chat-params input[type="number"],
+.chat-input-area textarea,
+.btn-chat-send {
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-section :focus-visible,
+.tile .tile-chat :focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Visual hierarchy improvements - lines 782-795 */
+.chat-message {
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  max-width: 85%;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.chat-stats {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}

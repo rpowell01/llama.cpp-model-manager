@@ -1,0 +1,84 @@
+/* Properties panel container */
+.properties-panel {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  padding: 1rem;
+  position: relative;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+/* Panel header */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: relative;
+  padding-right: 1.5rem;
+}
+
+.panel-close-btn:hover {
+  color: var(--text);
+}
+
+/* Panel sections */
+.panel-section {
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.panel-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Grid layout within panel */
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+/* Individual panel item */
+.panel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.panel-item .label {
+  font-size: 0.75rem;
+  color: var(--text2);
+}
+
+.panel-item .value {
+  font-size: 0.9rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.panel-item .value code {
+  background: var(--surface2);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+/* Full width panel item */
+.panel-item.full-width {
+  grid-column: 1 / -1;
+}
+
+/* Hover effect for HF repo card */
+.hf-repo-card:hover {
+  border-color: var(--blue) !important;
+}

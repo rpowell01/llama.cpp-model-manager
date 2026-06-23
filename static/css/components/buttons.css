@@ -1,0 +1,161 @@
+/* Base button and toolbar link styles */
+.toolbar button,
+.toolbar a {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: #fff;
+}
+
+/* Button color variants */
+.btn-run {
+  background: var(--btn-run);
+}
+
+.btn-stop {
+  background: var(--btn-stop);
+}
+
+.btn-download {
+  background: var(--btn-download);
+}
+
+.btn-add {
+  background: var(--btn-add);
+}
+
+.btn-del {
+  background: var(--btn-del);
+}
+
+.btn-search {
+  background: var(--btn-search);
+}
+
+.btn-goto {
+  background: var(--btn-goto);
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* Action buttons within tile/panel contexts */
+.actions button {
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #fff;
+}
+
+.actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actions .run {
+  background: var(--btn-run);
+}
+
+.actions .stop {
+  background: var(--btn-stop);
+}
+
+.actions .download {
+  background: var(--btn-download);
+}
+
+.actions .add {
+  background: var(--btn-add);
+}
+
+.actions .del {
+  background: var(--btn-del);
+}
+
+.actions .goto {
+  background: var(--blue);
+}
+
+.actions .chat {
+  background: var(--blue);
+}
+
+/* Chat send button (modal and tile contexts) */
+.btn-chat-send {
+  background: var(--btn-run);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  align-self: flex-end;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-chat-send:hover:not(:disabled) {
+  background: #219a52;
+}
+
+.btn-chat-send:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-chat-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Chat clear button */
+.btn-chat-clear {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: opacity 0.2s ease;
+}
+
+.btn-chat-clear:hover {
+  opacity: 0.9;
+}
+
+/* Small edit port button */
+.btn-edit-port {
+  padding: 0.15rem 0.4rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-edit-port:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Cancel button used in modals/forms */
+.btn-cancel {
+  background: var(--red);
+  color: #fff;
+}

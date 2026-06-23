@@ -1,0 +1,27 @@
+/* Responsive Styles */
+/* Page-level layout adjustments for different screen sizes */
+
+/* Small screens (max-width: 640px) */
+@media (max-width: 640px) {
+  main {
+    padding: 1rem;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .tile-header,
+  .tile-actions {
+    font-size: 0.82rem;
+  }
+}
+
+/* Medium to large screens: content area grid changes */
+@media (max-width: 1024px) {
+  #content-area.has-panel {
+    grid-template-columns: 1fr;
+  }
+}

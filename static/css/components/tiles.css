@@ -1,0 +1,57 @@
+/* Tile grid layout */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* Individual tile card */
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.tile.running {
+  border-left: 4px solid var(--green);
+  opacity: 0.98;
+}
+
+/* Tile header */
+.tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tile-header b {
+  font-size: 1.05rem;
+  word-break: break-word;
+  flex: 1;
+}
+
+/* Tile body content */
+.tile-body {
+  font-size: 0.87rem;
+  color: var(--text2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tile-body code {
+  color: var(--text);
+}
+
+/* Tile action buttons */
+.tile-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
