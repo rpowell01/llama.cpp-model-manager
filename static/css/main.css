@@ -1,0 +1,32 @@
+/* Main CSS Entry Point */
+/* Import order matters to preserve cascade and specificity */
+
+/* 1. CSS custom properties and theme definitions */
+@import url("variables.css");
+
+/* 2. Base layout and structural elements */
+@import url("layout.css");
+
+/* 3. Button components */
+@import url("components/buttons.css");
+
+/* 4. Tile components */
+@import url("components/tiles.css");
+
+/* 5. Properties panel */
+@import url("components/panel.css");
+
+/* 6. Form elements */
+@import url("components/forms.css");
+
+/* 7. Utility classes */
+@import url("utils.css");
+
+/* 8. Chat component (non-modal) */
+@import url("components/chat.css");
+
+/* 9. Modal components */
+@import url("components/modals.css");
+
+/* 10. Responsive adjustments */
+@import url("responsive.css");

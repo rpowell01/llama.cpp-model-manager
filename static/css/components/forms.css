@@ -1,0 +1,61 @@
+/* Toolbar search input */
+.toolbar input[type="search"] {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--surface2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* Add model form */
+#add-model-form label {
+  display: block;
+  margin-top: 0.5rem;
+  font-weight: bold;
+}
+
+#add-model-form input,
+#add-model-form select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  margin-top: 0.25rem;
+}
+
+/* Port edit input */
+.port-input {
+  width: 70px;
+  padding: 0.2rem;
+  border: 1px solid var(--text2);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Meta input fields in panel */
+.meta-input {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.meta-input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+}
+
+.meta-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}

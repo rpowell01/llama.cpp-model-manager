@@ -1,0 +1,54 @@
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface2: #0f3460;
+  --text: #e0e0e0;
+  --text2: #a0a0b8;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --yellow: #f1c40f;
+  --blue: #3498db;
+  --btn-run: #27ae60;
+  --btn-stop: #e74c3c;
+  --btn-download: #ff9800;
+  --btn-add: #9b59b6;
+  --btn-del: #e67e22;
+  --btn-search: #3498db;
+  --btn-goto: #00bcd4;
+}
+
+/* Theme: Dark (default) */
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface2: #0f3460;
+  --text: #e0e0e0;
+  --text2: #a0a0b8;
+}
+
+/* Theme: Light */
+[data-theme="light"] {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --surface2: #e0e0e0;
+  --text: #333333;
+  --text2: #666666;
+}
+
+/* Theme: Solarized Dark */
+[data-theme="solarized-dark"] {
+  --bg: #002b36;
+  --surface: #073642;
+  --surface2: #586e75;
+  --text: #839496;
+  --text2: #93a1a1;
+}
+
+/* Theme: Nord */
+[data-theme="nord"] {
+  --bg: #2e3440;
+  --surface: #3b4252;
+  --surface2: #4c566a;
+  --text: #d8dee9;
+  --text2: #a5abb6;
+}
