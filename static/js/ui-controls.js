@@ -43,8 +43,6 @@ function renderTiles(rows, dlMap, query) {
 
     if (dl.status === 'downloading') {
       dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
-    } else if (dl.status === 'complete') {
-      dlHtml = '<button class="download" disabled>✓ Done</button>';
     } else if (dl.status === 'error') {
       dlHtml = '<button class="download" onclick="retryDownload(\'' + jsEscape(r.model) + '\', true)">🔄 Retry</button>';
     } else if (partial > 0) {

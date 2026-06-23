@@ -105,22 +105,18 @@ async function _triggerDownload(model, url, size, force = false) {
        }
      }
 
-     if (data.status === 'complete') {
-       log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
-       // Update progress bar to show complete
-       setTimeout(() => {
-         const safeModelId = safeId(data.model);
-         const bar = document.getElementById('progress-bar-' + safeModelId);
-         const text = document.getElementById('progress-text-' + safeModelId);
-         const details = document.getElementById('progress-details-' + safeModelId);
-         if (bar) bar.style.width = '100%';
-         if (text) text.textContent = '100% (already downloaded)';
-         if (details) details.textContent = 'Complete!';
-       }, 100);
-       return;
-     }
+      if (data.status === 'complete') {
+        log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
+        // Remove progress bar when already complete
+        setTimeout(() => {
+          const safeModelId = safeId(data.model);
+          const container = document.getElementById('progress-' + safeModelId);
+          if (container) container.remove();
+        }, 100);
+        return;
+      }
 
-    // Small delay to ensure progress bar is rendered before SSE starts
+      // Small delay to ensure progress bar is rendered before SSE starts
     await new Promise(resolve => setTimeout(resolve, 50));
 
     // Use data.model for progress listener (handles variant case)
