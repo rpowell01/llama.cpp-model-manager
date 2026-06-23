@@ -396,23 +396,38 @@ function startProgressListener(model) {
       // Update state for tile rendering (refresh() will update the DOM)
       // This avoids race conditions between SSE updates and tile re-rendering
 
-       // Update DOM directly for real-time progress
+// Update DOM directly for real-time progress
        const safeModelId = safeId(model);
        const bar = document.getElementById('progress-bar-' + safeModelId);
        const text = document.getElementById('progress-text-' + safeModelId);
        const details = document.getElementById('progress-details-' + safeModelId);
-      if (bar) bar.style.width = progress + '%';
-      if (text) text.textContent = progress + '%';
-      if (details) {
-        const statusText = data.status === 'error'
-          ? 'Error: ' + (data.error || 'Unknown')
-          : data.status === 'complete'
-            ? 'Complete!'
-            : (speed ? speed.toFixed(1) + ' MB/s' : '');
-        details.textContent = statusText;
-      }
+       if (bar) bar.style.width = progress + '%';
+       if (text) text.textContent = progress + '%';
+       if (details) {
+         const statusText = data.status === 'error'
+           ? 'Error: ' + (data.error || 'Unknown')
+           : data.status === 'complete'
+             ? 'Complete!'
+             : (speed ? speed.toFixed(1) + ' MB/s' : '');
+         details.textContent = statusText;
+       }
+
+       // Update the download button text in real-time
+       const downloadBtn = document.querySelector('[data-model="' + model + '"] .download');
+       if (downloadBtn) {
+         if (data.status === 'downloading') {
+           downloadBtn.textContent = '⬇ ' + progress + '%';
+         } else if (data.status === 'complete') {
+           downloadBtn.textContent = '✓ Done';
+         } else if (data.status === 'error') {
+           downloadBtn.textContent = '🔄 Retry';
+         }
+       }
 
       if (data.status === 'complete' || data.status === 'error') {
+        // Set status to complete so button shows "Done"
+        downloadProgressState[model].status = data.status;
+
         // Remove the progress bar from DOM
         const container = document.getElementById('progress-' + safeModelId);
         if (container) container.remove();
@@ -422,7 +437,7 @@ function startProgressListener(model) {
           // Clean up progress state after completion
           setTimeout(() => {
             delete downloadProgressState[model];
-          }, 5000);
+          }, 1000);
         }, 500);
       }
     } catch (err) {
