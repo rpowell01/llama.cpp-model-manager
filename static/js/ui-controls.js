@@ -39,11 +39,20 @@ function renderTiles(rows, dlMap, query) {
 
     const dl = dlMap[r.model] || {};
     const partial = r.partial_download || 0;
-    let dlHtml = '';
 
-    if (dl.status === 'downloading') {
-      dlHtml = '<button class="download" disabled>⬇ ' + dl.progress + '%</button>';
-    } else if (dl.status === 'error') {
+    // Check if there's an active download - use dl from API or stored progress state
+    const apiProgress = dlMap[r.model];
+    let dlProgress = (apiProgress && apiProgress.status) ? apiProgress : {};
+    // Prefer client-side progress state if it indicates active downloading
+    if (downloadProgressState[r.model] && downloadProgressState[r.model].status === 'downloading') {
+      dlProgress = downloadProgressState[r.model];
+    }
+
+    // Use dlProgress (which includes client-side state) for button display
+    let dlHtml = '';
+    if (dlProgress.status === 'downloading') {
+      dlHtml = '<button class="download" disabled>⬇ ' + (dlProgress.progress || 0) + '%</button>';
+    } else if (dlProgress.status === 'error') {
       dlHtml = '<button class="download" onclick="retryDownload(\'' + jsEscape(r.model) + '\', true)">🔄 Retry</button>';
     } else if (partial > 0) {
       dlHtml = '<button class="download" onclick="resumeDownload(\'' + jsEscape(r.model) + '\', ' + partial + ')">▶ Resume</button>';
@@ -59,13 +68,6 @@ function renderTiles(rows, dlMap, query) {
         + '</span>'
       : '<span class="chip bad">-</span>';
 
-    // Check if there's an active download - use dl from API or stored progress state
-    const apiProgress = dlMap[r.model];
-    let dlProgress = (apiProgress && apiProgress.status) ? apiProgress : {};
-    // Prefer client-side progress state if it indicates active downloading
-    if (downloadProgressState[r.model] && downloadProgressState[r.model].status === 'downloading') {
-      dlProgress = downloadProgressState[r.model];
-    }
     const showProgress = dlProgress.status === 'downloading' || (dlProgress.progress && dlProgress.progress > 0);
 
     const progressHtml = showProgress
