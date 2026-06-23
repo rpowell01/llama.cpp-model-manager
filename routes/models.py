@@ -89,6 +89,7 @@ def api_update_model_meta():
 
     meta = models[model]
     allowed_fields = {
+        "port": int,
         "cache_size": int,
         "threads": int,
         "threads_batch": int,

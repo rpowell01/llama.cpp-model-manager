@@ -150,3 +150,46 @@ def api_search_models():
     except Exception as e:
         log.error(f"Search error: {e}")
         return jsonify([])
+
+
+@hf_bp.route("/api/hf-repo-files", methods=["POST"])
+def api_hf_repo_files():
+    """Return all GGUF files from a specific Hugging Face repository."""
+    data = request.get_json(force=True) or {}
+    repo = data.get("repo", "").strip()
+    if not repo:
+        return jsonify({"error": "Missing 'repo' parameter"}), 400
+
+    try:
+        resp = requests.get(f"https://huggingface.co/api/models/{repo}", timeout=10)
+        if resp.status_code != 200:
+            log.warning(f"HF repo fetch failed for {repo}: HTTP {resp.status_code}")
+            return jsonify({"error": f"Repository not found or inaccessible"}), 404
+
+        hf_model = resp.json()
+        files = []
+        for file in hf_model.get("siblings", []):
+            if file.get("rfilename", "").lower().endswith(".gguf"):
+                filename = file["rfilename"]
+                size = file.get("size", 0)
+                if not size:
+                    size = estimate_gguf_size(repo, filename)
+                files.append({
+                    "filename": filename,
+                    "size": size,
+                    "url": f"https://huggingface.co/{repo}/resolve/main/{filename}",
+                    "downloads": hf_model.get("downloads", 0),
+                    "likes": hf_model.get("likes", 0),
+                    "repo": repo
+                })
+
+        if not files:
+            return jsonify({"error": f"No GGUF files found in repository '{repo}'"}), 404
+
+        return jsonify({"repo": repo, "files": files})
+    except requests.exceptions.RequestException as e:
+        log.error(f"HF repo files network error for {repo}: {e}")
+        return jsonify({"error": f"Network error: {e}"}), 502
+    except Exception as e:
+        log.error(f"HF repo files error for {repo}: {e}")
+        return jsonify({"error": str(e)}), 500

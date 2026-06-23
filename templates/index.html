@@ -137,6 +137,17 @@
   .actions .download { background: var(--btn-download); }
   .actions .add    { background: var(--btn-add); }
   .actions .del    { background: var(--btn-del); }
+  .port-cell { display: flex; align-items: center; gap: .25rem; }
+  .btn-edit-port {
+    padding: .15rem .4rem; border: none; border-radius: 4px;
+    font-size: .8rem; cursor: pointer; color: #fff;
+    background: rgba(255,255,255,.2);
+  }
+  .btn-edit-port:hover { background: rgba(255,255,255,.3); }
+  .port-input {
+    width: 70px; padding: .2rem; border: 1px solid var(--text2); border-radius: 4px;
+    font-size: .8rem; background: var(--surface); color: var(--text);
+  }
    .actions .goto { background: var(--blue); }
    .actions .chat { background: var(--blue); }
    #log {
@@ -884,8 +895,26 @@
    </div>
  </div>
 
+   <!-- Killo Code Config Modal -->
+   <div id="killo-config-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 700px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="margin: 0; color: var(--text);">Killo Code Provider Configuration</h3>
+         <button id="killo-config-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+      </div>
+      <p style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
+        Copy the configuration below into your Kilo Code global settings (<code>.kilo/kilo.jsonc</code> or <code>kilo.jsonc</code> at workspace root).
+      </p>
+      <div style="position: relative;">
+        <pre style="background: var(--surface2); border: 1px solid var(--surface2); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0; font-size: 0.85rem; line-height: 1.5; white-space: pre; max-height: 50vh; overflow-y: auto;"><code id="kilo-config-content" style="color: var(--text); font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;"></code></pre>
+        <button id="kilo-config-copy" style="position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.4rem 0.8rem; background: var(--blue); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">Copy</button>
+      </div>
+      <div id="kilo-config-status" style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text2);"></div>
+    </div>
+  </div>
+
   <!-- Chat Modal (bead web-e7r.1: modal container) -->
-   <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+    <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
     <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
       <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
       <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
@@ -931,6 +960,58 @@ function closePanel() {
   const contentArea = document.getElementById('content-area');
   panel.style.display = 'none';
   contentArea.classList.remove('has-panel');
+}
+
+// Kilo Code integration functions
+function generateKilloCodeConfig(modelData, modelName) {
+  // Provider key: llama_cpp_<MODEL_NAME_UPPER>
+  const key = 'llama_cpp_' + modelName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  const providerName = `Llama.cpp ${modelName}`;
+  const npm = '@ai-sdk/openai-compatible';
+  const baseURL = `http://lenovo-01.rplab.local:${modelData.port || 8080}/v1`;
+
+  return {
+    [key]: {
+      name: providerName,
+      npm: npm,
+      options: {
+        baseURL: baseURL,
+        apiKey: '${LLAMA_CPP_API_KEY}',
+        rateLimitSeconds: 0.1,
+        maxRetries: 3
+      },
+      models: {
+        [modelName]: {
+          limit: {
+            context: 16384,
+            input: 16384,
+            output: 16384
+          }
+        }
+      }
+    }
+  };
+}
+
+function openKilloConfigModal(modelData, modelName) {
+  const modal = document.getElementById('killo-config-modal');
+  const contentEl = document.getElementById('killo-config-content');
+  const statusEl = document.getElementById('killo-config-status');
+  if (!modal || !contentEl || !statusEl) {
+    console.error('Killo Code modal elements not found');
+    return;
+  }
+  try {
+    const config = generateKilloCodeConfig(modelData, modelName);
+    const jsonStr = JSON.stringify(config, null, 2);
+    contentEl.textContent = jsonStr;
+    statusEl.textContent = '';
+    modal.style.display = 'flex';
+  } catch (err) {
+    console.error('Error generating config:', err);
+    statusEl.textContent = 'Error generating configuration.';
+    statusEl.style.color = 'var(--red)';
+  }
 }
 
  async function renderPanelProperties(data, modelName) {
@@ -1027,13 +1108,24 @@ function closePanel() {
      </div>`;
    }
 
-   html += `
-     <div id="hf-metadata-loading" class="loading" style="display: none;">Loading Hugging Face data...</div>
-     <div id="hf-metadata-content" style="display: none;"></div>
-     <div id="hf-metadata-error" class="error" style="display: none;"></div>
-   </div>`;
-  
-     content.innerHTML = html;
+    html += `
+      <div id="hf-metadata-loading" class="loading" style="display: none;">Loading Hugging Face data...</div>
+      <div id="hf-metadata-content" style="display: none;"></div>
+      <div id="hf-metadata-error" class="error" style="display: none;"></div>
+    </div>`;
+    
+    // Kilo Code Configuration section
+    html += `<div class="panel-section">
+      <h3>Killo Code Integration</h3>
+      <div class="panel-item full-width">
+        <button id="generate-config-${safeId}" class="btn-primary">📋 Generate Kilo Code Config</button>
+        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text2);">
+          Generate a provider configuration for Kilo Code based on this model's settings.
+        </p>
+      </div>
+    </div>`;
+   
+      content.innerHTML = html;
 
       // Attach meta input listeners for auto-save
       const panel = document.getElementById('properties-panel');
@@ -1068,8 +1160,16 @@ function closePanel() {
         });
       });
 
+      // Attach generate config button listener
+      const configBtn = document.getElementById(`generate-config-${safeId}`);
+      if (configBtn) {
+        configBtn.addEventListener('click', () => {
+          openKilloConfigModal(modelData, modelName);
+        });
+      }
+
       // Auto-search for HF repo if not configured and not already attempted (web-iet)
-     if (!data.repo && !autoSearchAttempted.has(modelName)) {
+      if (!data.repo && !autoSearchAttempted.has(modelName)) {
        autoSearchAttempted.add(modelName);
        const safeId = modelName.replace(/[^a-zA-Z0-9]/g, '_');
        const statusEl = document.getElementById(`hf-search-status-${safeId}`);
@@ -1292,6 +1392,22 @@ function jsEscape(str) {
 }
 function portUrl(p) { return 'http://' + HOST + ':' + p; }
 
+// Edit port inline from tile
+function editPortInline(modelName, currentPort) {
+  const newPort = prompt('Enter port for ' + modelName + ':', currentPort);
+  if (newPort === null) return; // Cancelled
+  const portNum = parseInt(newPort, 10);
+  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    alert('Invalid port number. Must be between 1 and 65535.');
+    return;
+  }
+  fetch('/api/update-model-meta', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelName, port: portNum })
+  }).then(() => refresh());
+}
+
 let isRefreshing = false;
 // Store download progress state to preserve across refreshes
 const downloadProgressState = {};
@@ -1404,7 +1520,10 @@ const html = filtered.map((r) => {
      dlHtml = '<button class="download" onclick="downloadWithResume(\'' + jsEscape(r.model) + '\', false, 0, ' + force + ')">⬇ ' + (r.file_exists ? 'Re-download' : 'Download') + '</button>';
    }
   const portCell = r.file_exists
-    ? '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>'
+    ? '<span class="port-cell">'
+      + '<a class="actions btn-goto" style="padding:.3rem .7rem;border-radius:4px;font-size:.8rem;color:#fff;background:var(--blue);text-decoration:none" href="' + portUrl(r.port) + '" target="_blank">:' + r.port + '</a>'
+      + '<button class="btn-edit-port" onclick="event.stopPropagation(); editPortInline(\'' + jsEscape(r.model) + '\', ' + r.port + ')" title="Edit port">✏</button>'
+      + '</span>'
     : '<span class="chip bad">-</span>';
    // Check if there's an active download - use dl from API or stored progress state
    const apiProgress = dlMap[r.model];
@@ -1728,34 +1847,39 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
   }
 }
 
-function showDownloadModal(model, results, force = false) {
+function showDownloadModal(model, results, force = false, onSelect = null, customTitle = '') {
   const modal = document.getElementById('download-modal');
   const modelNameText = document.getElementById('dl-modal-model-name');
   const resultsDiv = document.getElementById('dl-search-results');
-  
-  modelNameText.textContent = 'Select a file to download:';
+
+  modelNameText.textContent = customTitle || 'Select a file to download:';
   resultsDiv.innerHTML = results.map(r => `
-    <div data-url="${r.url}" data-size="${r.size}" style="padding:.5rem; cursor:pointer; border-bottom:1px solid var(--surface2);">
+    <div data-url="${r.url}" data-size="${r.size}" data-filename="${jsEscape(r.filename)}" style="padding:.5rem; cursor:pointer; border-bottom:1px solid var(--surface2);">
       <strong>${r.filename}</strong><br>
       <small>Size: ${fmtSize(r.size)} • Downloads: ${r.downloads.toLocaleString()} • Likes: ${r.likes}</small>
     </div>
   `).join('');
   resultsDiv.style.display = 'block';
   modal.style.display = 'flex';
-  
+
   // Click handler on results
   resultsDiv.querySelectorAll('div').forEach(div => {
     div.addEventListener('click', function() {
       const url = this.getAttribute('data-url');
       const size = parseInt(this.getAttribute('data-size')) || 0;
+      const filename = this.getAttribute('data-filename') || '';
       modal.style.display = 'none';
-      _triggerDownload(model, url, size, force);
+      if (typeof onSelect === 'function') {
+        onSelect(url, size, filename);
+      } else {
+        _triggerDownload(model, url, size, force);
+      }
     });
   });
-  
+
   // Cancel handler
-  document.getElementById('dl-modal-cancel').onclick = () => { 
-    modal.style.display = 'none'; 
+  document.getElementById('dl-modal-cancel').onclick = () => {
+    modal.style.display = 'none';
   };
 }
 
@@ -2070,24 +2194,48 @@ document.getElementById('searchBtn').addEventListener('click', async function() 
      resultsDiv.querySelectorAll('div').forEach(div => {
        div.addEventListener('click', async function() {
          const modelId = this.getAttribute('data-model');
-         const filename = this.getAttribute('data-filename');
-         const size = parseInt(this.getAttribute('data-size')) || 0;
-         
-         // Fill the form
+         // Hide results and reset search button state
+         resultsDiv.style.display = 'none';
+         btn.disabled = false;
+         btn.textContent = '🔍 Search';
+
+         // Fill model name and repo
          document.getElementById('modelName').value = modelId.split('/').pop() || modelId;
          document.querySelector('input[name="repo"]').value = modelId;
-         document.querySelector('input[name="filename"]').value = filename;
-         document.querySelector('input[name="expected_size"]').value = size;
-         
+
          // Suggest a port (find next available port starting from 11000)
          const portResp = await fetch('/api/next-port');
          const portData = await portResp.json();
          document.querySelector('input[name="port"]').value = portData.port;
-         
-         // Hide results
-         document.getElementById('search-results').style.display = 'none';
-         btn.disabled = false;
-         btn.textContent = '🔍 Search';
+
+         try {
+           // Fetch all GGUF files for the selected repo
+           const resp = await fetch('/api/hf-repo-files', {
+             method: 'POST',
+             headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({ repo: modelId })
+           });
+           const data = await resp.json();
+           if (data.error || !data.files || data.files.length === 0) {
+             alert('No GGUF files found for this repository');
+             return;
+           }
+
+           // If only one variant, select it automatically
+           if (data.files.length === 1) {
+             const file = data.files[0];
+             document.querySelector('input[name="filename"]').value = file.filename;
+             document.querySelector('input[name="expected_size"]').value = file.size;
+           } else {
+             // Show variant picker modal
+             showDownloadModal(modelId, data.files, false, function(url, size, filename) {
+               document.querySelector('input[name="filename"]').value = filename;
+               document.querySelector('input[name="expected_size"]').value = size;
+             }, `Select variant for ${modelId.split('/').pop() || modelId}`);
+           }
+         } catch (err) {
+           alert('Error fetching variants: ' + err);
+         }
        });
      });
   } catch (err) {
@@ -2546,6 +2694,69 @@ function updateModelRepo(modelName, repo) {
     };
   });
 
-   </script>
+// Kilo Code modal event listeners
+document.addEventListener('DOMContentLoaded', function() {
+  const closeBtn = document.getElementById('killo-config-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.getElementById('killo-config-modal').style.display = 'none';
+    });
+  }
+
+  const kiloModal = document.getElementById('killo-config-modal');
+  if (kiloModal) {
+    kiloModal.addEventListener('click', (e) => {
+      if (e.target.id === 'killo-config-modal') {
+        kiloModal.style.display = 'none';
+      }
+    });
+  }
+
+  const copyBtn = document.getElementById('killo-config-copy');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const contentEl = document.getElementById('killo-config-content');
+      const content = contentEl ? contentEl.textContent : '';
+      if (!content) return;
+      try {
+        await navigator.clipboard.writeText(content);
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        copyBtn.style.background = 'var(--green)';
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = '';
+        }, 1500);
+      } catch (err) {
+        // Fallback for older browsers
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = content;
+          textArea.style.position = 'fixed';
+          textArea.style.opacity = '0';
+          document.body.appendChild(textArea);
+          textArea.select();
+          const successful = document.execCommand('copy');
+          if (successful) {
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+              copyBtn.textContent = originalText;
+            }, 1500);
+          } else {
+            throw new Error('Copy command failed');
+          }
+        } catch (e) {
+          alert('Failed to copy to clipboard. Please copy manually.');
+        }
+        if (textArea && textArea.parentNode) {
+          document.body.removeChild(textArea);
+        }
+      }
+    });
+  }
+});
+
+    </script>
   </body>
   </html>
