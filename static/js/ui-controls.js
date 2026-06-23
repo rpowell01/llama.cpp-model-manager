@@ -53,7 +53,9 @@ function renderTiles(rows, dlMap, query) {
     if (dlProgress.status === 'downloading') {
       dlHtml = '<button class="download" disabled>⬇ ' + (dlProgress.progress || 0) + '%</button>';
     } else if (dlProgress.status === 'complete') {
-      dlHtml = '<button class="download" disabled>✓ Done</button>';
+      // File is now downloaded, show Re-download button
+      const force = r.file_exists ? 'true' : 'false';
+      dlHtml = '<button class="download" onclick="downloadWithResume(\'' + jsEscape(r.model) + '\', false, 0, ' + force + ')">⬇ Re-download</button>';
     } else if (dlProgress.status === 'error') {
       dlHtml = '<button class="download" onclick="retryDownload(\'' + jsEscape(r.model) + '\', true)">🔄 Retry</button>';
     } else if (partial > 0) {
