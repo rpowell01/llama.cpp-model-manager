@@ -1,0 +1,553 @@
+# Auto-generated plan: Separate templates/index.html into modular files
+# Refactor monolithic HTML/CSS/JS into component-based structure
+
+formula = "auto-plan-separate-index-html"
+description = "Auto-generated plan: Separate templates/index.html into smaller, manageable files by functionality without breaking existing web application"
+type = "workflow"
+version = 1
+
+# Epic (root) - this becomes the molecule when poured
+# The bead will represent the overall refactoring initiative
+
+[[steps]]
+id = "sep-html-epic"
+title = "Refactor index.html into modular components"
+description = """
+This is the parent epic for separating the monolithic templates/index.html file (2762 lines) into smaller, focused files by purpose and functionality.
+
+The current file contains:
+- ~788 lines of embedded CSS with theme support
+- ~122 lines of HTML structure with multiple modals
+- ~1836 lines of JavaScript with model management, chat, downloads, and Hugging Face integration
+
+**Acceptance Criteria:**
+1. All existing functionality preserved (model tiles, properties panel, chat, download progress, theme switching, Kilo Code integration)
+2. No regression in UI/UX or performance
+3. Code organized into logical, maintainable modules
+4. Build/pipeline continues to work (Jinja2 templates load correctly)
+5. All event handlers and DOM references remain functional
+
+**Implementation Approach:**
+- Extract CSS to dedicated static/css/ file(s)
+- Modularize JavaScript by feature area
+- Keep HTML templates or convert to SSR components as appropriate
+- Maintain backward compatibility with Flask/Jinja2 rendering
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["refactoring", "frontend", "templates", "code-quality"]
+estimates = { total = 16, unit = "hours" }
+
+[[steps]]
+id = "sep-html-structure"
+title = "Analyze and document HTML structure and dependencies"
+description = """
+Analyze the complete templates/index.html file to understand all components, their relationships, and dependencies before extracting code.
+
+**Tasks:**
+1. Map all HTML elements by ID, class, and purpose (toolbar, modals, panels, tile grid, log area)
+2. Identify all Jinja2 template variables: {{ host }}, {{ flask_port }}, {{ cache_version }}
+3. Document all modal structures: download-modal, add-model-form, hf-repo-modal, kilo-config-modal, chat-modal
+4. Catalog all JavaScript event listeners and their target elements
+5. Identify inline styles that depend on CSS variables
+6. Map DOM element relationships (parent-child, references from JS)
+7. Identify any dynamic HTML generation (innerHTML, insertAdjacentHTML, etc.)
+
+**Deliverables:**
+- Complete dependency map in a new file: `docs/index-html-structure.md`
+- List of all DOM element IDs and their purposes
+- List of all JS functions that directly manipulate DOM
+- Identification of any CSS IDs or classes that must stay global
+
+**Acceptance Criteria:**
+- Documentation is comprehensive enough for a developer to understand all pieces
+- All DOM IDs and their purposes are listed
+- All event listeners are documented with their handler functions
+- All Jinja2 variables are clearly identified
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["analysis", "documentation", "frontend"]
+estimates = { total = 4, unit = "hours" }
+needs = ["sep-html-epic"]
+
+[[steps]]
+id = "sep-html-css"
+title = "Extract and modularize CSS into static/css/"
+description = """
+Extract all CSS from the <style> block in templates/index.html and organize into manageable, modular CSS files.
+
+**Tasks:**
+1. Extract the entire CSS block (lines 11-798) from index.html
+2. Analyze CSS structure and categorize:
+   - CSS custom properties (variables) - keep in a root theme file
+   - Layout styles (grid, flex, positioning)
+   - Component styles (buttons, chips, tiles, panels, modals)
+   - Theme-specific styles (dark, light, solarized-dark, nord)
+   - Responsive media queries
+   - Chat-specific styles (tile-embedded vs modal)
+3. Create file structure in static/css/:
+   - `static/css/variables.css` - CSS custom properties and theme definitions
+   - `static/css/components/buttons.css` - All button variants
+   - `static/css/components/tiles.css` - Tile grid and tile styles
+   - `static/css/components/panels.css` - Properties panel and sections
+   - `static/css/components/modals.css` - All modal styles
+   - `static/css/components/chat.css` - Chat interface styles (tile + modal)
+   - `static/css/layout.css` - Header, toolbar, main content layout
+   - `static/css/utils.css` - Utility classes, animations, scrollbars
+   - `static/css/responsive.css` - All media queries
+   - `static/css/main.css` - Import all above (single import for templates)
+4. Replace the embedded <style> block with: `<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ cache_version }}">`
+5. Update all CSS to ensure no specificity issues or conflicts
+6. Verify all class names and IDs remain unchanged
+7. Test theme switching still works with variables in separate file
+
+**Acceptance Criteria:**
+- All CSS extracted successfully, zero CSS remaining in HTML file
+- CSS modularization maintains same visual appearance (pixel-perfect match)
+- Theme switching works correctly
+- No FOUC (flash of unstyled content) on page load
+- Browser dev tools show separate CSS files with correct paths
+- Cache-busting query parameter preserved
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["css", "frontend", "refactoring", "static"]
+estimates = { total = 8, unit = "hours" }
+needs = ["sep-html-structure"]
+
+[[steps]]
+id = "sep-html-js-core"
+title = "Extract core utilities and state management to static/js/"
+description = """
+Extract and modularize the core JavaScript infrastructure: constants, state, utility functions, and shared helpers.
+
+**Tasks:**
+1. Extract global constants: HOST, FLAVOR, CACHE_VERSION (lines 925-927)
+2. Extract global state variables: selectedModel, currentModelRows, autoSearchAttempted, startingIntervals, chatHistory, downloadProgressState (lines 929-933, 1414-1430)
+3. Extract utility functions:
+   - fmtGb() (line 1386)
+   - jsEscape() (line 1390)
+   - portUrl() (line 1393)
+   - fmtSize() (line 1886)
+   - fmtSpeed() (line 1892)
+4. Extract log() function (line 2108)
+5. Create file: `static/js/core.js` - export these as ES6 modules or attach to window namespace
+6. Create file: `static/js/state.js` - initialize and export state management
+7. Position <script> tag for core.js before other scripts in HTML
+8. Verify no global namespace pollution; test state persists across module boundaries
+
+**Acceptance Criteria:**
+- All core utilities and state successfully extracted
+- No references to HOST, FLAVOR, CACHE_VERSION in other modules (import from core)
+- State correctly shared between modules
+- log() function works from any module
+- No console errors on page load
+- Existing functionality unaffected
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["javascript", "frontend", "refactoring", "static"]
+estimates = { total = 6, unit = "hours" }
+needs = ["sep-html-structure"]
+
+[[steps]]
+id = "sep-html-models"
+title = "Extract model management JavaScript (refresh, act, CRUD)"
+description = """
+Extract all model-related operations: refresh(), act(), promptDeleteModel(), and model tile rendering logic.
+
+**Tasks:**
+1. Extract refresh() function (lines 1431-1593) - includes tile rendering HTML generation
+2. Extract act() function (lines 1595-1656) - start/stop model operations
+3. Extract model selection: selectModel() and closePanel() (lines 935, 957)
+4. Extract tile rendering logic inside refresh() - the map() that creates HTML
+5. Extract helper functions: toggleAddForm(), showAddForm(), promptAddModel()
+6. Extract model deletion: promptDeleteModel() (line 2085)
+7. Create file: `static/js/model-manager.js`
+8. Update HTML to include this script with `defer` attribute
+9. Ensure all DOM element references (getElementById) still work after load order
+
+**Acceptance Criteria:**
+- Model list refresh works correctly with filtered search
+- Start/Stop buttons function as before
+- Model selection opens properties panel
+- Add model form opens/closes
+- Model deletion with confirmation works
+- No console errors during page load or interactions
+- Tile rendering produces identical HTML structure
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["javascript", "frontend", "refactoring", "static", "models"]
+estimates = { total = 6, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css"]
+
+[[steps]]
+id = "sep-html-chat"
+title = "Extract chat functionality into static/js/chat.js module"
+description = """
+Extract all chat-related code: chat modal management, message rendering, sending, SSE listeners, and performance metrics.
+
+**Tasks:**
+1. Extract chat modal functions:
+   - openChatModal() (global, line 2685)
+   - renderChatInModal() (line 2590)
+   - ModalManager object (lines 2446-2548) - focus trapping, ESC close, backdrop click
+2. Extract chat operations:
+   - renderChatMessages() (line 1269)
+   - sendChatMessage() (line 1289)
+   - Chat-related event handlers in DOMContentLoaded (lines 2551-2682)
+3. Extract chat UI rendering (HTML template string in renderChatInModal)
+4. Extract chat state from chatHistory and local storage handling (lines 1414-1430, 1415-1429)
+5. Create file: `static/js/chat.js` as a self-contained module
+6. Export public API: initChat(), openChatModal(), MessageHandler class
+7. Update HTML script loading order
+8. Verify tile-embedded chat (if any - appears to be modal-only now)
+
+**Acceptance Criteria:**
+- Chat modal opens on tile chat button click
+- Messages send and receive correctly
+- Performance metrics display and update
+- Chat history persists in localStorage
+- Modal focus trapping works (Tab/ESC)
+- Clear conversation button works
+- No console errors in chat operations
+- SSE connection established and updates display
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["javascript", "frontend", "refactoring", "static", "chat"]
+estimates = { total = 8, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css"]
+
+[[steps]]
+id = "sep-html-downloads"
+title = "Extract download and progress tracking to static/js/download-manager.js"
+description = """
+Extract all download-related functionality: search, modal selection, progress tracking, SSE listeners, and resume logic.
+
+**Tasks:**
+1. Extract download functions:
+   - downloadModel() (line 1672)
+   - downloadByFilename() (line 1735)
+   - retryDownload() (line 1771)
+   - resumeDownload() (line 1786)
+   - downloadWithResume() (line 1793)
+   - _triggerDownload() (line 1994)
+2. Extract progress bar management:
+   - showProgressBar() (line 1899)
+   - startProgressListener() (line 1914)
+   - downloadProgressState (line 1413)
+   - SSE EventSource handling and updates
+3. Extract modal management:
+   - showDownloadModal() (line 1850)
+   - Modal DOM references and event handlers
+4. Extract helper: fmtSize(), fmtSpeed() if not already in core
+5. Create file: `static/js/download-manager.js`
+6. Ensure SSE connections are properly cleaned up on page unload
+7. Update HTML script loading
+8. Verify progress bar updates in real-time during downloads
+
+**Acceptance Criteria:**
+- Download search from model name works
+- Variant selection modal displays correctly
+- Progress bar shows real-time updates via SSE
+- Resume and retry functions work
+- Download completion removes progress bar
+- No memory leaks from orphaned EventSource connections
+- All click handlers and modal interactions functional
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "high"
+tags = ["javascript", "frontend", "refactoring", "static", "downloads"]
+estimates = { total = 8, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css"]
+
+[[steps]]
+id = "sep-html-hf-integration"
+title = "Extract Hugging Face integration to static/js/hf-integration.js"
+description = """
+Extract all Hugging Face related code: repo search, metadata fetching, auto-discovery, and Kilo Code config generation.
+
+**Tasks:**
+1. Extract HF metadata fetching:
+   - HF metadata section rendering in renderPanelProperties() (lines 1098-1264)
+   - fetch('/api/hf-metadata') call and response handling
+2. Extract HF repo discovery:
+   - autoSearchAndSelectRepo() (line 2372)
+   - selectBestRepo() (line 2353)
+   - showRepoSelectionModal() (line 2309)
+   - updateModelRepo() (line 2291)
+3. Extract Kilo Code integration:
+   - generateKiloCodeConfig() (line 966)
+   - openKiloConfigModal() (line 996)
+   - Kilo Code modal event listeners (lines 2697-2758)
+4. Extract HF search from add model form (lines 2163-2248)
+5. Extract HF repo files fetch (lines 2213-2238)
+6. Create file: `static/js/hf-integration.js`
+7. Create file: `static/js/kilo-config.js` if Kilo Code code is substantial (it is ~60 lines)
+8. Update script loading in HTML
+
+**Acceptance Criteria:**
+- "Find on Hugging Face" button triggers auto-search
+- HF metadata displays in properties panel (downloads, likes, tags, description)
+- HF repo selection modal shows multiple options
+- Kilo Code config modal generates and copies correctly
+- Add model HF search pre-fills form fields
+- All API calls to /api/hf-* endpoints work
+- No regression in HF integration functionality
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "medium"
+tags = ["javascript", "frontend", "refactoring", "static", "huggingface", "kilo-code"]
+estimates = { total = 6, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css"]
+
+[[steps]]
+id = "sep-html-add-model"
+title = "Extract add model form handling to static/js/add-model.js"
+description = """
+Extract the add model form logic: form submission, validation, and search results handling.
+
+**Tasks:**
+1. Extract form submission handler (lines 2116-2160)
+2. Extract search functionality for models (lines 2163-2248):
+   - Search button click handler
+   - Results display and click handling
+   - Port suggestion fetching
+   - GGUF file listing for repo
+3. Extract toggleAddForm, showAddForm functions (lines 2067-2079)
+4. Create file: `static/js/add-model.js`
+5. Encapsulate form state and validation
+6. Update script loading order
+
+**Acceptance Criteria:**
+- Add Model button opens form
+- Form validation works (required fields)
+- Model search finds and selects Hugging Face repos
+- GGUF variant picker modal works
+- Model added successfully with auto-download if checked
+- Form resets and closes after success
+- Search results display correctly
+- Port number auto-suggested
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "medium"
+tags = ["javascript", "frontend", "refactoring", "static", "forms"]
+estimates = { total = 4, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css", "sep-html-hf-integration"]
+
+[[steps]]
+id = "sep-html-remaining-js"
+title = "Extract remaining utilities: theme, shutdown, modals, init"
+description = """
+Extract the leftover JavaScript: theme switching, shutdown, refresh button, panel close, and initialization.
+
+**Tasks:**
+1. Extract theme switching code (lines 2256-2265)
+2. Extract button event listeners:
+   - refreshBtn click (line 2267)
+   - shutdownBtn click (lines 2268-2280)
+   - addModelBtn click (line 2281)
+   - panel-close click (line 2282)
+3. Extract initial refresh call: refresh() at line 2283
+4. Extract Kilo Code modal event listeners if not in hf-integration (lines 2698-2758)
+5. Create file: `static/js/ui-controls.js`
+6. Extract modal manager if not already done (lines 2446-2548) - might be in chat or shared
+7. Create `static/js/app.js` or `static/js/init.js` for DOMContentLoaded initialization
+8. Update HTML: replace inline scripts with script tags loading all modules in correct order
+
+**Acceptance Criteria:**
+- Theme selector changes theme and persists to localStorage
+- Refresh button updates model tiles
+- Shutdown button prompts and calls API
+- Add Model button shows form
+- Panel close button hides properties panel
+- Page initializes correctly (refresh called on load)
+- No "undefined function" errors
+- All event listeners properly attached
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "medium"
+tags = ["javascript", "frontend", "refactoring", "static", "ui-controls"]
+estimates = { total = 4, unit = "hours" }
+needs = ["sep-html-js-core", "sep-html-css", "sep-html-chat"]
+
+[[steps]]
+id = "sep-html-html-cleanup"
+title = "Clean up HTML: remove scripts, add links, ensure modular structure"
+description = """
+Finalize HTML structure by removing all embedded scripts and styles, adding proper script/link tags, and verifying the page is empty of inline code.
+
+**Tasks:**
+1. Remove entire <style> block (lines 11-798) - already replaced by CSS link
+2. Remove entire <script> block (lines 924-2760) - replace with script tags
+3. Add to <head>:
+   - `<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ cache_version }}">`
+4. Before </body>, add script tags in order:
+   - `<script src="{{ url_for('static', filename='js/core.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/state.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/model-manager.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/download-manager.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/hf-integration.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/add-model.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/chat.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/kilo-config.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/ui-controls.js') }}?v={{ cache_version }}" defer></script>`
+   - `<script src="{{ url_for('static', filename='js/init.js') }}?v={{ cache_version }}" defer></script>`
+5. Verify all DOM IDs match between HTML and JS modules
+6. Ensure modals and all UI elements remain in HTML unchanged
+7. Add comments indicating which module manages which section (for future maintenance)
+8. Check for any remaining inline event handlers (onclick="...") and decide to keep or convert to addEventListener in modules
+
+**Acceptance Criteria:**
+- templates/index.html contains NO <style> or <script> tags
+- All CSS moved to static/css/main.css and imports
+- All JS moved to static/js/*.js files
+- HTML structure is clean, only markup and data attributes
+- Page loads without JavaScript errors
+- All functionality works identically to before
+- Cache versioning preserved on all assets
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "critical"
+tags = ["html", "frontend", "refactoring", "templates", "cleanup"]
+estimates = { total = 6, unit = "hours" }
+needs = ["sep-html-css", "sep-html-js-core", "sep-html-models", "sep-html-chat", "sep-html-downloads", "sep-html-hf-integration", "sep-html-add-model", "sep-html-remaining-js"]
+
+[[steps]]
+id = "sep-html-test-integration"
+title = "Integration testing and validation of refactored components"
+description = """
+Comprehensive testing of the refactored application to ensure no regressions and all features work correctly.
+
+**Tasks:**
+1. Start Flask application and load the page
+2. Test theme switching (Dark, Light, Solarized Dark, Nord)
+3. Test model list refresh and search filtering
+4. Test model selection and properties panel:
+   - Edit cache size, threads, etc. and verify API calls
+   - Check Hugging Face metadata loads if repo configured
+   - Verify Kilo Code config generation and copy
+5. Test model actions:
+   - Start a model, verify status changes to "running"
+   - Stop a running model
+   - Delete a model (with and without file deletion)
+6. Test chat:
+   - Open chat modal from tile
+   - Send messages, verify responses
+   - Check performance metrics update
+   - Clear conversation
+7. Test downloads:
+   - Download a new model (search from add form)
+   - Add model with auto-download
+   - View download progress bar updates
+   - Resume interrupted download (simulate)
+8. Test add model form:
+   - Search for a model
+   - Fill fields manually
+   - Submit and verify model appears
+9. Check browser console for errors or warnings
+10. Test responsive design on different viewport sizes
+11. Verify all static assets (CSS/JS) load with correct cache-busting query params
+
+**Acceptance Criteria:**
+- All features work identically to pre-refactored version
+- Zero console errors or warnings (except expected network errors for missing backends)
+- Theme switching works across all themes
+- All modals open/close correctly
+- Chat sends messages and receives responses
+- Downloads show progress and complete
+- Properties panel edits save via API
+- Page is responsive on mobile and desktop
+- No layout shifts or missing styles
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "critical"
+tags = ["testing", "integration", "validation", "qa", "frontend"]
+estimates = { total = 8, unit = "hours" }
+needs = ["sep-html-html-cleanup"]
+
+[[steps]]
+id = "sep-html-docs-update"
+title = "Update documentation and developer notes"
+description = """
+Update project documentation to reflect the new file structure and modular architecture.
+
+**Tasks:**
+1. Create or update README section on frontend architecture
+2. Document the static/js/ module structure:
+   - core.js: utilities and constants
+   - state.js: global state management
+   - model-manager.js: model listing, selection, CRUD
+   - download-manager.js: downloads and progress
+   - chat.js: chat modal and messaging
+   - hf-integration.js: Hugging Face API integration
+   - add-model.js: add model form
+   - kilo-config.js: provider config generation
+   - ui-controls.js: buttons, themes, initialization
+   - init.js: application bootstrap
+3. Document the static/css/ structure:
+   - variables.css: CSS custom properties
+   - components/: button, tile, panel, modal, chat
+   - layout.css: page layouts
+   - utils.css: utilities
+   - responsive.css: media queries
+   - main.css: master import
+4. Add note about cache-busting query parameters on static assets
+5. Document how to add new features: which module to edit
+6. Update any existing developer guides or architecture docs
+7. Add inline code comments to each JS module file describing its purpose
+
+**Acceptance Criteria:**
+- Architecture documentation is clear and up-to-date
+- New developers can understand the modular structure
+- Module responsibilities are clearly defined
+- No ambiguity about where to add new features
+- README or docs/ reflects the actual file structure
+
+**Mandatory Code Review Gate**
+Before completing this bead, you MUST invoke the code-reviewer sub-agent.
+You must continue fixing issues and re-invoking the code-reviewer until the response is exactly: APPROVED.
+"""
+priority = "low"
+tags = ["documentation", "maintenance", "onboarding"]
+estimates = { total = 2, unit = "hours" }
+needs = ["sep-html-test-integration"]
