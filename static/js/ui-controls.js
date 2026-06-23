@@ -43,8 +43,8 @@ function renderTiles(rows, dlMap, query) {
     // Check if there's an active download - use dl from API or stored progress state
     const apiProgress = dlMap[r.model];
     let dlProgress = (apiProgress && apiProgress.status) ? apiProgress : {};
-    // Prefer client-side progress state if it indicates active downloading
-    if (downloadProgressState[r.model] && downloadProgressState[r.model].status === 'downloading') {
+    // Prefer client-side progress state for any active or recent download status
+    if (downloadProgressState[r.model] && ['downloading', 'complete', 'error'].includes(downloadProgressState[r.model].status)) {
       dlProgress = downloadProgressState[r.model];
     }
 

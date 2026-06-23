@@ -424,8 +424,15 @@ function startProgressListener(model) {
          }
        }
 
+       // Trigger a refresh to update the button to Re-download after showing Done
+       if (data.status === 'complete') {
+         setTimeout(() => {
+           refresh();
+         }, 1000);
+       }
+
       if (data.status === 'complete' || data.status === 'error') {
-        // Set status to complete so button shows "Done"
+        // Set status to complete so button shows "Done" briefly
         downloadProgressState[model].status = data.status;
 
         // Remove the progress bar from DOM
@@ -434,10 +441,17 @@ function startProgressListener(model) {
 
         setTimeout(() => {
           eventSource.close();
-          // Clean up progress state after completion
-          setTimeout(() => {
-            delete downloadProgressState[model];
-          }, 1000);
+          // For complete: show Done briefly, then let refresh() show Re-download
+          // For error: keep state for Retry button
+          if (data.status === 'complete') {
+            setTimeout(() => {
+              delete downloadProgressState[model];
+            }, 1000);
+          } else {
+            setTimeout(() => {
+              delete downloadProgressState[model];
+            }, 3000);
+          }
         }, 500);
       }
     } catch (err) {
