@@ -213,7 +213,7 @@
 /* Ensure chat modal overlay appears above other content */
 .chat-section,
 .modal-overlay.chat-modal {
-  z-index: 1100; /* above hf-repo-modal (1000) */
+  z-index: 1100; /* modal stacking order: download(1400) > hf-repo(1500) > add-model(1300) > kilo-config(1200) > chat(1100) */
 }
 
 /* Responsive adjustments for small screens - lines 734-772 */
@@ -290,7 +290,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
+  z-index: 1400;
   align-items: center;
   justify-content: center;
 }
