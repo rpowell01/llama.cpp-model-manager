@@ -3,6 +3,25 @@
  */
 
 /**
+ * Generate a unique model name from filename
+ * @param {string} filename - The GGUF filename
+ */
+function generateModelNameFromFilename(filename) {
+  // Remove .gguf extension and convert to display name
+  let baseName = filename;
+  if (baseName.toLowerCase().endsWith('.gguf')) {
+    baseName = baseName.slice(0, -5);
+  }
+  // Convert underscores/hyphens to spaces for readability
+  let modelName = baseName.replace(/[_-]/g, ' ');
+  
+  const nameInput = document.getElementById('modelName');
+  if (nameInput) {
+    nameInput.value = modelName;
+  }
+}
+
+/**
  * Compute and set an available port in the port input field
  */
 async function computeAndSetPort() {
@@ -248,11 +267,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 const file = data.files[0];
                 document.querySelector('input[name="filename"]').value = file.filename;
                 document.querySelector('input[name="expected_size"]').value = file.size;
+                // Generate model name from variant filename
+                generateModelNameFromFilename(file.filename);
               } else {
                 // Show variant picker modal
                 showDownloadModal(modelId, data.files, false, function (url, size, filename) {
                   document.querySelector('input[name="filename"]').value = filename;
                   document.querySelector('input[name="expected_size"]').value = size;
+                  // Generate unique model name from variant filename
+                  generateModelNameFromFilename(filename);
                 }, `Select variant for ${modelId.split('/').pop() || modelId}`);
               }
             } catch (err) {
