@@ -10,7 +10,37 @@ function toggleAddForm() {
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
   if (form.style.display === 'block') {
     document.getElementById('modelName').focus();
+    computeAndSetPort();
   }
+}
+
+/**
+ * Compute and set an available port in the port input field
+ */
+async function computeAndSetPort() {
+  const portInput = document.querySelector('input[name="port"]');
+  if (!portInput) return;
+  
+  try {
+    const response = await fetch('/api/next-port');
+    const data = await response.json();
+    portInput.value = data.port;
+  } catch (err) {
+    console.error('Failed to get next port:', err);
+    // Default to 11000 if fetch fails
+    portInput.value = 11000;
+  }
+}
+
+/**
+ * Validate that the port is not already in use
+ * @param {number} port - Port number to validate
+ * @returns {Promise<boolean>} - True if port is available
+ */
+async function validatePort(port) {
+  const models = await (await fetch('/api/status')).json();
+  const usedPorts = models.map(m => parseInt(m.port, 10));
+  return !usedPorts.includes(port);
 }
 
 /**
@@ -20,6 +50,7 @@ function showAddForm() {
   const form = document.getElementById('add-model-form');
   form.style.display = 'block';
   document.getElementById('modelName').focus();
+  computeAndSetPort();
 }
 
 /**
@@ -28,6 +59,7 @@ function showAddForm() {
  */
 async function promptAddModel(existingModel) {
   showAddForm();
+  computeAndSetPort();
 }
 
 /**
@@ -88,6 +120,19 @@ document.addEventListener('DOMContentLoaded', function () {
   if (addForm) {
     addForm.addEventListener('submit', async function (e) {
       e.preventDefault();
+      
+      // Validate port
+      const portInput = document.querySelector('input[name="port"]');
+      const port = parseInt(portInput.value, 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        alert('Invalid port number. Must be between 1 and 65535.');
+        return;
+      }
+      if (!await validatePort(port)) {
+        alert(`Port ${port} is already in use by another model. Please choose a different port.`);
+        return;
+      }
+      
       const formData = new FormData(e.target);
       const data = {};
       formData.forEach((value, key) => {
