@@ -188,7 +188,7 @@ async function renderPanelProperties(data, modelName) {
     html += `<div class="panel-section">
       <h3>Running Statistics</h3>
       <div class="panel-grid">`;
-    addItem('Status', '<span class="chip running">● running</span>');
+    addItem('Status', '<span class="chip ok">● running</span>');
     if (data.pid) addItem('PID', `<code>${data.pid}</code>`);
     html += `</div></div>`;
   }
