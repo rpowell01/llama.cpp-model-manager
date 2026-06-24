@@ -3,18 +3,6 @@
  */
 
 /**
- * Toggle add model form visibility
- */
-function toggleAddForm() {
-  const form = document.getElementById('add-model-form');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  if (form.style.display === 'block') {
-    document.getElementById('modelName').focus();
-    computeAndSetPort();
-  }
-}
-
-/**
  * Compute and set an available port in the port input field
  */
 async function computeAndSetPort() {
@@ -44,12 +32,10 @@ async function validatePort(port) {
 }
 
 /**
- * Show add model form
+ * Open the Add Model modal dialog
  */
-function showAddForm() {
-  const form = document.getElementById('add-model-form');
-  form.style.display = 'block';
-  document.getElementById('modelName').focus();
+function openAddModelModal() {
+  ModalManager.open('add-model-modal');
   computeAndSetPort();
 }
 
@@ -58,7 +44,7 @@ function showAddForm() {
  * @param {string} existingModel - Optional pre-filled model name
  */
 async function promptAddModel(existingModel) {
-  showAddForm();
+  openAddModelModal();
   computeAndSetPort();
 }
 
@@ -164,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
             _triggerDownload(data.name, downloadUrl, data.expected_size, false);
           }
-          toggleAddForm();
+          ModalManager.close('add-model-modal');
           e.target.reset();
           refresh();
         }
@@ -177,6 +163,15 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
   }
+
+  // Register cleanup handler for modal close
+  ModalManager.register('add-model-modal', () => {
+    // Reset form when modal closes
+    const form = document.getElementById('addForm');
+    if (form) {
+      form.reset();
+    }
+  });
 
   // Search button handler
   const searchBtn = document.getElementById('searchBtn');
