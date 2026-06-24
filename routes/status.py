@@ -158,6 +158,10 @@ def api_debug(model_name):
 def api_next_port():
     start = 11000
     port = start
-    while check_port_active(port):
+    # Get ports already assigned to models
+    models = get_models()
+    assigned_ports = {int(m.get("port", 0)) for m in models.values() if m.get("port")}
+    # Find next available port (not in use by running process AND not assigned to a model)
+    while check_port_active(port) or port in assigned_ports:
         port += 1
     return jsonify({"port": port})
