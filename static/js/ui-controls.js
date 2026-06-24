@@ -213,7 +213,7 @@ async function renderPanelProperties(data, modelName) {
 
    // Kilo Code Configuration section
    html += `<div class="panel-section">
-     <h3>Killo Code Integration</h3>
+     <h3>Kilo Code Integration</h3>
      <div class="panel-item full-width">
        <button id="generate-config-${modelSafeId}" class="btn-primary">📋 Generate Kilo Code Config</button>
        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text2);">
@@ -259,9 +259,9 @@ async function renderPanelProperties(data, modelName) {
    // Attach generate config button listener
    const configBtn = document.getElementById(`generate-config-${modelSafeId}`);
    if (configBtn) {
-     configBtn.addEventListener('click', () => {
-       openKilloConfigModal(data, modelName);
-     });
+      configBtn.addEventListener('click', () => {
+        openKiloCodeModal(data, modelName);
+      });
    }
 
    // Auto-search for HF repo if not configured and not already attempted

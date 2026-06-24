@@ -23,7 +23,7 @@ function init() {
    // Modal initializations
    initHfModal();
    initChatModal();
-   initKilloConfigModal();
+    initKiloConfigModal();
 
    // Restore chat input from localStorage (if needed)
    restoreChatInputs();
@@ -227,20 +227,20 @@ function initChatModal() {
 // ──────────────────────────────────────────────────────────────
 // Kilo Code Config Modal
 // ──────────────────────────────────────────────────────────────
-function initKilloConfigModal() {
-  const closeBtn = document.getElementById('killo-config-close');
+function initKiloConfigModal() {
+  const closeBtn = document.getElementById('kilo-config-close');
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
-      ModalManager.close('killo-config-modal');
+      ModalManager.close('kilo-config-modal');
     });
   }
 
   // Click outside is handled by ModalManager when modal is opened via ModalManager.open
 
-  const copyBtn = document.getElementById('killo-config-copy');
+  const copyBtn = document.getElementById('kilo-config-copy');
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
-      const contentEl = document.getElementById('killo-config-content');
+      const contentEl = document.getElementById('kilo-config-content');
       const content = contentEl ? contentEl.textContent : '';
       if (!content) return;
       try {
