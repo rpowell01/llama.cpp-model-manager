@@ -102,7 +102,17 @@ function initButtonListeners() {
   // Add model button
   const addModelBtn = document.getElementById('addModelBtn');
   if (addModelBtn) {
-    addModelBtn.addEventListener('click', showAddForm);
+    addModelBtn.addEventListener('click', openAddModelModal);
+  }
+
+  // Add model modal close buttons
+  const addModelModalClose = document.getElementById('add-model-modal-close');
+  const addModelModalCancel = document.getElementById('add-model-modal-cancel');
+  if (addModelModalClose) {
+    addModelModalClose.addEventListener('click', () => ModalManager.close('add-model-modal'));
+  }
+  if (addModelModalCancel) {
+    addModelModalCancel.addEventListener('click', () => ModalManager.close('add-model-modal'));
   }
 
   // Panel close button

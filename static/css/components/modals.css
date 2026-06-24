@@ -263,3 +263,124 @@
     padding: 0.6rem;
   }
 }
+
+/* Add Model Modal Styles */
+#add-model-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1300;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-out;
+}
+
+#add-model-modal[aria-hidden="false"] {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Download Modal Styles */
+#download-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  align-items: center;
+  justify-content: center;
+}
+
+#download-modal[aria-hidden="false"] {
+  display: flex;
+}
+
+#add-model-modal .modal-content {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-width: 500px;
+  width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  margin: 1rem;
+}
+
+#add-model-modal label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+#add-model-modal input,
+#add-model-modal select {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid var(--surface2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+#add-model-modal .btn-cancel {
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--surface2);
+  background: var(--bg-secondary);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+#add-model-modal .btn-cancel:hover {
+  background: var(--surface2);
+}
+
+#add-model-modal .btn-add {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--btn-run);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+#add-model-modal .btn-add:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+#add-model-modal #search-results {
+  margin: 0.5rem 0;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
+
+#add-model-modal #search-results div {
+  padding: 0.5rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--surface2);
+}
+
+#add-model-modal #search-results div:hover {
+  background: var(--surface2);
+}
+
+#add-model-modal #search-results div:last-child {
+  border-bottom: none;
+}
