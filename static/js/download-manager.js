@@ -10,6 +10,12 @@
  * @param {Function} onSelect - Optional callback on selection
  * @param {string} customTitle - Optional custom title
  */
+// Download progress cleanup timing constants (in milliseconds)
+const INITIAL_CLEANUP_WAIT = 500;           // Initial wait before closing SSE connection
+const COMPLETE_EXTRA_DELAY = 1000;          // Additional delay before state cleanup after completion
+const ERROR_EXTRA_DELAY = 3000;             // Additional delay before state cleanup after error
+const REFRESH_DELAY_AFTER_COMPLETE = 1000; // Delay before triggering refresh after download completes
+
 function showDownloadModal(model, results, force = false, onSelect = null, customTitle = '') {
   const modal = document.getElementById('download-modal');
   const modelNameText = document.getElementById('dl-modal-model-name');
@@ -424,35 +430,35 @@ function startProgressListener(model) {
          }
        }
 
-       // Trigger a refresh to update the button to Re-download after showing Done
-       if (data.status === 'complete') {
-         setTimeout(() => {
-           refresh();
-         }, 1000);
-       }
+        // Trigger a refresh to update the button to Re-download after showing Done
+        if (data.status === 'complete') {
+          setTimeout(() => {
+            try {
+              refresh();
+            } catch (err) {
+              console.error('Error during refresh after complete:', err);
+            }
+          }, REFRESH_DELAY_AFTER_COMPLETE);
+        }
 
       if (data.status === 'complete' || data.status === 'error') {
-        // Set status to complete so button shows "Done" briefly
+        // Update state to reflect final status
         downloadProgressState[model].status = data.status;
 
-        // Remove the progress bar from DOM
+        // Remove progress bar from DOM immediately
         const container = document.getElementById('progress-' + safeModelId);
         if (container) container.remove();
 
+        // Close SSE connection after initial wait
         setTimeout(() => {
           eventSource.close();
-          // For complete: show Done briefly, then let refresh() show Re-download
-          // For error: keep state for Retry button
-          if (data.status === 'complete') {
-            setTimeout(() => {
-              delete downloadProgressState[model];
-            }, 1000);
-          } else {
-            setTimeout(() => {
-              delete downloadProgressState[model];
-            }, 3000);
-          }
-        }, 500);
+        }, INITIAL_CLEANUP_WAIT);
+
+        // Schedule state cleanup after additional delay based on status
+        const cleanupDelay = INITIAL_CLEANUP_WAIT + (data.status === 'complete' ? COMPLETE_EXTRA_DELAY : ERROR_EXTRA_DELAY);
+        setTimeout(() => {
+          delete downloadProgressState[model];
+        }, cleanupDelay);
       }
     } catch (err) {
       console.error('Progress parse error:', err);
@@ -461,6 +467,10 @@ function startProgressListener(model) {
 
   eventSource.onerror = function (e) {
     console.log('SSE closed for', model, e);
+    // Clean up state after appropriate delay to allow UI to stabilize
+    setTimeout(() => {
+      delete downloadProgressState[model];
+    }, ERROR_EXTRA_DELAY);
     eventSource.close();
   };
 }

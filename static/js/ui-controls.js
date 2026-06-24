@@ -72,7 +72,7 @@ function renderTiles(rows, dlMap, query) {
         + '</span>'
       : '<span class="chip bad">-</span>';
 
-    const showProgress = dlProgress.status === 'downloading' || (dlProgress.progress && dlProgress.progress > 0);
+    const showProgress = dlProgress.status === 'downloading';
 
     const progressHtml = showProgress
       ? '<div id="progress-' + safeId(r.model) + '" class="download-progress" style="margin-top: .5rem; padding: .5rem; background: var(--surface2); border-radius: 4px;">'
