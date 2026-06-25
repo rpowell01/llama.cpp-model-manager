@@ -54,9 +54,10 @@ Remote mode connects to an external llama.cpp server via REST API:
 docker build -t llamaweb --build-arg REMOTE_MODE=true --build-arg LLAMA_CPP_SERVER_URL=http://localhost:8080 .
 
 # Run the container
+# Note: Replace host.docker.internal with your host's IP if on Linux
 docker run -p 5000:5000 \
   -e REMOTE_MODE=true \
-  -e LLAMA_CPP_SERVER_URL=http://localhost:8080 \
+  -e LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080 \
   -v ./models:/app/models \
   llamaweb
 ```
@@ -66,7 +67,8 @@ Or using docker-compose with an external server:
 ```bash
 # Create a .env file
 echo "REMOTE_MODE=true" > .env
-echo "LLAMA_CPP_SERVER_URL=http://localhost:8080" >> .env
+# Use host.docker.internal for macOS/Windows, or host IP for Linux
+echo "LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080" >> .env
 
 # Run
 docker-compose up -d
@@ -74,23 +76,52 @@ docker-compose up -d
 
 ### Running with Remote llama.cpp Server
 
-You can run the llama.cpp server alongside the web frontend:
+You can run the llama.cpp server alongside the web frontend using docker-compose:
 
+```yaml
+# docker-compose.remote.yml
+version: '3.8'
+services:
+  llamacpp-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models
+    command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080
+    networks:
+      - llamanet
+
+  web:
+    build:
+      context: .
+      build-args:
+        REMOTE_MODE: "true"
+        LLAMA_CPP_SERVER_URL: "http://llamacpp-server:8080"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./models:/app/models
+    depends_on:
+      - llamacpp-server
+    networks:
+      - llamanet
+
+networks:
+  llamanet:
+    driver: bridge
+```
+
+Run with:
 ```bash
-# Start both services
-docker-compose -f docker-compose.yml up -d
+docker-compose -f docker-compose.remote.yml up -d
+```
 
-# Or with a custom model
-docker run -d --name llamacpp-server \
-  -p 8080:8080 \
-  -v ./models:/models \
-  ghcr.io/ggerganov/llama.cpp:server \
-  -m /models/your-model.gguf --host 0.0.0.0 --port 8080
-
-# Then run web in remote mode
+For standalone docker run (host networking), use `host.docker.internal` on macOS/Windows or your host IP on Linux:
+```bash
 docker run -p 5000:5000 \
   -e REMOTE_MODE=true \
-  -e LLAMA_CPP_SERVER_URL=http://localhost:8080 \
+  -e LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080 \
   llamaweb
 ```
 
