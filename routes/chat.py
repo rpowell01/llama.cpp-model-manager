@@ -3,13 +3,24 @@ from flask import Blueprint, jsonify, request
 import requests
 import logging
 
-from config import BASE_DIR
-from models import get_models
+from config import BASE_DIR, Config
+from models import get_models, ModelRegistry
 from processes import check_port_active
 from routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)
 log = logging.getLogger("llamaweb")
+
+# Global model registry instance for chat
+_chat_registry = None
+
+
+def get_chat_registry() -> ModelRegistry:
+    """Get or create the model registry instance for chat."""
+    global _chat_registry
+    if _chat_registry is None:
+        _chat_registry = ModelRegistry(Config())
+    return _chat_registry
 
 
 @chat_bp.route("/api/chat", methods=["POST"])
@@ -38,7 +49,16 @@ def api_chat():
     if status_info.get("status") == "starting":
         return jsonify({"error": "Model is starting", "status": "starting"}), 503
 
-    if not check_port_active(port_int):
+    registry = get_chat_registry()
+    
+    # In remote mode, we need to check if the model is loaded via the remote API
+    if registry.is_remote_mode:
+        remote_model = registry._remote_client.get_model(model)
+        if not remote_model:
+            return jsonify({"error": f"Model '{model}' is not loaded on remote server"}), 400
+        port_int = remote_model.port
+    
+    if not registry.is_remote_mode and not check_port_active(port_int):
         return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
     payload = dict(data)

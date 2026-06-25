@@ -3,6 +3,9 @@
 Process lifecycle management for llama-server.
 
 This module provides functions to find, start, stop, and check the status of llama-server processes.
+
+NOTE: This module is for LOCAL mode only. In remote mode, use the remote_client module
+or ModelRegistry with a remote config.
 """
 
 from __future__ import annotations
@@ -27,11 +30,28 @@ from config import (
     WSL,
     convert_path_for_binary,
 )
+from models import InvalidModeError
 
 log = logging.getLogger("llamaweb.processes")
 
 
+def _validate_local_mode() -> None:
+    """
+    Validate that we're in local mode.
+    
+    Raises:
+        InvalidModeError: If REMOTE_MODE is enabled
+    """
+    import os
+    remote_mode = os.getenv("REMOTE_MODE", "").strip().lower() in ("true", "1", "yes", "on")
+    if remote_mode:
+        raise InvalidModeError("process lifecycle operations")
+
+
+# Wrap existing functions with mode validation
 def find_pid_by_port(port: int) -> int | None:
+    """Find PID of process listening on the given port."""
+    _validate_local_mode()
     # On WSL with Windows binary, use PowerShell to find the PID
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         try:
@@ -139,6 +159,8 @@ def find_pid_by_port(port: int) -> int | None:
 
 
 def pids_of_llama() -> list[int]:
+    """Find PIDs of all llama-server processes."""
+    _validate_local_mode()
     pids: list[int] = []
     # On WSL with Windows binary, use PowerShell to find llama-server processes
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
@@ -189,6 +211,7 @@ def pids_of_llama() -> list[int]:
 
 def _kill_tree(pid: int, model: str = "") -> bool:
     """Kill a process and all its children. Returns True if successful."""
+    _validate_local_mode()
     try:
         # On WSL with Windows binary, use PowerShell to kill the process
         if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
@@ -258,6 +281,8 @@ def _kill_tree(pid: int, model: str = "") -> bool:
 
 
 def check_port_active(port: int) -> bool:
+    """Check if a port is active (has a listener)."""
+    _validate_local_mode()
     import socket
 
     try:
@@ -270,6 +295,7 @@ def check_port_active(port: int) -> bool:
 
 def _check_model_ready(port: int) -> bool:
     """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
+    _validate_local_mode()
     host = DEFAULTS["host"]
     url = f"http://{host}:{port}/v1/models"
     try:
@@ -280,6 +306,8 @@ def _check_model_ready(port: int) -> bool:
 
 
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
+    """Build the command for starting a model."""
+    _validate_local_mode()
     cmd: list[str] = [
         str(LLAMA_SERVER),
         "-m",
