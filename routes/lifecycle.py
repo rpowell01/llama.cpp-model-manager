@@ -1,13 +1,19 @@
 """Lifecycle management: start and stop models."""
 import logging
-from flask import Blueprint, jsonify, request
-import subprocess
-import threading
 import time
+from flask import Blueprint, jsonify, request, g
+import subprocess
 import os
 
 from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, LLAMA_SERVER, convert_path_for_binary, Config
-from models import get_models, save_models, add_model_entry, delete_model_entry, ModelRegistry, InvalidModeError
+from models import ModelRegistry, InvalidModeError
+from processes import (
+    find_pid_by_port,
+    _kill_tree,
+    check_port_active,
+    _check_model_ready,
+    build_cmd,
+)
 from state import (
     _recent_stops,
     _recent_stops_lock,
@@ -31,12 +37,34 @@ def get_model_registry() -> ModelRegistry:
         _model_registry = ModelRegistry(Config())
     return _model_registry
 
+
+def inject_registry_to_context():
+    """Middleware to inject ModelRegistry into request context."""
+    g.registry = get_model_registry()
+
+
+def validate_remote_connectivity():
+    """Before request hook to validate remote server connectivity if in remote mode."""
+    registry = getattr(g, 'registry', None)
+    if registry and registry.is_remote_mode:
+        try:
+            registry._remote_client.get_status()
+        except Exception as e:
+            log.warning(f"Remote server connectivity check failed: {e}")
+            return jsonify({"error": f"Remote server unreachable: {str(e)}"}), 503
+
+
 lifecycle_bp = Blueprint("lifecycle", __name__)
+
+# Register before_request handlers
+lifecycle_bp.before_request(inject_registry_to_context)
+lifecycle_bp.before_request(validate_remote_connectivity)
+
 
 @lifecycle_bp.route("/api/start", methods=["POST"])
 def api_start():
-    """Start a model. In remote mode, delegates to remote API."""
-    registry = get_model_registry()
+    """Start a model. In remote mode, delegates to remote API with 202 Accepted."""
+    registry = g.registry
     
     # Check if we're in remote mode
     if registry.is_remote_mode:
@@ -46,31 +74,51 @@ def api_start():
             return jsonify({"error": "Missing 'model'"}), 400
         try:
             registry.load_model(model)
-            return jsonify({"status": "loading", "model": model})
+            # Return 202 Accepted immediately for async operation in remote mode
+            return jsonify({"status": "loading", "model": model}), 202
         except Exception as e:
             log.exception("Failed to start model %s via remote API", model)
             return jsonify({"error": f"Failed to start model: {str(e)}"}), 500
     
     # Local mode: use process management
-    from processes import find_pid_by_port, pids_of_llama, _kill_tree, check_port_active, _check_model_ready, build_cmd
-    
     start_success = False
-    model = None  # Ensure model is defined for except/finally blocks
+    model = None
+    proc = None
     try:
         data = request.get_json(force=True) or {}
         model = data.get("model", "").strip()
         if not model:
             return jsonify({"error": "Missing 'model'"}), 400
-        models = get_models()
-        if model not in models:
+        
+        # Get models from registry (local mode uses local cache)
+        models = registry.list_models()
+        model_dict = None
+        for m in models:
+            if m.name == model:
+                model_dict = m
+                break
+        
+        if not model_dict:
             return jsonify({"error": f"Unknown model '{model}'"}), 404
-        meta = models[model]
-        port = int(meta["port"])
+        
+        port = int(model_dict.port)
+        meta = {
+            "port": model_dict.port,
+            "model_path": model_dict.model_path if hasattr(model_dict, 'model_path') else "",
+            "threads": model_dict.threads,
+            "threads_batch": model_dict.threads_batch,
+            "cache_size": model_dict.cache_size,
+            "timeout": model_dict.timeout,
+            "mlock": model_dict.mlock,
+            "flash_attn": model_dict.flash_attn,
+            "no_mmap": model_dict.no_mmap,
+            "parallel": model_dict.parallel,
+            "ubatch_size": model_dict.ubatch_size,
+        }
 
         # Check if already running
         active = check_port_active(port)
         if active:
-            # Already running?
             if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
                 pid = _wsl_pids.get(model)
                 if pid:
@@ -79,7 +127,7 @@ def api_start():
                 pid = find_pid_by_port(port)
                 if pid:
                     return jsonify({"status": "running", "pid": pid, "port": port})
-            # Port active but no PID found? Might be transient, treat as running.
+            # Port active but no PID found? Treat as running.
             return jsonify({"status": "running", "pid": None, "port": port})
 
         # Mark startup timestamp
@@ -87,7 +135,6 @@ def api_start():
             _start_timestamps[model] = time.time()
 
         # Build command
-        model_path = BASE_DIR / meta["model_path"]
         cmd = build_cmd(model, port, meta)
         env = os.environ.copy()
 
@@ -102,13 +149,10 @@ def api_start():
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
                 )
                 pid = proc.pid
-                # On WSL, we can't reliably track the Windows process from Linux
-                # but we'll store the Linux-side PID for potential cleanup
                 if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
                     with _wsl_pids_lock:
                         _wsl_pids[model] = pid
             else:
-                # Linux native
                 proc = subprocess.Popen(
                     cmd,
                     env=env,
@@ -165,7 +209,7 @@ def api_start():
 @lifecycle_bp.route("/api/stop", methods=["POST"])
 def api_stop():
     """Stop a model. In remote mode, delegates to remote API."""
-    registry = get_model_registry()
+    registry = g.registry
     
     # Check if we're in remote mode
     if registry.is_remote_mode:
@@ -181,17 +225,19 @@ def api_stop():
             return jsonify({"error": f"Failed to stop model: {str(e)}"}), 500
     
     # Local mode: use process management
-    from processes import find_pid_by_port, pids_of_llama, _kill_tree, check_port_active
-    
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     if not model:
         return jsonify({"error": "Missing 'model'"}), 400
-    models = get_models()
-    if model not in models:
+    models = registry.list_models()
+    model_dict = None
+    for m in models:
+        if m.name == model:
+            model_dict = m
+            break
+    if not model_dict:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
-    meta = models[model]
-    port = int(meta["port"])
+    port = int(model_dict.port)
 
     # On WSL with Windows binary, we can't reliably get the PID
     # Use pids_of_llama() to find the process
@@ -208,7 +254,7 @@ def api_stop():
     else:
         pid = find_pid_by_port(port)
         log.info(f"Stop request for {model}: port={port}, pid={pid}")
-        if not pid and check_port_active(port):
+        if not pid:
             pids = pids_of_llama()
             log.info(f"No PID from port, found llama-server PIDs: {pids}")
             if pids:

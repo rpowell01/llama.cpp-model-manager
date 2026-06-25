@@ -50,6 +50,7 @@ class Model:
     name: str
     repo: str = ""
     filename: str = ""
+    model_path: str = ""
     expected_size: int = 0
     port: int = 0
     cache_size: int = 32768
@@ -71,6 +72,7 @@ class Model:
             name=data.get("name", ""),
             repo=data.get("repo", ""),
             filename=data.get("filename", ""),
+            model_path=data.get("model_path", ""),
             expected_size=data.get("expected_size", 0),
             port=data.get("port", 0),
             cache_size=data.get("cache_size", 32768),
