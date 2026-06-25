@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        REMOTE_MODE: "false"
+        LLAMA_CPP_SERVER_URL: "http://localhost:8080"
+    container_name: llamaweb
+    ports:
+      - "5000:5000"
+    environment:
+      - REMOTE_MODE=${REMOTE_MODE:-false}
+      - LLAMA_CPP_SERVER_URL=${LLAMA_CPP_SERVER_URL:-http://localhost:8080}
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Optional: Remote llama-cpp server service
+# Uncomment and configure if you want to run the llama.cpp server locally
+# alongside the web frontend.
+#
+# remote-llama:
+#   image: ghcr.io/ggerganov/llama.cpp:server
+#   container_name: llamacpp-server
+#   ports:
+#     - "8080:8080"
+#   volumes:
+#     - ./models:/models
+#   command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080
+#   environment:
+#     - LLAMA_CPP_PORT=8080
+#
+# Then set in the web service:
+#   REMOTE_MODE: "true"
+#   LLAMA_CPP_SERVER_URL: "http://remote-llama:8080"
