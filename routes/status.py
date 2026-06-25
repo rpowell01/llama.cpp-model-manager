@@ -1,6 +1,6 @@
 """Status and health check endpoints."""
 import time
-from flask import Blueprint, render_template, jsonify, Response
+from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
 
 from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config
@@ -28,6 +28,34 @@ def get_status_registry() -> ModelRegistry:
     if _status_registry is None:
         _status_registry = ModelRegistry(Config())
     return _status_registry
+
+
+def inject_registry_to_context():
+    """Middleware to inject ModelRegistry into request context."""
+    if 'registry' not in g:
+        g.registry = get_status_registry()
+
+
+def validate_remote_connectivity():
+    """Before request hook to validate remote server connectivity if in remote mode."""
+    registry = g.get('registry')
+    if registry and registry.is_remote_mode:
+        try:
+            registry._remote_client.get_status()
+            g.remote_healthy = True
+        except Exception as e:
+            log = __import__('logging').getLogger("llamaweb")
+            log.warning(f"Remote server connectivity check failed: {e}")
+            g.remote_healthy = False
+    else:
+        g.remote_healthy = True  # N/A in local mode
+
+
+status_bp = Blueprint("status", __name__)
+
+# Register before_request handlers
+status_bp.before_request(inject_registry_to_context)
+status_bp.before_request(validate_remote_connectivity)
 
 
 def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) -> dict:
@@ -72,7 +100,7 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
 
 def _status_for_model(model: str, meta: dict) -> dict:
     """Compute comprehensive model status."""
-    registry = get_status_registry()
+    registry = g.get('registry') or get_status_registry()
     
     # In remote mode, delegate to remote API
     if registry.is_remote_mode:
@@ -174,9 +202,6 @@ def _status_for_model(model: str, meta: dict) -> dict:
     }
 
 
-status_bp = Blueprint("status", __name__)
-
-
 @status_bp.route("/")
 def index():
     models = get_models()
@@ -186,9 +211,18 @@ def index():
 
 @status_bp.route("/api/status")
 def api_status():
+    registry = g.get('registry') or get_status_registry()
     models = get_models()
     results = [_status_for_model(name, meta) for name, meta in models.items()]
-    response = jsonify(results)
+    
+    # Add mode and remote health info to response
+    response_data = {
+        "models": results,
+        "mode": "remote" if registry.is_remote_mode else "local",
+        "remote_healthy": g.get('remote_healthy', True),
+    }
+    
+    response = jsonify(response_data)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -197,7 +231,7 @@ def api_status():
 
 @status_bp.route("/api/debug/<model_name>")
 def api_debug(model_name):
-    registry = get_status_registry()
+    registry = g.get('registry') or get_status_registry()
     models = get_models()
     if model_name not in models:
         return jsonify({"error": f"Unknown model '{model_name}'"}), 404
@@ -216,6 +250,7 @@ def api_debug(model_name):
             "stored_pid": None,
             "recent_stop": _recent_stops.get(model_name),
             "mode": "remote",
+            "remote_healthy": g.get('remote_healthy', True),
         })
     
     # Local mode
@@ -235,7 +270,7 @@ def api_debug(model_name):
 
 @status_bp.route("/api/next-port")
 def api_next_port():
-    registry = get_status_registry()
+    registry = g.get('registry') or get_status_registry()
     
     # In remote mode, we can't check local port availability
     if registry.is_remote_mode:

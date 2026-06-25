@@ -1,10 +1,10 @@
 """Chat proxy to running model."""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 import requests
 import logging
 
 from config import BASE_DIR, Config
-from models import get_models, ModelRegistry
+from models import ModelRegistry, get_models
 from processes import check_port_active
 from routes.status import _status_for_model
 
@@ -25,41 +25,53 @@ def get_chat_registry() -> ModelRegistry:
 
 @chat_bp.route("/api/chat", methods=["POST"])
 def api_chat():
+    """Chat completion endpoint - queries ModelRegistry for loaded models."""
+    # Use registry from context (injected by middleware) or create one
+    registry = g.get('registry') or get_chat_registry()
+    
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     if not model:
         return jsonify({"error": "Missing model name"}), 400
 
-    models = get_models()
-    if model not in models:
-        return jsonify({"error": f"Unknown model '{model}'"}), 404
-
-    meta = models[model]
-    port = meta.get("port")
-    if not port:
-        return jsonify({"error": "Model has no assigned port"}), 400
-    try:
-        port_int = int(port)
-    except (TypeError, ValueError):
-        log.error(f"Invalid port type for model {model}: {port!r}")
-        return jsonify({"error": "Model has invalid port configuration"}), 500
-
-    # Check if model is starting
-    status_info = _status_for_model(model, meta)
-    if status_info.get("status") == "starting":
-        return jsonify({"error": "Model is starting", "status": "starting"}), 503
-
-    registry = get_chat_registry()
-    
-    # In remote mode, we need to check if the model is loaded via the remote API
+    # Always query ModelRegistry for loaded models
     if registry.is_remote_mode:
+        # In remote mode, check if model is loaded via the remote API
         remote_model = registry._remote_client.get_model(model)
         if not remote_model:
             return jsonify({"error": f"Model '{model}' is not loaded on remote server"}), 400
-        port_int = remote_model.port
-    
-    if not registry.is_remote_mode and not check_port_active(port_int):
-        return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+        port = remote_model.port
+    else:
+        # In local mode, check local cache and port
+        models = registry.list_models()
+        model_obj = None
+        for m in models:
+            if m.name == model:
+                model_obj = m
+                break
+        
+        if not model_obj:
+            return jsonify({"error": f"Unknown model '{model}'"}), 404
+        
+        port = model_obj.port
+        if not port:
+            return jsonify({"error": "Model has no assigned port"}), 400
+        
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError):
+            log.error(f"Invalid port type for model {model}: {port!r}")
+            return jsonify({"error": "Model has invalid port configuration"}), 500
+
+        # Check if model is starting
+        local_models = get_models()
+        if model in local_models:
+            status_info = _status_for_model(model, local_models[model])
+            if status_info.get("status") == "starting":
+                return jsonify({"error": "Model is starting", "status": "starting"}), 503
+
+        if not check_port_active(port_int):
+            return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
     payload = dict(data)
     payload["stream"] = False
