@@ -3,6 +3,10 @@
 Model management: caching, filesystem scanning, port assignment, and persistence.
 
 This module maintains the in-memory model registry with thread-safe access.
+
+REMOTE_MODE: In remote mode, this module delegates to RemoteModelRegistry for
+API-based model management. In local mode, it provides filesystem-based model
+management with port assignment and cache persistence.
 """
 
 from __future__ import annotations

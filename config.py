@@ -128,6 +128,10 @@ def convert_path_for_binary(path: Path) -> str:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Remote configuration support
+#
+# REMOTE_MODE: When enabled (REMOTE_MODE=true), the application connects to an
+# external llama.cpp server via REST API instead of managing local processes.
+# All model operations are delegated to the remote server.
 # ──────────────────────────────────────────────────────────────────────────────
 
 class Config:
