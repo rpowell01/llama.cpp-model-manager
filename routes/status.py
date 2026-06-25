@@ -3,8 +3,8 @@ import time
 from flask import Blueprint, render_template, jsonify, Response
 from typing import Generator
 
-from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT
-from models import get_models
+from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config
+from models import get_models, ModelRegistry
 from processes import check_port_active, find_pid_by_port
 from state import (
     _recent_stops,
@@ -18,10 +18,67 @@ from downloads import download_status, download_lock
 from metrics import _fetch_metrics_from_model
 from utils import estimate_gguf_size
 
+# Global model registry instance for status checks
+_status_registry = None
+
+
+def get_status_registry() -> ModelRegistry:
+    """Get or create the model registry instance for status checks."""
+    global _status_registry
+    if _status_registry is None:
+        _status_registry = ModelRegistry(Config())
+    return _status_registry
+
+
+def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) -> dict:
+    """Compute model status in remote mode using the API."""
+    port = int(meta.get("port", 11000))
+    
+    # Get model status from remote API
+    remote_model = registry._remote_client.get_model(model)
+    status = "unknown"
+    pid = None
+    
+    if remote_model:
+        status = "running"
+        port = remote_model.port
+    else:
+        status = "stopped"
+    
+    # File size info is not available from remote API
+    size_gb = meta.get("file_size_gb")
+    
+    # Download status
+    dl_status = None
+    with download_lock:
+        dl_status = download_status.get(model)
+    
+    return {
+        "model": model,
+        "port": port,
+        "status": status,
+        "pid": pid,
+        "file_exists": True,  # Assume exists in remote mode
+        "file_size_gb": size_gb,
+        "model_path": meta.get("model_path", ""),
+        "download_status": dl_status,
+        "partial_download": 0,
+        "pp": None,
+        "tg": None,
+        "pg": None,
+        **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
+    }
 
 
 def _status_for_model(model: str, meta: dict) -> dict:
     """Compute comprehensive model status."""
+    registry = get_status_registry()
+    
+    # In remote mode, delegate to remote API
+    if registry.is_remote_mode:
+        return _status_for_model_remote(model, meta, registry)
+    
+    # Local mode: use local process management
     port = int(meta.get("port", 11000))
     model_path_str = meta.get("model_path", "")
     model_path = BASE_DIR / model_path_str if model_path_str else None
@@ -119,11 +176,13 @@ def _status_for_model(model: str, meta: dict) -> dict:
 
 status_bp = Blueprint("status", __name__)
 
+
 @status_bp.route("/")
 def index():
     models = get_models()
     statuses = [_status_for_model(name, meta) for name, meta in models.items()]
     return render_template('index.html', statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT, cache_version="v2")
+
 
 @status_bp.route("/api/status")
 def api_status():
@@ -135,13 +194,31 @@ def api_status():
     response.headers['Expires'] = '0'
     return response
 
+
 @status_bp.route("/api/debug/<model_name>")
 def api_debug(model_name):
+    registry = get_status_registry()
     models = get_models()
     if model_name not in models:
         return jsonify({"error": f"Unknown model '{model_name}'"}), 404
     meta = models[model_name]
     port = int(meta["port"])
+    
+    # In remote mode, use remote API for status
+    if registry.is_remote_mode:
+        remote_model = registry._remote_client.get_model(model_name)
+        return jsonify({
+            "model": model_name,
+            "port": remote_model.port if remote_model else port,
+            "active": remote_model is not None,
+            "WSL": WSL,
+            "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
+            "stored_pid": None,
+            "recent_stop": _recent_stops.get(model_name),
+            "mode": "remote",
+        })
+    
+    # Local mode
     active = check_port_active(port)
     result = {
         "model": model_name,
@@ -151,11 +228,21 @@ def api_debug(model_name):
         "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
         "stored_pid": _wsl_pids.get(model_name) if WSL else None,
         "recent_stop": _recent_stops.get(model_name),
+        "mode": "local",
     }
     return jsonify(result)
 
+
 @status_bp.route("/api/next-port")
 def api_next_port():
+    registry = get_status_registry()
+    
+    # In remote mode, we can't check local port availability
+    if registry.is_remote_mode:
+        # Return a placeholder port for remote mode
+        return jsonify({"port": 0, "note": "Port assignment handled by remote server"})
+    
+    # Local mode: find next available port
     start = 11000
     port = start
     # Get ports already assigned to models

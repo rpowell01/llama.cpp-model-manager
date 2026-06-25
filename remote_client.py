@@ -2,7 +2,7 @@
 """
 Remote API client for communicating with llama.cpp server.
 
-This module provides a client for remote model management via REST API.
+This module provides a client for remote model management via REST API. 
 """
 
 from __future__ import annotations

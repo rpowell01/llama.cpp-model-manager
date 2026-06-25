@@ -6,9 +6,8 @@ import threading
 import time
 import os
 
-from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, LLAMA_SERVER, convert_path_for_binary
-from models import get_models, save_models
-from processes import find_pid_by_port, pids_of_llama, _kill_tree, check_port_active, _check_model_ready, build_cmd
+from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, LLAMA_SERVER, convert_path_for_binary, Config
+from models import get_models, save_models, add_model_entry, delete_model_entry, ModelRegistry, InvalidModeError
 from state import (
     _recent_stops,
     _recent_stops_lock,
@@ -21,10 +20,40 @@ from state import (
 
 log = logging.getLogger("llamaweb")
 
+# Global model registry instance
+_model_registry = None
+
+
+def get_model_registry() -> ModelRegistry:
+    """Get or create the model registry instance."""
+    global _model_registry
+    if _model_registry is None:
+        _model_registry = ModelRegistry(Config())
+    return _model_registry
+
 lifecycle_bp = Blueprint("lifecycle", __name__)
 
 @lifecycle_bp.route("/api/start", methods=["POST"])
 def api_start():
+    """Start a model. In remote mode, delegates to remote API."""
+    registry = get_model_registry()
+    
+    # Check if we're in remote mode
+    if registry.is_remote_mode:
+        data = request.get_json(force=True) or {}
+        model = data.get("model", "").strip()
+        if not model:
+            return jsonify({"error": "Missing 'model'"}), 400
+        try:
+            registry.load_model(model)
+            return jsonify({"status": "loading", "model": model})
+        except Exception as e:
+            log.exception("Failed to start model %s via remote API", model)
+            return jsonify({"error": f"Failed to start model: {str(e)}"}), 500
+    
+    # Local mode: use process management
+    from processes import find_pid_by_port, pids_of_llama, _kill_tree, check_port_active, _check_model_ready, build_cmd
+    
     start_success = False
     model = None  # Ensure model is defined for except/finally blocks
     try:
@@ -135,6 +164,25 @@ def api_start():
 
 @lifecycle_bp.route("/api/stop", methods=["POST"])
 def api_stop():
+    """Stop a model. In remote mode, delegates to remote API."""
+    registry = get_model_registry()
+    
+    # Check if we're in remote mode
+    if registry.is_remote_mode:
+        data = request.get_json(force=True) or {}
+        model = data.get("model", "").strip()
+        if not model:
+            return jsonify({"error": "Missing 'model'"}), 400
+        try:
+            registry.unload_model(model)
+            return jsonify({"status": "stopping", "model": model})
+        except Exception as e:
+            log.exception("Failed to stop model %s via remote API", model)
+            return jsonify({"error": f"Failed to stop model: {str(e)}"}), 500
+    
+    # Local mode: use process management
+    from processes import find_pid_by_port, pids_of_llama, _kill_tree, check_port_active
+    
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     if not model:
