@@ -158,7 +158,9 @@ def get_server_host() -> str:
             host = wsl_host
             log.info(f"WSL+Windows detected: using host {host} for client connections")
         else:
-            log.warning("WSL+Windows detected but could not determine host IP; falling back to default")
+            # Fallback: try 127.0.0.1 which may work if Windows has loopback enabled
+            log.warning("WSL+Windows detected but could not determine host IP; falling back to 127.0.0.1")
+            host = "127.0.0.1"
 
     return host
 
@@ -183,7 +185,7 @@ def find_pid_by_port(port: int) -> int | None:
     """Find PID of process listening on the given port."""
     _validate_local_mode()
     
-    # In WSL+Windows mode, use PowerShell to find the PID
+    # In WSL+Windows mode, use netstat to find the PID
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         return _find_pid_by_port_wsl(port)
     
@@ -192,21 +194,25 @@ def find_pid_by_port(port: int) -> int | None:
 
 
 def _find_pid_by_port_wsl(port: int) -> int | None:
-    """Find PID using PowerShell for WSL+Windows mode."""
-    ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
-    
+    """Find PID using netstat for WSL+Windows mode."""
+    # Use netstat via cmd.exe to find the PID - more reliable than PowerShell
     try:
-        # Use PowerShell to find process listening on the port
-        ps_cmd = f'Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess'
-        result = subprocess.run(
-            [ps_bin, "-Command", ps_cmd],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        for line in result.stdout.strip().splitlines():
-            if line.strip().isdigit():
-                return int(line.strip())
+        cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+        if os.path.exists(cmd_path):
+            result = subprocess.run(
+                [cmd_path, "/c", f"netstat -ano 2>&1 | findstr :{port}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            # Parse netstat output: "TCP 0.0.0.0:PORT ... LISTENING PID"
+            for line in result.stdout.strip().splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and "LISTENING" in line:
+                    # Last column is the PID
+                    pid_str = parts[-1]
+                    if pid_str.isdigit():
+                        return int(pid_str)
     except Exception:
         pass
     return None
@@ -270,21 +276,25 @@ def pids_of_llama() -> list[int]:
     """Find PIDs of all llama-server processes."""
     _validate_local_mode()
     pids: list[int] = []
-    # On WSL with Windows binary, use PowerShell to find llama-server processes
+    # On WSL with Windows binary, use tasklist via cmd.exe to find llama-server processes
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         try:
-            ps_cmd = 'Get-Process -Name "llama-server" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id'
-            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
-            result = subprocess.run(
-                [ps_bin, "-Command", ps_cmd],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
+            cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+            if os.path.exists(cmd_path):
+                result = subprocess.run(
+                    [cmd_path, "/c", "tasklist 2>&1 | findstr /i llama"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                # Parse tasklist output: "llama-server.exe PID ..."
                 for line in result.stdout.strip().splitlines():
-                    if line.strip().isdigit():
-                        pids.append(int(line.strip()))
+                    parts = line.split()
+                    if len(parts) >= 2 and "llama-server" in parts[0].lower():
+                        try:
+                            pids.append(int(parts[1]))
+                        except ValueError:
+                            pass
                 if pids:
                     return pids
         except Exception:
@@ -323,32 +333,30 @@ def _kill_tree(pid: int, model: str = "") -> bool:
     """Kill a process and all its children. Returns True if successful."""
     _validate_local_mode()
     try:
-        # On WSL with Windows binary, use PowerShell to kill the process
+        # On WSL with Windows binary, use taskkill via cmd.exe
         if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-            log.info(f"Killing Windows process {pid} via PowerShell (WSL mode)")
-            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
-            # First, try to find the process and kill it
-            ps_cmd = f'''try {{ $p = Get-Process -Id {pid} -ErrorAction Stop; $p | Stop-Process -Force -ErrorAction Stop; Write-Output "success" }} catch {{ Write-Output "failed: $($_.Exception.Message)" }}'''
-            result = subprocess.run(
-                [ps_bin, "-Command", ps_cmd],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            log.info(f"Kill result for {pid}: returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
-            if "success" in result.stdout.lower():
-                return True
+            log.info(f"Killing Windows process {pid} via taskkill (WSL mode)")
+            cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+            if os.path.exists(cmd_path):
+                result = subprocess.run(
+                    [cmd_path, "/c", f"taskkill /F /T /PID {pid} 2>&1"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                log.info(f"Kill result for {pid}: stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
+                if "successful" in result.stdout.lower() or result.returncode == 0:
+                    return True
             # Fallback: kill all llama-server processes
             log.info(f"Fallback: killing all llama-server processes")
-            ps_cmd = '''try { Get-Process -Name "llama-server" -ErrorAction Stop | Stop-Process -Force -ErrorAction Stop; Write-Output "success" } catch { Write-Output "failed" }'''
             result = subprocess.run(
-                [ps_bin, "-Command", ps_cmd],
+                [cmd_path, "/c", "taskkill /F /IM llama-server.exe 2>&1"],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
-            log.info(f"Kill all result: returncode={result.returncode}, stdout={result.stdout.strip()}")
-            return "success" in result.stdout.lower()
+            log.info(f"Kill all result: stdout={result.stdout.strip()}")
+            return "successful" in result.stdout.lower() or result.returncode == 0
         elif WINDOWS:
             # Use taskkill to kill process tree on Windows
             result = subprocess.run(
@@ -397,13 +405,31 @@ def check_port_active(port: int) -> bool:
     _validate_local_mode()
     import socket
 
-    try:
-        host = get_server_host()
-        with socket.create_connection((host, port), timeout=0.2):
-            return True
-    except OSError as e:
-        log.debug(f"Port check for {port} failed: {e}")
-        return False
+    # Determine hosts to try - in WSL+Windows mode, try multiple options
+    hosts_to_try = []
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
+        # Try the Windows host IP first, then localhost as fallback
+        wsl_host = _get_wsl_host_ip()
+        if wsl_host:
+            hosts_to_try.append(wsl_host)
+        hosts_to_try.append("127.0.0.1")
+    else:
+        hosts_to_try.append(get_server_host())
+
+    # Use longer timeout for WSL environments
+    timeout = 0.5 if WSL else 0.2
+
+    for host in hosts_to_try:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                log.debug(f"Port {port} active on {host}")
+                return True
+        except OSError as e:
+            log.debug(f"Port check for {port} on {host} failed: {e}")
+            continue
+
+    return False
 
 
 # REMOTE_MODE: This function is for LOCAL mode only.
@@ -411,13 +437,29 @@ def check_port_active(port: int) -> bool:
 def _check_model_ready(port: int) -> bool:
     """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
     _validate_local_mode()
-    host = get_server_host()
-    url = f"http://{host}:{port}/v1/models"
-    try:
-        resp = requests.get(url, timeout=0.5)
-        return resp.status_code == 200
-    except Exception:
-        return False
+    
+    # Determine hosts to try - in WSL+Windows mode, try multiple options
+    hosts_to_try = []
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
+        # Try the Windows host IP first, then localhost as fallback
+        wsl_host = _get_wsl_host_ip()
+        if wsl_host:
+            hosts_to_try.append(wsl_host)
+        hosts_to_try.append("127.0.0.1")
+    else:
+        hosts_to_try.append(get_server_host())
+
+    for host in hosts_to_try:
+        url = f"http://{host}:{port}/v1/models"
+        try:
+            resp = requests.get(url, timeout=0.5)
+            if resp.status_code == 200:
+                return True
+        except Exception:
+            continue
+
+    return False
 
 
 # REMOTE_MODE: This function is for LOCAL mode only.

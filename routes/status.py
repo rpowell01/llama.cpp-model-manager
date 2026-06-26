@@ -134,14 +134,11 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 if stored_pid:
                     pid = stored_pid
                     status = "running"
-                elif active:
-                    status = "running"
-            elif active:
-                pid = find_pid_by_port(port)
-                if pid:
-                    status = "running"
-                else:
-                    status = "running (unknown pid)"
+            # For all modes, if port is active, try to find the PID
+            if active:
+                if not pid:
+                    pid = find_pid_by_port(port)
+                status = "running"
             # Check if model is starting
             with _start_timestamps_lock:
                 if model in _start_timestamps:

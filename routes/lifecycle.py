@@ -175,23 +175,31 @@ def api_start():
         # Wait briefly for the process to start
         time.sleep(5)
 
-        # Check if process is still running
-        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-            is_running = False
-            for _ in range(20):
+        # Check if process is still running and port is active
+        # We check port activity for all platforms to ensure the server is actually listening
+        is_running = False
+        for _ in range(20):
+            if proc and proc.poll() is None:
+                # Process is running, now check if port is active
                 if check_port_active(port):
                     is_running = True
                     break
-                time.sleep(0.5)
-        elif proc:
-            is_running = proc.poll() is None
-        else:
-            is_running = False
+            time.sleep(0.5)
 
         if is_running:
             start_success = True
             with _recent_stops_lock:
                 _recent_stops.pop(model, None)
+            # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
+            # but we need the actual Windows process PID for killing.
+            # Look up the Windows PID from the port and update the stored PID.
+            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+                windows_pid = find_pid_by_port(port)
+                if windows_pid:
+                    log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")
+                    with _wsl_pids_lock:
+                        _wsl_pids[model] = windows_pid
+                    pid = windows_pid
             log.info(f"Start successful: model={model}, pid={pid}, port={port}, is_running={is_running}")
             log_event("start", model, port, pid, "running")
             return jsonify({"status": "running", "pid": pid, "port": port})
@@ -240,18 +248,22 @@ def api_stop():
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     port = int(model_dict.port)
 
-    # On WSL with Windows binary, we can't reliably get the PID
-    # Use pids_of_llama() to find the process
+    # On WSL with Windows binary, we need the Windows PID, not the Linux subprocess PID.
+    # Always use find_pid_by_port first, then fallback to stored PID as last resort.
+    pid = None
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-        pids = pids_of_llama()
-        if pids:
-            pid = pids[0]
-            log.info(f"Stop request for {model}: using llama-server PID {pid} (WSL mode)")
+        # First try to find the Windows PID from the port
+        pid = find_pid_by_port(port)
+        if pid:
+            log.info(f"Stop request for {model}: found Windows PID {pid} from port {port} (WSL mode)")
         else:
-            log.info(f"No llama-server process found for {model}")
-            with _recent_stops_lock:
-                _recent_stops[model] = time.time()
-            return jsonify({"status": "stopped"})
+            # Fallback: try stored PID (might be Linux PID, which won't work)
+            with _wsl_pids_lock:
+                stored_pid = _wsl_pids.get(model)
+            if stored_pid:
+                log.info(f"Stop request for {model}: stored PID={stored_pid} (may be Linux PID, will attempt kill)")
+                pid = stored_pid
+            log.info(f"Stop request for {model}: port={port}, pid={pid}")
     else:
         pid = find_pid_by_port(port)
         log.info(f"Stop request for {model}: port={port}, pid={pid}")
@@ -265,6 +277,8 @@ def api_stop():
         log.info(f"No PID found for {model}, returning stopped")
         with _recent_stops_lock:
             _recent_stops[model] = time.time()
+        with _start_timestamps_lock:
+            _start_timestamps.pop(model, None)
         return jsonify({"status": "stopped"})
 
     success = _kill_tree(pid, model)
@@ -274,6 +288,8 @@ def api_stop():
         with _wsl_pids_lock:
             old_pid = _wsl_pids.pop(model, None)
         log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
+    else:
+        old_pid = None
 
     with _recent_stops_lock:
         _recent_stops[model] = time.time()
@@ -291,9 +307,5 @@ def api_stop():
 
     with _start_timestamps_lock:
         _start_timestamps.pop(model, None)
-
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-        with _wsl_pids_lock:
-            _wsl_pids.pop(model, None)
 
     return jsonify({"status": "stopped", "pid": pid, "success": success})
