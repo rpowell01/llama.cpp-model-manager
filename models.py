@@ -345,22 +345,19 @@ def assign_ports(models: dict[str, dict[str, Any]]) -> None:
     """Assign sequential ports to models starting from 11000, ensuring uniqueness."""
     sorted_names = sorted(models.keys())
     used_ports = set()
-    # Collect already-assigned ports
-    for model_name in sorted_names:
-        port = models[model_name].get("port", 0)
-        if port > 0:
-            used_ports.add(port)
     # Assign unique ports only if needed
     for i, model_name in enumerate(sorted_names):
         port = models[model_name].get("port", 0)
         # Only reassign if port is invalid (<=0) or is a duplicate
-        if port <= 0 or (port in used_ports and models[model_name].get("port") != port):
+        if port <= 0 or port in used_ports:
             # Find next available port
             new_port = 11000 + i * 10
             while new_port in used_ports:
                 new_port += 10
             models[model_name]["port"] = new_port
             used_ports.add(new_port)
+        else:
+            used_ports.add(port)
 
 
 def save_models(models: dict[str, dict[str, Any]]) -> None:

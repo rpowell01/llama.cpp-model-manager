@@ -10,6 +10,7 @@ or ModelRegistry with a remote config.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import shutil
@@ -50,9 +51,12 @@ def _get_wsl_host_ip() -> str | None:
                 parts = line.split()
                 if len(parts) >= 2:
                     ip = parts[1]
-                    # Verify it's an IP (basic check)
-                    if all(part.isdigit() or part == '.' for part in ip.split('.')):
+                    # Validate IPv4 address using ipaddress module
+                    try:
+                        ipaddress.IPv4Address(ip)
                         return ip
+                    except ipaddress.AddressValueError:
+                        pass  # Invalid IP, continue to next line
     except Exception:
         pass
     return None

@@ -78,7 +78,6 @@ def api_chat():
     if "messages" not in payload:
         return jsonify({"error": "Missing 'messages' field"}), 400
 
-    target_url = f"http://127.0.0.1:{port_int}/v1/chat/completions"
     try:
         client_timeout = data.get("timeout")
         if client_timeout is not None:
