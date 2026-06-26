@@ -45,7 +45,8 @@ async function computeAndSetPort() {
  * @returns {Promise<boolean>} - True if port is available
  */
 async function validatePort(port) {
-  const models = await (await fetch('/api/status')).json();
+  const data = await (await fetch('/api/status')).json();
+  const models = data.models;
   const usedPorts = models.map(m => parseInt(m.port, 10));
   return !usedPorts.includes(port);
 }

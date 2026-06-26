@@ -1,6 +1,7 @@
 import logging
 import requests
 from config import DEFAULTS
+from processes import get_server_host
 
 log = logging.getLogger("llamaweb")
 
@@ -9,7 +10,7 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
 
     Returns a dict with keys 'pp', 'tg', 'pg' (or None if not available).
     """
-    host = DEFAULTS["host"]
+    host = get_server_host()
     url = f"http://{host}:{port}/metrics"
     result: dict[str, float | None] = {"pp": None, "tg": None, "pg": None}
     try:

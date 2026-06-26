@@ -62,17 +62,18 @@ async function refresh(showLoading = true) {
     if (!res.ok) {
       throw new Error('HTTP ' + res.status + ': ' + res.statusText);
     }
-    const text = await res.text();
-    console.log('Response text length:', text.length);
-    let rows;
-    try {
-      rows = JSON.parse(text);
-    } catch (e) {
-      console.error('Failed to parse /api/status response:', text);
-      throw e;
-    }
-    console.log('Received', rows.length, 'models');
-    currentModelRows = rows;
+     const text = await res.text();
+     console.log('Response text length:', text.length);
+     let data;
+     try {
+       data = JSON.parse(text);
+     } catch (e) {
+       console.error('Failed to parse /api/status response:', text);
+       throw e;
+     }
+     let rows = data.models;
+     console.log('Received', rows.length, 'models');
+     currentModelRows = rows;
 
     const dlRes = await fetch('/api/download-status?' + Date.now(), {
       cache: 'no-store',

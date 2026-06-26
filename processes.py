@@ -35,6 +35,59 @@ from models import InvalidModeError
 log = logging.getLogger("llamaweb.processes")
 
 
+def _get_wsl_host_ip() -> str | None:
+    """
+    Get the Windows host IP address from WSL's resolv.conf.
+    Returns None if not found or not WSL.
+    """
+    try:
+        resolv = Path("/etc/resolv.conf")
+        if not resolv.exists():
+            return None
+        for line in resolv.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("nameserver"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    ip = parts[1]
+                    # Verify it's an IP (basic check)
+                    if all(part.isdigit() or part == '.' for part in ip.split('.')):
+                        return ip
+    except Exception:
+        pass
+    return None
+
+
+# Cache the computed host to avoid repeated filesystem reads
+_server_host_cache: str | None = None
+
+
+def get_server_host() -> str:
+    """
+    Determine which host the client should use to connect to the server.
+    For WSL2 running a Windows llama-server.exe, the server binds on the Windows
+    host's IP (obtained from resolv.conf) and must be reachable from WSL. For all
+    other configurations, use the configured default host (typically 127.0.0.1).
+    """
+    global _server_host_cache
+    if _server_host_cache is not None:
+        return _server_host_cache
+
+    host = DEFAULTS["host"]
+    # When running in WSL with a Windows binary, the server runs on Windows
+    # and listens on the Windows host IP. We need to connect to that IP.
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        wsl_host = _get_wsl_host_ip()
+        if wsl_host:
+            host = wsl_host
+            log.info(f"WSL+Windows detected: using host {host} for client connections")
+        else:
+            log.warning("WSL+Windows detected but could not determine host IP; falling back to default")
+
+    _server_host_cache = host
+    return host
+
+
 def _validate_local_mode() -> None:
     """
     Validate that we're in local mode.
@@ -294,7 +347,8 @@ def check_port_active(port: int) -> bool:
     import socket
 
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+        host = get_server_host()
+        with socket.create_connection((host, port), timeout=0.2):
             return True
     except OSError as e:
         log.debug(f"Port check for {port} failed: {e}")
@@ -306,7 +360,7 @@ def check_port_active(port: int) -> bool:
 def _check_model_ready(port: int) -> bool:
     """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
     _validate_local_mode()
-    host = DEFAULTS["host"]
+    host = get_server_host()
     url = f"http://{host}:{port}/v1/models"
     try:
         resp = requests.get(url, timeout=0.5)
@@ -320,6 +374,10 @@ def _check_model_ready(port: int) -> bool:
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
+    # Determine bind host: in WSL+Windows binary mode, bind to 0.0.0.0 so Windows host
+    # accepts connections from WSL. In all other cases, use the configured default.
+    bind_host = "0.0.0.0" if (WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe')) else DEFAULTS["host"]
+
     cmd: list[str] = [
         str(LLAMA_SERVER),
         "-m",
@@ -327,7 +385,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         "--alias",
         model,
         "--host",
-        DEFAULTS["host"],
+        bind_host,
         "--port",
         str(port),
         "--threads",
