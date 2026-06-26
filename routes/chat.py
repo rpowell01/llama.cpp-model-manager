@@ -93,13 +93,14 @@ def api_chat():
         log.info(f"Chat proxy to {model} at {target_url}")
         resp = requests.post(target_url, json=payload, timeout=timeout)
         if resp.status_code != 200:
-            return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
+            log.error(f"Model API returned {resp.status_code}: {resp.text[:500]}")
+            return jsonify({"error": "Model API returned an error"}), resp.status_code
         try:
             json_data = resp.json()
         except Exception as e:
             log.error(f"Invalid JSON from model {model} on port {port_int}: {resp.text[:500]}")
-            return jsonify({"error": "Model returned invalid JSON response", "details": resp.text[:500]}), 500
+            return jsonify({"error": "Model returned invalid JSON response"}), 500
         return jsonify(json_data)
     except requests.exceptions.RequestException as e:
         log.error(f"Chat proxy error for {model} on port {port_int}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to communicate with model server"}), 500

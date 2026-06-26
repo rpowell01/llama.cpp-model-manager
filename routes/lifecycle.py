@@ -51,7 +51,7 @@ def validate_remote_connectivity():
             registry._remote_client.get_status()
         except Exception as e:
             log.warning(f"Remote server connectivity check failed: {e}")
-            return jsonify({"error": f"Remote server unreachable: {str(e)}"}), 503
+            return jsonify({"error": "Remote server unreachable"}), 503
 
 
 lifecycle_bp = Blueprint("lifecycle", __name__)
@@ -78,7 +78,7 @@ def api_start():
             return jsonify({"status": "loading", "model": model}), 202
         except Exception as e:
             log.exception("Failed to start model %s via remote API", model)
-            return jsonify({"error": f"Failed to start model: {str(e)}"}), 500
+            return jsonify({"error": "Failed to start model"}), 500
     
     # Local mode: use process management
     start_success = False
@@ -164,7 +164,7 @@ def api_start():
             with _start_timestamps_lock:
                 _start_timestamps.pop(model, None)
             log.exception("Failed to start model %s", model)
-            return jsonify({"error": f"Failed to start server: {str(e)}"}), 500
+            return jsonify({"error": "Failed to start server"}), 500
 
         if not pid:
             with _start_timestamps_lock:
@@ -222,7 +222,7 @@ def api_stop():
             return jsonify({"status": "stopping", "model": model})
         except Exception as e:
             log.exception("Failed to stop model %s via remote API", model)
-            return jsonify({"error": f"Failed to stop model: {str(e)}"}), 500
+            return jsonify({"error": "Failed to stop model"}), 500
     
     # Local mode: use process management
     data = request.get_json(force=True) or {}
