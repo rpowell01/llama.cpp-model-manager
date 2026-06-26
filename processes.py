@@ -111,62 +111,38 @@ def _validate_local_mode() -> None:
 def find_pid_by_port(port: int) -> int | None:
     """Find PID of process listening on the given port."""
     _validate_local_mode()
-    # On WSL with Windows binary, use PowerShell to find the PID
+    
+    # In WSL+Windows mode, use PowerShell to find the PID
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-        try:
-            ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
-            # Use ss/netstat on Linux to find the port, then PowerShell to verify
-            # First try ss/lsof
-            for binary in ("ss", "lsof"):
-                path = shutil.which(binary)
-                if not path:
-                    continue
-                try:
-                    if binary == "ss":
-                        out = subprocess.check_output(
-                            ["ss", "-tlnp", f"sport = :{port}"],
-                            stderr=subprocess.DEVNULL,
-                            text=True,
-                            timeout=5,
-                        )
-                    else:
-                        out = subprocess.check_output(
-                            ["lsof", "-ti", f"tcp:{port}"],
-                            stderr=subprocess.DEVNULL,
-                            text=True,
-                            timeout=5,
-                        )
-                    for line in out.splitlines():
-                        if "pid=" in line:
-                            pid_str = line.split("pid=")[1].split(",")[0]
-                            return int(pid_str)
-                        if line.strip().isdigit():
-                            return int(line.strip())
-                except Exception:
-                    pass
-            # Try netstat as fallback
-            netstat = shutil.which("netstat")
-            if netstat:
-                try:
-                    out = subprocess.check_output(
-                        [netstat, "-plant"],
-                        stderr=subprocess.DEVNULL,
-                        text=True,
-                        timeout=5,
-                    )
-                    for line in out.splitlines()[1:]:
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            local = parts[1]
-                            if local.endswith(f":{port}"):
-                                candidate = parts[-1]
-                                if candidate.isdigit():
-                                    return int(candidate)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        return _find_pid_by_port_wsl(port)
+    
+    # Standard Linux/Unix approach
+    return _find_pid_by_port_unix(port)
 
+
+def _find_pid_by_port_wsl(port: int) -> int | None:
+    """Find PID using PowerShell for WSL+Windows mode."""
+    ps_bin = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
+    
+    try:
+        # Use PowerShell to find process listening on the port
+        ps_cmd = f'Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess'
+        result = subprocess.run(
+            [ps_bin, "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.strip().splitlines():
+            if line.strip().isdigit():
+                return int(line.strip())
+    except Exception:
+        pass
+    return None
+
+
+def _find_pid_by_port_unix(port: int) -> int | None:
+    """Find PID using ss/lsof/netstat for Unix/Linux systems."""
     for binary in ("ss", "lsof"):
         path = shutil.which(binary)
         if not path:
@@ -194,7 +170,7 @@ def find_pid_by_port(port: int) -> int | None:
                     return int(line.strip())
         except Exception:
             pass
-    # netstat fallback (Windows / Linux)
+    # netstat fallback
     netstat = shutil.which("netstat")
     if netstat:
         try:
