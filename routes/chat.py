@@ -5,7 +5,7 @@ import logging
 
 from config import BASE_DIR, Config
 from models import ModelRegistry, get_models
-from processes import check_port_active
+from processes import check_port_active, get_server_host
 from routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)
@@ -88,6 +88,10 @@ def api_chat():
                 timeout = 300
         else:
             timeout = 300
+        # Use resolved server host (handles WSL+Windows)
+        host = get_server_host()
+        target_url = f"http://{host}:{port_int}/v1/chat/completions"
+        log.info(f"Chat proxy to {model} at {target_url}")
         resp = requests.post(target_url, json=payload, timeout=timeout)
         if resp.status_code != 200:
             return jsonify({"error": f"Model API returned {resp.status_code}", "details": resp.text}), resp.status_code
