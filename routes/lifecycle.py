@@ -13,6 +13,7 @@ from processes import (
     check_port_active,
     _check_model_ready,
     build_cmd,
+    pids_of_llama,
 )
 from state import (
     _recent_stops,
@@ -172,12 +173,12 @@ def api_start():
             return jsonify({"error": "Failed to start server: could not get PID"}), 500
 
         # Wait briefly for the process to start
-        time.sleep(2.5)
+        time.sleep(5)
 
         # Check if process is still running
         if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
             is_running = False
-            for _ in range(5):
+            for _ in range(20):
                 if check_port_active(port):
                     is_running = True
                     break
