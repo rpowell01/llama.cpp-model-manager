@@ -49,6 +49,8 @@ def _validate_local_mode() -> None:
 
 
 # Wrap existing functions with mode validation
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def find_pid_by_port(port: int) -> int | None:
     """Find PID of process listening on the given port."""
     _validate_local_mode()
@@ -158,6 +160,8 @@ def find_pid_by_port(port: int) -> int | None:
     return None
 
 
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def pids_of_llama() -> list[int]:
     """Find PIDs of all llama-server processes."""
     _validate_local_mode()
@@ -209,6 +213,8 @@ def pids_of_llama() -> list[int]:
     return pids
 
 
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def _kill_tree(pid: int, model: str = "") -> bool:
     """Kill a process and all its children. Returns True if successful."""
     _validate_local_mode()
@@ -280,6 +286,8 @@ def _kill_tree(pid: int, model: str = "") -> bool:
         return False
 
 
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def check_port_active(port: int) -> bool:
     """Check if a port is active (has a listener)."""
     _validate_local_mode()
@@ -293,6 +301,8 @@ def check_port_active(port: int) -> bool:
         return False
 
 
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def _check_model_ready(port: int) -> bool:
     """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
     _validate_local_mode()
@@ -305,6 +315,8 @@ def _check_model_ready(port: int) -> bool:
         return False
 
 
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()

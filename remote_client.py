@@ -2,7 +2,12 @@
 """
 Remote API client for communicating with llama.cpp server.
 
-This module provides a client for remote model management via REST API. 
+This module provides a client for remote model management via REST API.
+
+REMOTE_MODE: This module is used when REMOTE_MODE=true. It provides the
+RemoteModelRegistry class for interacting with an external llama.cpp server.
+All model lifecycle operations (load, unload, chat) are delegated to the
+remote server via REST API.
 """
 
 from __future__ import annotations
