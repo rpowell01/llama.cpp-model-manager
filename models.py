@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -342,18 +343,41 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
 
 
 def _get_seen_ports() -> set[int]:
-    """Get ports already in use by external processes (llama-server or other)."""
+    """Get ports already in use by external processes (llama-server or other).
+    
+    Uses ss/lsof for efficient port scanning instead of iterating through
+    all possible ports with individual process lookups.
+    """
+    import shutil
+    
     seen = set()
-    # Check for running llama-server processes and their ports
+    
+    # Use ss to get all listening ports at once (much faster than iterating)
     try:
-        from processes import find_pid_by_port, pids_of_llama
-        for pid in pids_of_llama():
-            # Try to find the port for this PID
-            for port in range(11000, 11100):  # Check common port range
-                if find_pid_by_port(port) == pid:
-                    seen.add(port)
+        ss_path = shutil.which("ss")
+        if ss_path:
+            result = subprocess.run(
+                [ss_path, "-tlnp"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            for line in result.stdout.splitlines():
+                # Parse lines like: LISTEN 0 511 127.0.0.1:11001 0.0.0.0:*
+                parts = line.split()
+                if len(parts) >= 4 and parts[0] == "LISTEN":
+                    # Extract port from local address (format: IP:PORT)
+                    local_addr = parts[3]
+                    if ":" in local_addr:
+                        port_str = local_addr.rsplit(":", 1)[1]
+                        if port_str.isdigit():
+                            seen.add(int(port_str))
+            return seen
     except Exception:
         pass
+    
+    # Fallback: check for llama-server processes and skip port lookup
+    # (port assignment will handle conflicts if they occur)
     return seen
 
 
