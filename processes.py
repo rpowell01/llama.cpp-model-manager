@@ -54,16 +54,16 @@ def _get_wsl_host_ip() -> str | None:
                     # Validate IPv4 address using ipaddress module
                     try:
                         ipaddress.IPv4Address(ip)
-                        return ip
+                        # Additional validation: ensure it's a private/reserved IP (Windows host)
+                        # Windows host IPs in WSL are typically in the private range
+                        ip_obj = ipaddress.IPv4Address(ip)
+                        if ip_obj.is_private or ip_obj.is_reserved:
+                            return ip
                     except ipaddress.AddressValueError:
                         pass  # Invalid IP, continue to next line
     except Exception:
         pass
     return None
-
-
-# Cache the computed host to avoid repeated filesystem reads
-_server_host_cache: str | None = None
 
 
 def get_server_host() -> str:
@@ -72,11 +72,10 @@ def get_server_host() -> str:
     For WSL2 running a Windows llama-server.exe, the server binds on the Windows
     host's IP (obtained from resolv.conf) and must be reachable from WSL. For all
     other configurations, use the configured default host (typically 127.0.0.1).
+    
+    Note: The host is resolved on each call to handle network changes (e.g., DHCP
+    lease renewal in WSL+Windows mode) that could result in stale cached IPs.
     """
-    global _server_host_cache
-    if _server_host_cache is not None:
-        return _server_host_cache
-
     host = DEFAULTS["host"]
     # When running in WSL with a Windows binary, the server runs on Windows
     # and listens on the Windows host IP. We need to connect to that IP.
@@ -88,7 +87,6 @@ def get_server_host() -> str:
         else:
             log.warning("WSL+Windows detected but could not determine host IP; falling back to default")
 
-    _server_host_cache = host
     return host
 
 
