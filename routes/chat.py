@@ -5,7 +5,8 @@ import logging
 
 from config import BASE_DIR, Config
 from models import ModelRegistry, get_models
-from processes import check_port_active, get_server_host
+from processes import check_port_active, get_server_host, _get_wsl_host_ip
+from config import WSL, LLAMA_SERVER
 from routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)
@@ -87,11 +88,36 @@ def api_chat():
                 timeout = 300
         else:
             timeout = 300
-        # Use resolved server host (handles WSL+Windows)
-        host = get_server_host()
-        target_url = f"http://{host}:{port_int}/v1/chat/completions"
-        log.info(f"Chat proxy to {model} at {target_url}")
-        resp = requests.post(target_url, json=payload, timeout=timeout)
+        
+        # Determine hosts to try - in WSL+Windows mode, try multiple options
+        hosts_to_try = []
+        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            wsl_host = _get_wsl_host_ip()
+            if wsl_host:
+                hosts_to_try.append(wsl_host)
+            hosts_to_try.append("127.0.0.1")
+        else:
+            hosts_to_try.append(get_server_host())
+        
+        # Try each host until one succeeds
+        last_error = None
+        resp = None
+        for host in hosts_to_try:
+            target_url = f"http://{host}:{port_int}/v1/chat/completions"
+            log.info(f"Chat proxy to {model} at {target_url}")
+            try:
+                resp = requests.post(target_url, json=payload, timeout=timeout)
+                if resp.status_code == 200:
+                    break  # Success, exit the loop
+                last_error = f"Model API returned {resp.status_code}"
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                continue
+        else:
+            # All hosts failed
+            log.error(f"Chat proxy error for {model} on port {port_int}: {last_error}")
+            return jsonify({"error": "Failed to communicate with model server"}), 500
+        
         if resp.status_code != 200:
             log.error(f"Model API returned {resp.status_code}: {resp.text[:500]}")
             return jsonify({"error": "Model API returned an error"}), resp.status_code
