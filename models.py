@@ -341,18 +341,36 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
     return models
 
 
+def _get_seen_ports() -> set[int]:
+    """Get ports already in use by external processes (llama-server or other)."""
+    seen = set()
+    # Check for running llama-server processes and their ports
+    try:
+        from processes import find_pid_by_port, pids_of_llama
+        for pid in pids_of_llama():
+            # Try to find the port for this PID
+            for port in range(11000, 11100):  # Check common port range
+                if find_pid_by_port(port) == pid:
+                    seen.add(port)
+    except Exception:
+        pass
+    return seen
+
+
 def assign_ports(models: dict[str, dict[str, Any]]) -> None:
     """Assign sequential ports to models starting from 11000, ensuring uniqueness."""
     sorted_names = sorted(models.keys())
     used_ports = set()
+    seen_ports = _get_seen_ports()  # Ports in use by external processes
     # Assign unique ports only if needed
     for i, model_name in enumerate(sorted_names):
         port = models[model_name].get("port", 0)
-        # Only reassign if port is invalid (<=0) or is a duplicate
-        if port <= 0 or port in used_ports:
+        # Reassign if: port is invalid (<=0), or is a duplicate within batch,
+        # or is already in use by an external process
+        if port <= 0 or port in used_ports or port in seen_ports:
             # Find next available port
             new_port = 11000 + i * 10
-            while new_port in used_ports:
+            while new_port in used_ports or new_port in seen_ports:
                 new_port += 10
             models[model_name]["port"] = new_port
             used_ports.add(new_port)
