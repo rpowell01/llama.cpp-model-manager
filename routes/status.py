@@ -98,9 +98,10 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
     }
 
 
-def _status_for_model(model: str, meta: dict) -> dict:
+def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = None) -> dict:
     """Compute comprehensive model status."""
-    registry = g.get('registry') or get_status_registry()
+    if registry is None:
+        registry = g.get('registry') or get_status_registry()
     
     # In remote mode, delegate to remote API
     if registry.is_remote_mode:

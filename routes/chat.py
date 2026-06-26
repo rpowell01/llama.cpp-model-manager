@@ -66,7 +66,7 @@ def api_chat():
         # Check if model is starting
         local_models = get_models()
         if model in local_models:
-            status_info = _status_for_model(model, local_models[model])
+            status_info = _status_for_model(model, local_models[model], registry)
             if status_info.get("status") == "starting":
                 return jsonify({"error": "Model is starting", "status": "starting"}), 503
 
