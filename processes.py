@@ -38,29 +38,102 @@ log = logging.getLogger("llamaweb.processes")
 
 def _get_wsl_host_ip() -> str | None:
     """
-    Get the Windows host IP address from WSL's resolv.conf.
+    Get the Windows host IP address in WSL.
+    
+    Tries multiple methods to find the Windows host IP:
+    1. WSL interface IP (shared networking mode - Windows and WSL share same IP)
+    2. Default gateway (standard WSL2 behavior)
+    3. Resolv.conf nameserver (fallback)
+    
     Returns None if not found or not WSL.
     """
+    def _get_default_gateway() -> str | None:
+        """Get the default gateway IP using ip command."""
+        try:
+            result = subprocess.run(
+                ["ip", "route", "show", "default"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                # Parse output like: "default via 192.168.86.1 dev eth2 proto kernel metric 55"
+                for line in result.stdout.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 3 and parts[0] == "default" and parts[1] == "via":
+                        gateway = parts[2]
+                        # Validate it's a private IP
+                        try:
+                            ip_obj = ipaddress.IPv4Address(gateway)
+                            if ip_obj.is_private:
+                                return gateway
+                        except ipaddress.AddressValueError:
+                            pass
+        except Exception:
+            pass
+        return None
+    
+    def _get_wsl_interface_ip() -> str | None:
+        """Get the IP of the primary WSL interface (for shared networking mode)."""
+        try:
+            result = subprocess.run(
+                ["ip", "-4", "addr", "show"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                # Parse output to find non-loopback interfaces
+                current_iface = None
+                for line in result.stdout.splitlines():
+                    # Check for interface name (line starts with number and colon)
+                    if line.strip() and line[0].isdigit() and ": " in line:
+                        # Extract interface name (e.g., "eth2:" from "5: eth2: ...")
+                        iface_part = line.split(":", 1)[1].strip()
+                        current_iface = iface_part.split()[0].rstrip(":") if iface_part else None
+                    # Check for inet address
+                    elif line.strip().startswith("inet ") and current_iface and current_iface != "lo":
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            ip = parts[1].split("/")[0]
+                            # Skip link-local addresses
+                            try:
+                                ip_obj = ipaddress.IPv4Address(ip)
+                                if ip_obj.is_private and not ip_obj.is_link_local:
+                                    return ip
+                            except ipaddress.AddressValueError:
+                                pass
+        except Exception:
+            pass
+        return None
+    
+    # Method 1: Try WSL interface IP (shared networking mode)
+    # In shared mode, Windows and WSL share the same IP
+    wsl_ip = _get_wsl_interface_ip()
+    if wsl_ip:
+        return wsl_ip
+    
+    # Method 2: Try default gateway (standard WSL2)
+    gateway = _get_default_gateway()
+    if gateway:
+        return gateway
+    
+    # Method 3: Fallback to resolv.conf nameserver
     try:
         resolv = Path("/etc/resolv.conf")
-        if not resolv.exists():
-            return None
-        for line in resolv.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("nameserver"):
-                parts = line.split()
-                if len(parts) >= 2:
-                    ip = parts[1]
-                    # Validate IPv4 address using ipaddress module
-                    try:
-                        ipaddress.IPv4Address(ip)
-                        # Additional validation: ensure it's a private/reserved IP (Windows host)
-                        # Windows host IPs in WSL are typically in the private range
-                        ip_obj = ipaddress.IPv4Address(ip)
-                        if ip_obj.is_private or ip_obj.is_reserved:
-                            return ip
-                    except ipaddress.AddressValueError:
-                        pass  # Invalid IP, continue to next line
+        if resolv.exists():
+            for line in resolv.read_text().splitlines():
+                line = line.strip()
+                if line.startswith("nameserver"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        ip = parts[1]
+                        try:
+                            ipaddress.IPv4Address(ip)
+                            if ipaddress.IPv4Address(ip).is_private:
+                                return ip
+                        except ipaddress.AddressValueError:
+                            pass
     except Exception:
         pass
     return None
