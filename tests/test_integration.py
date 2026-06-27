@@ -27,7 +27,14 @@ class MockRemoteServerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/models":
             self._send_json({"models": [self.server.models_data]})
+        elif self.path == "/" or self.path == "/status":
+            # Real llama.cpp server has / at root for status (returns HTML)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>llama.cpp server</body></html>")
         elif self.path == "/api/status":
+            # Also support /api/status for backwards compatibility
             self._send_json({"status": "running", "models": [self.server.models_data["name"]]})
         elif self.path.startswith("/api/models/"):
             model_name = self.path.split("/")[-1]

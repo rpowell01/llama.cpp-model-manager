@@ -287,8 +287,8 @@ class RemoteModelRegistry:
         Raises:
             RemoteAPIError: On connection or HTTP errors
         """
-        # Call /status directly (not under /api/) for llama.cpp server
-        url = self.base_url.rstrip("/api/") + "/status"
+        # Call / directly - llama.cpp server returns HTML at root for status
+        url = self.base_url.rstrip("/api/") + "/"
         kwargs = {"timeout": self.timeout}
         try:
             log.debug("Making GET request to %s", url)
@@ -299,7 +299,8 @@ class RemoteModelRegistry:
                     status_code=response.status_code,
                     response=response,
                 )
-            return response.json()
+            # llama.cpp returns HTML, not JSON - just return 200 OK as success
+            return {"status": "running"}
         except requests.exceptions.Timeout as e:
             raise RemoteAPIError(f"Request timed out after {self.timeout}s") from e
         except requests.exceptions.ConnectionError as e:
