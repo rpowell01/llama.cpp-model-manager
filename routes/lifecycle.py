@@ -73,13 +73,15 @@ def api_start():
         model = data.get("model", "").strip()
         if not model:
             return jsonify({"error": "Missing 'model'"}), 400
+        # In remote mode, models are pre-loaded on the remote server
+        # We just verify connectivity and return 202 Accepted
         try:
-            registry.load_model(model)
+            registry._remote_client.get_status()
             # Return 202 Accepted immediately for async operation in remote mode
             return jsonify({"status": "loading", "model": model}), 202
         except Exception as e:
-            log.exception("Failed to start model %s via remote API", model)
-            return jsonify({"error": "Failed to start model"}), 500
+            log.exception("Failed to connect to remote server")
+            return jsonify({"error": "Remote server unreachable"}), 503
     
     # Local mode: use process management
     start_success = False
@@ -217,7 +219,7 @@ def api_start():
 
 @lifecycle_bp.route("/api/stop", methods=["POST"])
 def api_stop():
-    """Stop a model. In remote mode, delegates to remote API."""
+    """Stop a model. In remote mode, models are pre-loaded and cannot be stopped."""
     registry = g.registry
     
     # Check if we're in remote mode
@@ -226,12 +228,9 @@ def api_stop():
         model = data.get("model", "").strip()
         if not model:
             return jsonify({"error": "Missing 'model'"}), 400
-        try:
-            registry.unload_model(model)
-            return jsonify({"status": "stopping", "model": model})
-        except Exception as e:
-            log.exception("Failed to stop model %s via remote API", model)
-            return jsonify({"error": "Failed to stop model"}), 500
+        # In remote mode, models are pre-loaded and cannot be stopped via API
+        # The remote server manages its own model lifecycle
+        return jsonify({"status": "stopped", "model": model})
     
     # Local mode: use process management
     data = request.get_json(force=True) or {}

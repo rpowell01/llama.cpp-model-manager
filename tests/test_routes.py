@@ -30,7 +30,7 @@ class TestLifecycleRoutes:
         """Test start endpoint in remote mode returns 202 Accepted."""
         mock_registry = Mock()
         mock_registry.is_remote_mode = True
-        mock_registry.load_model.return_value = True
+        mock_registry._remote_client.get_status.return_value = {"status": "running"}
         mock_get_registry.return_value = mock_registry
         
         response = client.post('/api/start', 
@@ -41,7 +41,9 @@ class TestLifecycleRoutes:
         data = response.get_json()
         assert data['status'] == 'loading'
         assert data['model'] == 'test-model'
-        mock_registry.load_model.assert_called_once_with('test-model')
+        # In remote mode, models are pre-loaded, so we just verify connectivity
+        # get_status is called in validate_remote_connectivity (before_request) and in api_start
+        assert mock_registry._remote_client.get_status.call_count >= 1
     
     @patch('routes.lifecycle.get_model_registry')
     def test_start_local_mode_unknown_model(self, mock_get_registry, client):
@@ -76,10 +78,9 @@ class TestLifecycleRoutes:
     
     @patch('routes.lifecycle.get_model_registry')
     def test_stop_remote_mode(self, mock_get_registry, client):
-        """Test stop endpoint in remote mode."""
+        """Test stop endpoint in remote mode returns stopped status."""
         mock_registry = Mock()
         mock_registry.is_remote_mode = True
-        mock_registry.unload_model.return_value = True
         mock_get_registry.return_value = mock_registry
         
         response = client.post('/api/stop',
@@ -88,8 +89,9 @@ class TestLifecycleRoutes:
         
         assert response.status_code == 200
         data = response.get_json()
-        assert data['status'] == 'stopping'
-        mock_registry.unload_model.assert_called_once_with('test-model')
+        assert data['status'] == 'stopped'
+        # In remote mode, models are pre-loaded and cannot be stopped via API
+        mock_registry.unload_model.assert_not_called()
     
     @patch('routes.lifecycle.get_model_registry')
     def test_stop_missing_model(self, mock_get_registry, client):

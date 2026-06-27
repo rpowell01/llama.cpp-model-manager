@@ -160,7 +160,7 @@ class TestRemoteModeIntegration:
         assert data["model"] == "test-model"
     
     def test_remote_mode_stop_endpoint(self, app_with_remote_mode):
-        """Test /api/stop in remote mode delegates to remote API."""
+        """Test /api/stop in remote mode returns stopped status."""
         app, cfg = app_with_remote_mode
         client = app.test_client()
         response = client.post("/api/stop",
@@ -168,7 +168,7 @@ class TestRemoteModeIntegration:
             content_type="application/json")
         assert response.status_code == 200
         data = response.get_json()
-        assert data["status"] == "stopping"
+        assert data["status"] == "stopped"
     
     def test_remote_mode_status_endpoint(self, app_with_remote_mode):
         """Test /api/status in remote mode shows correct mode."""
