@@ -50,7 +50,7 @@ ENV LLAMA_CPP_SERVER_URL=${LLAMA_CPP_SERVER_URL}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/status', timeout=5)" || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:5000/', timeout=5)" || exit 1
 
 # Run the application
 CMD ["python", "main.py"]

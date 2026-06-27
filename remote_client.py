@@ -287,8 +287,25 @@ class RemoteModelRegistry:
         Raises:
             RemoteAPIError: On connection or HTTP errors
         """
-        response = self._request("GET", "status")
-        return self._handle_response(response)
+        # Call /status directly (not under /api/) for llama.cpp server
+        url = self.base_url.rstrip("/api/") + "/status"
+        kwargs = {"timeout": self.timeout}
+        try:
+            log.debug("Making GET request to %s", url)
+            response = self._session.request("GET", url, **kwargs)
+            if response.status_code >= 400:
+                raise RemoteAPIError(
+                    f"HTTP {response.status_code}: {response.text}",
+                    status_code=response.status_code,
+                    response=response,
+                )
+            return response.json()
+        except requests.exceptions.Timeout as e:
+            raise RemoteAPIError(f"Request timed out after {self.timeout}s") from e
+        except requests.exceptions.ConnectionError as e:
+            raise RemoteAPIError(f"Failed to connect to {url}") from e
+        except requests.exceptions.RequestException as e:
+            raise RemoteAPIError(f"Request failed: {e}") from e
     
     def close(self) -> None:
         """Close the session and release resources."""
