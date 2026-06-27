@@ -31,6 +31,9 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 # Copy application code
 COPY --chown=appuser:appgroup . /app
 
+# Ensure /app is writable by appuser (WORKDIR creates it as root)
+RUN chown -R appuser:appgroup /app
+
 # Switch to non-root user
 USER appuser
 
