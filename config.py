@@ -16,7 +16,7 @@ from typing import Any
 # ──────────────────────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
 MODELS_JSON = BASE_DIR / "models.json"
 LOG_FILE = BASE_DIR / "running_models.log"
