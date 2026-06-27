@@ -58,7 +58,7 @@ def main() -> None:
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="llama.cpp web frontend")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1)")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default 0.0.0.0)")
     parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default 5000)")
     args = parser.parse_args()
 
