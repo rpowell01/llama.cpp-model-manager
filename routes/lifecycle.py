@@ -1,6 +1,8 @@
 """Lifecycle management: start and stop models."""
 import logging
 import time
+import signal
+import psutil
 from flask import Blueprint, jsonify, request, g
 import subprocess
 import os
@@ -62,6 +64,99 @@ lifecycle_bp.before_request(inject_registry_to_context)
 lifecycle_bp.before_request(validate_remote_connectivity)
 
 
+def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
+    """Stop a single model gracefully.
+    
+    Args:
+        model: Model name
+        port: Model port
+        
+    Returns:
+        Tuple of (success, pid)
+    """
+    # Find PID
+    pid = find_pid_by_port(port)
+    if not pid:
+        # Try WSL pids
+        with _wsl_pids_lock:
+            pid = _wsl_pids.get(model)
+    
+    if not pid:
+        # No PID found, just clean up state
+        with _recent_stops_lock:
+            _recent_stops[model] = time.time()
+        with _start_timestamps_lock:
+            _start_timestamps.pop(model, None)
+        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            with _wsl_pids_lock:
+                _wsl_pids.pop(model, None)
+        return True, None
+    
+    success = _kill_tree(pid, model)
+    log.info(f"Kill result for {model} (pid={pid}): success={success}")
+    
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        with _wsl_pids_lock:
+            old_pid = _wsl_pids.pop(model, None)
+        log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
+    
+    with _recent_stops_lock:
+        _recent_stops[model] = time.time()
+    
+    # Wait for port to be released
+    for _ in range(30):
+        time.sleep(0.1)
+        if not check_port_active(port):
+            break
+    
+    with _start_timestamps_lock:
+        _start_timestamps.pop(model, None)
+    
+    return success, pid
+
+
+def _stop_all_models(registry) -> dict[str, bool]:
+    """Stop all running models gracefully.
+    
+    Returns:
+        Dict mapping model name to success status.
+    """
+    results = {}
+    models = registry.list_models()
+    
+    for m in models:
+        model = m.name
+        port = int(m.port)
+        
+        success, _ = _stop_model(model, port)
+        results[model] = success
+    
+    return results
+
+
+def _kill_all_llama_processes() -> int:
+    """Force kill all remaining llama-server processes.
+    
+    Returns:
+        Number of processes killed.
+    """
+    killed = 0
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            name = proc.info.get('name', '')
+            cmdline = proc.info.get('cmdline', [])
+            if 'llama-server' in name or (cmdline and any('llama-server' in c for c in cmdline)):
+                try:
+                    proc.kill()
+                    killed += 1
+                    log.info(f"Force killed llama-server process: pid={proc.info['pid']}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    return killed
+
+
 @lifecycle_bp.route("/api/start", methods=["POST"])
 def api_start():
     """Start a model. In remote mode, delegates to remote API with 202 Accepted."""
@@ -93,6 +188,10 @@ def api_start():
         if not model:
             return jsonify({"error": "Missing 'model'"}), 400
         
+        # Refresh model cache to pick up any recent changes before starting
+        from models import refresh_models_cache
+        refresh_models_cache()
+        
         # Get models from registry (local mode uses local cache)
         models = registry.list_models()
         model_dict = None
@@ -117,6 +216,41 @@ def api_start():
             "no_mmap": model_dict.no_mmap,
             "parallel": model_dict.parallel,
             "ubatch_size": model_dict.ubatch_size,
+            # Agent/Tool parameters
+            "jinja": getattr(model_dict, 'jinja', True),
+            "reasoning_preserve": getattr(model_dict, 'reasoning_preserve', True),
+            # CPU-only optimizations
+            "gpu_layers": getattr(model_dict, 'gpu_layers', 0),
+            "cache_type_k": getattr(model_dict, 'cache_type_k', 'fp16'),
+            "cache_type_v": getattr(model_dict, 'cache_type_v', 'fp16'),
+            "numa": getattr(model_dict, 'numa', True),
+            "numa_value": getattr(model_dict, 'numa_value', 'distribute'),
+            "cpu_affinity": getattr(model_dict, 'cpu_affinity', 'auto'),
+            "cpu_strict": getattr(model_dict, 'cpu_strict', False),
+            "batch_size": getattr(model_dict, 'batch_size', 512),
+            "ctx_size": getattr(model_dict, 'ctx_size', 4096),
+            # YaRN RoPE scaling
+            "rope_freq_base": getattr(model_dict, 'rope_freq_base', 10000.0),
+            "rope_freq_scale": getattr(model_dict, 'rope_freq_scale', 1.0),
+            "rope_scaling_type": getattr(model_dict, 'rope_scaling_type', 'none'),
+            "rope_scale": getattr(model_dict, 'rope_scale', 1.0),
+            "yarn_orig_ctx": getattr(model_dict, 'yarn_orig_ctx', 0),
+            "yarn_ext_factor": getattr(model_dict, 'yarn_ext_factor', -1.0),
+            "yarn_attn_factor": getattr(model_dict, 'yarn_attn_factor', 1.0),
+            "yarn_beta_slow": getattr(model_dict, 'yarn_beta_slow', 1.0),
+            "yarn_beta_fast": getattr(model_dict, 'yarn_beta_fast', 32.0),
+            # Speculative decoding parameters
+            "spec_type": getattr(model_dict, 'spec_type', 'none'),
+            "spec_draft_model": getattr(model_dict, 'spec_draft_model', ''),
+            "spec_draft_hf_repo": getattr(model_dict, 'spec_draft_hf_repo', ''),
+            "spec_draft_n_max": getattr(model_dict, 'spec_draft_n_max', 3),
+            "spec_draft_n_min": getattr(model_dict, 'spec_draft_n_min', 0),
+            "spec_draft_p_split": getattr(model_dict, 'spec_draft_p_split', 0.10),
+            "spec_draft_p_min": getattr(model_dict, 'spec_draft_p_min', 0.00),
+            "spec_draft_ngl": getattr(model_dict, 'spec_draft_ngl', 'auto'),
+            "spec_ngram_size_n": getattr(model_dict, 'spec_ngram_size_n', 12),
+            "spec_ngram_size_m": getattr(model_dict, 'spec_ngram_size_m', 48),
+            "spec_ngram_min_hits": getattr(model_dict, 'spec_ngram_min_hits', 1),
         }
 
         # Check if already running
@@ -177,13 +311,15 @@ def api_start():
         # Wait briefly for the process to start
         time.sleep(5)
 
-        # Check if process is still running and port is active
-        # We check port activity for all platforms to ensure the server is actually listening
+        # Check if process is still running and model is ready to serve requests
+        # We check port activity AND health endpoint for all platforms to ensure
+        # the server is actually listening and ready
+        from processes import _check_model_ready
         is_running = False
-        for _ in range(20):
+        for _ in range(80):  # 40 seconds max wait for large models
             if proc and proc.poll() is None:
-                # Process is running, now check if port is active
-                if check_port_active(port):
+                # Process is running, now check if model is ready (port + health endpoint)
+                if check_port_active(port) and _check_model_ready(port):
                     is_running = True
                     break
             time.sleep(0.5)
@@ -192,6 +328,9 @@ def api_start():
             start_success = True
             with _recent_stops_lock:
                 _recent_stops.pop(model, None)
+            # Clear start timestamp since model is confirmed running
+            with _start_timestamps_lock:
+                _start_timestamps.pop(model, None)
             # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
             # but we need the actual Windows process PID for killing.
             # Look up the Windows PID from the port and update the stored PID.
@@ -247,64 +386,6 @@ def api_stop():
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     port = int(model_dict.port)
 
-    # On WSL with Windows binary, we need the Windows PID, not the Linux subprocess PID.
-    # Always use find_pid_by_port first, then fallback to stored PID as last resort.
-    pid = None
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-        # First try to find the Windows PID from the port
-        pid = find_pid_by_port(port)
-        if pid:
-            log.info(f"Stop request for {model}: found Windows PID {pid} from port {port} (WSL mode)")
-        else:
-            # Fallback: try stored PID (might be Linux PID, which won't work)
-            with _wsl_pids_lock:
-                stored_pid = _wsl_pids.get(model)
-            if stored_pid:
-                log.info(f"Stop request for {model}: stored PID={stored_pid} (may be Linux PID, will attempt kill)")
-                pid = stored_pid
-            log.info(f"Stop request for {model}: port={port}, pid={pid}")
-    else:
-        pid = find_pid_by_port(port)
-        log.info(f"Stop request for {model}: port={port}, pid={pid}")
-        if not pid:
-            pids = pids_of_llama()
-            log.info(f"No PID from port, found llama-server PIDs: {pids}")
-            if pids:
-                pid = pids[0]
-
-    if not pid:
-        log.info(f"No PID found for {model}, returning stopped")
-        with _recent_stops_lock:
-            _recent_stops[model] = time.time()
-        with _start_timestamps_lock:
-            _start_timestamps.pop(model, None)
-        return jsonify({"status": "stopped"})
-
-    success = _kill_tree(pid, model)
-    log.info(f"Kill result for {model} (pid={pid}): success={success}")
-
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-        with _wsl_pids_lock:
-            old_pid = _wsl_pids.pop(model, None)
-        log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
-    else:
-        old_pid = None
-
-    with _recent_stops_lock:
-        _recent_stops[model] = time.time()
-
-    # Wait for port to be released
-    for _ in range(30):
-        time.sleep(0.1)
-        if not check_port_active(port):
-            break
-
-    if success:
-        log_event("stop", model, port, pid, "stopped")
-    else:
-        log_event("stop", model, port, pid, "kill_failed")
-
-    with _start_timestamps_lock:
-        _start_timestamps.pop(model, None)
-
+    success, pid = _stop_model(model, port)
+    
     return jsonify({"status": "stopped", "pid": pid, "success": success})

@@ -17,9 +17,6 @@ from typing import Any
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
-MODELS_DIR = BASE_DIR / "models"
-MODELS_JSON = BASE_DIR / "models.json"
-LOG_FILE = BASE_DIR / "running_models.log"
 ENV_FILE = BASE_DIR / ".env"
 
 # Load environment variables from .env file if available
@@ -29,20 +26,72 @@ try:
 except ImportError:
     pass
 
+# MODEL_DIR can be overridden via .env to point to an external models directory
+MODEL_DIR_ENV = os.getenv("MODEL_DIR")
+MODELS_DIR = Path(MODEL_DIR_ENV) if MODEL_DIR_ENV else BASE_DIR / "models"
+
+MODELS_JSON = BASE_DIR / "models.json"
+LOG_FILE = BASE_DIR / "running_models.log"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Default server parameters
+# CPU-optimized defaults for llama.cpp server
+import os
+
+def _get_cpu_count() -> int:
+    """Get logical CPU count for thread defaults."""
+    try:
+        return os.cpu_count() or 16
+    except Exception:
+        return 16
+
 DEFAULTS: dict[str, Any] = {
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "port": 11000,
     "cache_size": 32768,
-    "threads": 16,
-    "threads_batch": 22,
+    "threads": _get_cpu_count(),  # Use all logical CPUs
+    "threads_batch": _get_cpu_count(),  # Use all logical CPUs for batch
     "timeout": 3600,
-    "mlock": False,
-    "flash_attn": "off",
-    "no_mmap": True,
-    "parallel": 2,
-    "ubatch_size": 256,
+    "mlock": True,  # Prevent swapping - critical for CPU performance
+    "flash_attn": "off",  # Disable flash attention on CPU
+    "no_mmap": True,  # Disable mmap on CPU for better performance
+    "parallel": 1,  # Single parallel sequence for CPU
+    "ubatch_size": 512,
+    # Agent/Tool parameters
+    "jinja": True,  # Enable Jinja tool parsing for agent loops (Claude Code/OpenAI tool schemas)
+    "reasoning_preserve": True,  # Preserve reasoning/thinking inner monologue across tool steps
+    # CPU-only optimizations
+    "gpu_layers": 0,  # 0 = CPU-only (no GPU offload)
+    "cache_type_k": "fp16",  # KV cache type: fp16, q4_0, q8_0 (q4_0 saves ~3.5x memory)
+    "cache_type_v": "fp16",  # KV cache type for V
+    "numa": True,  # Enable NUMA awareness
+    "numa_value": "distribute",  # NUMA mode: distribute, isolate, numactl
+    "cpu_affinity": "auto",  # CPU core pinning: "auto", "none", or comma-separated core IDs
+    "cpu_strict": False,  # Strict CPU mode (disable GPU ops)
+    "batch_size": 512,  # Batch size for prompt processing
+    "ctx_size": 4096,  # Context window size
+    "rope_freq_base": 10000.0,  # RoPE frequency base
+    "rope_freq_scale": 1.0,  # RoPE frequency scaling
+    # YaRN RoPE scaling
+    "rope_scaling_type": "none",  # RoPE scaling method: none, linear, yarn
+    "rope_scale": 1.0,  # RoPE context scaling factor (expands context by N)
+    "yarn_orig_ctx": 0,  # YaRN: original context size of model (0 = auto from model)
+    "yarn_ext_factor": -1.0,  # YaRN: extrapolation mix factor (-1 = default)
+    "yarn_attn_factor": 1.0,  # YaRN: attention magnitude scaling factor
+    "yarn_beta_slow": 1.0,  # YaRN: high correction dim (alpha)
+    "yarn_beta_fast": 32.0,  # YaRN: low correction dim (beta)
+    # Speculative decoding parameters
+    "spec_type": "none",
+    "spec_draft_model": "",
+    "spec_draft_hf_repo": "",
+    "spec_draft_n_max": 3,
+    "spec_draft_n_min": 0,
+    "spec_draft_p_split": 0.10,
+    "spec_draft_p_min": 0.00,
+    "spec_draft_ngl": "auto",
+    "spec_ngram_size_n": 12,
+    "spec_ngram_size_m": 48,
+    "spec_ngram_min_hits": 1,
 }
 
 # Flask server port (set by main.py at runtime)
@@ -68,32 +117,47 @@ if not WINDOWS:
 # ──────────────────────────────────────────────────────────────────────────────
 LLAMA_SERVER = None
 
-if WINDOWS:
-    candidate = BASE_DIR / "llama-server.exe"
-    if candidate.exists():
-        LLAMA_SERVER = candidate
-    else:
-        candidate = BASE_DIR / "llama-server"
+# Check for LLAMA_SERVER_DIR environment variable first (highest priority)
+llama_server_dir_env = os.getenv("LLAMA_SERVER_DIR")
+if llama_server_dir_env:
+    llama_server_dir = Path(llama_server_dir_env)
+    if WINDOWS or WSL:
+        candidate = llama_server_dir / "llama-server.exe"
         if candidate.exists():
             LLAMA_SERVER = candidate
-elif WSL:
-    # On WSL, prefer Windows binary for better compatibility
-    candidate = BASE_DIR / "llama-server.exe"
-    if candidate.exists():
-        LLAMA_SERVER = candidate
     else:
-        candidate = BASE_DIR / "llama-server"
+        candidate = llama_server_dir / "llama-server"
         if candidate.exists():
             LLAMA_SERVER = candidate
-else:
-    # On Linux, check for native binary first, then Windows binary
-    candidate = BASE_DIR / "llama-server"
-    if candidate.exists():
-        LLAMA_SERVER = candidate
-    else:
+
+# Fallback to searching in BASE_DIR
+if LLAMA_SERVER is None:
+    if WINDOWS:
         candidate = BASE_DIR / "llama-server.exe"
         if candidate.exists():
             LLAMA_SERVER = candidate
+        else:
+            candidate = BASE_DIR / "llama-server"
+            if candidate.exists():
+                LLAMA_SERVER = candidate
+    elif WSL:
+        # On WSL, prefer Windows binary for better compatibility
+        candidate = BASE_DIR / "llama-server.exe"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+        else:
+            candidate = BASE_DIR / "llama-server"
+            if candidate.exists():
+                LLAMA_SERVER = candidate
+    else:
+        # On Linux, check for native binary first, then Windows binary
+        candidate = BASE_DIR / "llama-server"
+        if candidate.exists():
+            LLAMA_SERVER = candidate
+        else:
+            candidate = BASE_DIR / "llama-server.exe"
+            if candidate.exists():
+                LLAMA_SERVER = candidate
 
 PYTHON = sys.executable
 
@@ -101,6 +165,39 @@ PYTHON = sys.executable
 # ──────────────────────────────────────────────────────────────────────────────
 # Utility functions
 # ──────────────────────────────────────────────────────────────────────────────
+
+def resolve_model_path(model_path_str: str) -> Path:
+    """
+    Resolve a model path string to an absolute Path.
+    
+    Handles three cases:
+    1. Absolute path - return as-is
+    2. Relative path starting with "models/" - resolve relative to MODELS_DIR (respects MODEL_DIR env var)
+    3. Other relative paths - resolve relative to BASE_DIR
+    
+    Args:
+        model_path_str: Model path string from models.json
+        
+    Returns:
+        Resolved absolute Path
+    """
+    if not model_path_str:
+        return BASE_DIR
+    
+    model_path = Path(model_path_str)
+    if model_path.is_absolute():
+        return model_path
+    
+    # If path starts with "models/", resolve relative to MODELS_DIR
+    # This respects the MODEL_DIR environment variable
+    try:
+        rel_to_models = model_path.relative_to("models")
+        return MODELS_DIR / rel_to_models
+    except ValueError:
+        # Not under "models/", fall back to BASE_DIR
+        return BASE_DIR / model_path
+
+
 def convert_path_for_binary(path: Path) -> str:
     r"""Convert path for the binary being used.
 

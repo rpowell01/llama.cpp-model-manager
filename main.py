@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Flask
 
 # Import configuration
-from config import BASE_DIR
+from config import BASE_DIR, Config
 
 # Import models functions
 from models import load_models_cache
@@ -40,6 +40,10 @@ def main() -> None:
     )
     log = logging.getLogger("llamaweb")
 
+    # Check remote mode config
+    cfg = Config()
+    log.info("Remote mode: %s, URL: %s", cfg.is_remote_mode, cfg.remote_url)
+
     # Create Flask app
     app = Flask(__name__)
 
@@ -52,9 +56,12 @@ def main() -> None:
     app.register_blueprint(status_bp)
     app.register_blueprint(system_bp)
 
-    # Load models cache
-    log.info("Loading models cache...")
-    load_models_cache()
+    # Load models cache (skip in remote mode)
+    if not cfg.is_remote_mode:
+        log.info("Loading models cache...")
+        load_models_cache()
+    else:
+        log.info("Remote mode: skipping local models cache")
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="llama.cpp web frontend")

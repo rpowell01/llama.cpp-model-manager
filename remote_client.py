@@ -69,6 +69,41 @@ class Model:
     ubatch_size: int = 512
     file_exists: bool = False
     file_size_gb: Optional[float] = None
+    # Agent/Tool parameters
+    jinja: bool = True
+    reasoning_preserve: bool = True
+    # CPU-only optimizations
+    gpu_layers: int = 0
+    cache_type_k: str = "fp16"
+    cache_type_v: str = "fp16"
+    numa: bool = True
+    numa_value: str = "distribute"
+    cpu_affinity: str = "auto"
+    cpu_strict: bool = False
+    batch_size: int = 512
+    ctx_size: int = 4096
+    # YaRN RoPE scaling
+    rope_freq_base: float = 10000.0
+    rope_freq_scale: float = 1.0
+    rope_scaling_type: str = "none"
+    rope_scale: float = 1.0
+    yarn_orig_ctx: int = 0
+    yarn_ext_factor: float = -1.0
+    yarn_attn_factor: float = 1.0
+    yarn_beta_slow: float = 1.0
+    yarn_beta_fast: float = 32.0
+    # Speculative decoding parameters
+    spec_type: str = "none"
+    spec_draft_model: str = ""
+    spec_draft_hf_repo: str = ""
+    spec_draft_n_max: int = 3
+    spec_draft_n_min: int = 0
+    spec_draft_p_split: float = 0.10
+    spec_draft_p_min: float = 0.00
+    spec_draft_ngl: str = "auto"
+    spec_ngram_size_n: int = 12
+    spec_ngram_size_m: int = 48
+    spec_ngram_min_hits: int = 1
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -91,6 +126,41 @@ class Model:
             ubatch_size=data.get("ubatch_size", 512),
             file_exists=data.get("file_exists", False),
             file_size_gb=data.get("file_size_gb"),
+            # Agent/Tool parameters
+            jinja=data.get("jinja", True),
+            reasoning_preserve=data.get("reasoning_preserve", True),
+            # CPU-only optimizations
+            gpu_layers=data.get("gpu_layers", 0),
+            cache_type_k=data.get("cache_type_k", "fp16"),
+            cache_type_v=data.get("cache_type_v", "fp16"),
+            numa=data.get("numa", True),
+            numa_value=data.get("numa_value", "distribute"),
+            cpu_affinity=data.get("cpu_affinity", "auto"),
+            cpu_strict=data.get("cpu_strict", False),
+            batch_size=data.get("batch_size", 512),
+            ctx_size=data.get("ctx_size", 4096),
+            # YaRN RoPE scaling
+            rope_freq_base=data.get("rope_freq_base", 10000.0),
+            rope_freq_scale=data.get("rope_freq_scale", 1.0),
+            rope_scaling_type=data.get("rope_scaling_type", "none"),
+            rope_scale=data.get("rope_scale", 1.0),
+            yarn_orig_ctx=data.get("yarn_orig_ctx", 0),
+            yarn_ext_factor=data.get("yarn_ext_factor", -1.0),
+            yarn_attn_factor=data.get("yarn_attn_factor", 1.0),
+            yarn_beta_slow=data.get("yarn_beta_slow", 1.0),
+            yarn_beta_fast=data.get("yarn_beta_fast", 32.0),
+            # Speculative decoding
+            spec_type=data.get("spec_type", "none"),
+            spec_draft_model=data.get("spec_draft_model", ""),
+            spec_draft_hf_repo=data.get("spec_draft_hf_repo", ""),
+            spec_draft_n_max=data.get("spec_draft_n_max", 3),
+            spec_draft_n_min=data.get("spec_draft_n_min", 0),
+            spec_draft_p_split=data.get("spec_draft_p_split", 0.10),
+            spec_draft_p_min=data.get("spec_draft_p_min", 0.00),
+            spec_draft_ngl=data.get("spec_draft_ngl", "auto"),
+            spec_ngram_size_n=data.get("spec_ngram_size_n", 12),
+            spec_ngram_size_m=data.get("spec_ngram_size_m", 48),
+            spec_ngram_min_hits=data.get("spec_ngram_min_hits", 1),
         )
 
 
@@ -104,6 +174,8 @@ class RemoteModelRegistry:
     
     Provides methods to list, load, unload models and get server status.
     Uses requests.Session for connection pooling with retry logic.
+    
+    Supports both custom /api/ endpoints and OpenAI-compatible /v1/ endpoints.
     """
     
     def __init__(
@@ -122,10 +194,12 @@ class RemoteModelRegistry:
             max_retries: Maximum number of retry attempts (default: 3)
             backoff_factor: Exponential backoff multiplier (default: 1.0)
         """
-        self.base_url = base_url.rstrip("/") + "/api/"
+        self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
+        # OpenAI-compatible API path for llama.cpp
+        self.api_path = "/v1/"
         
         # Create session with connection pooling and retry adapter
         self._session = requests.Session()
@@ -207,55 +281,118 @@ class RemoteModelRegistry:
         Raises:
             RemoteAPIError: On connection or HTTP errors
         """
-        response = self._request("GET", "models")
-        data = self._handle_response(response)
+        # Use OpenAI-compatible /v1/models endpoint for llama.cpp
+        url = self.base_url + self.api_path + "models"
+        kwargs = {"timeout": self.timeout}
+        try:
+            log.debug("Making GET request to %s", url)
+            response = self._session.request("GET", url, **kwargs)
+            if response.status_code >= 400:
+                raise RemoteAPIError(
+                    f"HTTP {response.status_code}: {response.text}",
+                    status_code=response.status_code,
+                    response=response,
+                )
+            data = response.json()
+        except requests.exceptions.Timeout as e:
+            raise RemoteAPIError(f"Request timed out after {self.timeout}s") from e
+        except requests.exceptions.ConnectionError as e:
+            raise RemoteAPIError(f"Failed to connect to {url}") from e
+        except requests.exceptions.RequestException as e:
+            raise RemoteAPIError(f"Request failed: {e}") from e
         
         if not data:
             return []
         
-        # Handle both list and dict responses
-        if isinstance(data, dict):
-            models_data = data.get("models", [])
-        else:
-            models_data = data
+        # OpenAI format: {"object": "list", "data": [{"id": "...", ...}]}
+        models_data = data.get("data", [])
         
-        return [Model.from_dict(m) for m in models_data]
+        # Convert OpenAI format to Model objects
+        result = []
+        for m in models_data:
+            full_id = m.get("id", "")
+            # Extract a cleaner model name from the full path
+            # e.g., "C:\Bonsai-demo\models\bonsai2-gguf\27B\Ternary-Bonsai-2-27B-PQ2_0.gguf"
+            # -> "Ternary-Bonsai-2-27B-PQ2_0"
+            import os
+            if full_id:
+                # Try to get the filename without extension
+                base_name = os.path.basename(full_id)
+                name = os.path.splitext(base_name)[0]
+            else:
+                name = ""
+            
+            model = Model.from_dict({
+                "name": name,
+                "repo": "",
+                "filename": base_name if full_id else "",
+                "model_path": full_id,
+                "expected_size": m.get("meta", {}).get("size", 0) or 0,
+                "port": 0,
+                "cache_size": 32768,
+                "threads": 16,
+                "threads_batch": 22,
+                "timeout": 3600,
+                "mlock": True,
+                "flash_attn": "off",
+                "no_mmap": True,
+                "parallel": 4,
+                "ubatch_size": 512,
+                "file_exists": True,
+                "file_size_gb": round(m.get("meta", {}).get("size", 0) / (1024**3), 2) if m.get("meta", {}).get("size") else None,
+            })
+            result.append(model)
+        
+        return result
     
     def load_model(self, name: str) -> bool:
         """
         Load a model by name.
         
+        Note: llama.cpp OpenAI-compatible server doesn't support dynamic model loading.
+        Models are pre-loaded at server startup. This method checks if the model
+        exists in the loaded models list.
+        
         Args:
             name: Model name to load
             
         Returns:
-            True if successful
+            True if model is loaded
             
         Raises:
             ModelNotFoundError: If model is not found
             RemoteAPIError: On other connection or HTTP errors
         """
-        response = self._request("POST", "models/load", json={"name": name})
-        self._handle_response(response, model_name=name)
-        return True
+        models = self.list_models()
+        for model in models:
+            if model.name == name:
+                log.info(f"Model '{name}' is already loaded on remote server")
+                return True
+        raise ModelNotFoundError(name)
     
     def unload_model(self, name: str) -> bool:
         """
         Unload a model by name.
         
+        Note: llama.cpp OpenAI-compatible server doesn't support dynamic model unloading.
+        This method is a no-op that returns True if the model exists.
+        
         Args:
             name: Model name to unload
             
         Returns:
-            True if successful
+            True if model exists
             
         Raises:
             ModelNotFoundError: If model is not found
             RemoteAPIError: On other connection or HTTP errors
         """
-        response = self._request("POST", "models/unload", json={"name": name})
-        self._handle_response(response, model_name=name)
-        return True
+        models = self.list_models()
+        for model in models:
+            if model.name == name:
+                log.info(f"Model '{name}' cannot be unloaded via API (pre-loaded)")
+                return True
+        raise ModelNotFoundError(name)
     
     def get_model(self, name: str) -> Optional[Model]:
         """
@@ -270,12 +407,12 @@ class RemoteModelRegistry:
         Raises:
             RemoteAPIError: On connection or HTTP errors
         """
-        try:
-            response = self._request("GET", f"models/{name}")
-            data = self._handle_response(response, model_name=name)
-            return Model.from_dict(data)
-        except ModelNotFoundError:
-            return None
+        # Check if model is in the list of loaded models
+        models = self.list_models()
+        for model in models:
+            if model.name == name:
+                return model
+        return None
     
     def get_status(self) -> Dict[str, Any]:
         """
@@ -288,7 +425,7 @@ class RemoteModelRegistry:
             RemoteAPIError: On connection or HTTP errors
         """
         # Call / directly - llama.cpp server returns HTML at root for status
-        url = self.base_url.rstrip("/api/") + "/"
+        url = self.base_url + "/"
         kwargs = {"timeout": self.timeout}
         try:
             log.debug("Making GET request to %s", url)

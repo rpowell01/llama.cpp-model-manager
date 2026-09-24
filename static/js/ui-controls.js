@@ -213,7 +213,20 @@ async function renderPanelProperties(data, modelName) {
   const running = data.status && data.status.startsWith("running");
   const modelSafeId = safeId(modelName);
 
+  // Store original values for cancel functionality
+  window.originalModelMeta = { ...data };
+
   let html = "";
+
+  // Optimize Settings button at the top
+  html += `<div class="panel-section">
+    <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem;">
+      <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        🔧 Optimize Settings for Hardware
+      </button>
+      <span id="optimize-status-${modelSafeId}" style="align-self: center; font-size: 0.85rem; color: var(--muted);"></span>
+    </div>
+  </div>`;
 
   // Static Properties section
   html += `<div class="panel-section">
@@ -269,7 +282,6 @@ async function renderPanelProperties(data, modelName) {
   );
   addItem("Size", fmtGb(data.file_size_gb));
   addItem("Port", data.port ? `:${data.port}` : "-");
-  addEditable("Cache Size", "cache_size", data.cache_size, "number", 1, 0);
   addEditable("Threads", "threads", data.threads, "number", 1, 0);
   addEditable(
     "Threads Batch",
@@ -285,11 +297,9 @@ async function renderPanelProperties(data, modelName) {
   // Flash Attn dropdown
   const flashVal = data.flash_attn || "off";
   const isFlashSelected = (val) =>
-    flashVal === val ||
-    (val === "no" && flashVal === "off") ||
-    (val === "yes" && flashVal === "on");
+    flashVal === val;
   let flashSelect = `<select class="meta-input" data-field="flash_attn">`;
-  ["no", "yes", "auto"].forEach((val) => {
+  ["off", "auto", "on"].forEach((val) => {
     flashSelect += `<option value="${val}" ${isFlashSelected(val) ? "selected" : ""}>${val}</option>`;
   });
   flashSelect += `</select>`;
@@ -299,8 +309,105 @@ async function renderPanelProperties(data, modelName) {
   </div>`;
 
   addEditable("No MMAP", "no_mmap", data.no_mmap, "checkbox");
-  addEditable("Parallel", "parallel", data.parallel, "number", 1, 1);
+  
+  // Parallel dropdown with "auto" option
+  const parallelVal = data.parallel || 1;
+  let parallelSelect = `<select class="meta-input" data-field="parallel">`;
+  [1, 2, 3, 4, 5, 6, 7, 8, "auto"].forEach((val) => {
+    const displayVal = val === "auto" ? "auto (set --kv-unified=true)" : val;
+    parallelSelect += `<option value="${val}" ${parallelVal === val ? "selected" : ""}>${displayVal}</option>`;
+  });
+  parallelSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">Parallel</span>
+    <span class="value">${parallelSelect}</span>
+  </div>`;
+  
   addEditable("UBatch Size", "ubatch_size", data.ubatch_size, "number", 1, 1);
+  // Agent/Tool parameters
+  addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
+  addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
+  // CPU-only optimizations
+  addEditable("GPU Layers (0=CPU)", "gpu_layers", data.gpu_layers, "number", 1, 0);
+  addEditable("KV Cache Type K", "cache_type_k", data.cache_type_k, "text");
+  addEditable("KV Cache Type V", "cache_type_v", data.cache_type_v, "text");
+  addEditable("NUMA Aware", "numa", data.numa, "checkbox");
+  
+  // NUMA Mode dropdown
+  const numaVal = data.numa_value || "distribute";
+  let numaSelect = `<select class="meta-input" data-field="numa_value">`;
+  ["distribute", "isolate", "numactl"].forEach((val) => {
+    numaSelect += `<option value="${val}" ${numaVal === val ? "selected" : ""}>${val}</option>`;
+  });
+  numaSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">NUMA Mode</span>
+    <span class="value">${numaSelect}</span>
+  </div>`;
+  
+  addEditable("CPU Affinity", "cpu_affinity", data.cpu_affinity, "text");
+  addEditable("CPU Strict", "cpu_strict", data.cpu_strict, "checkbox");
+  addEditable("Batch Size", "batch_size", data.batch_size, "number", 1, 1);
+  addEditable("Context Size", "ctx_size", data.ctx_size, "number", 1, 1);
+addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
+   addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
+   
+   // RoPE Scaling Type dropdown
+   const ropeScalingVal = data.rope_scaling_type || "none";
+   let ropeScalingSelect = `<select class="meta-input" data-field="rope_scaling_type">`;
+   ["none", "linear", "yarn"].forEach((val) => {
+     ropeScalingSelect += `<option value="${val}" ${ropeScalingVal === val ? "selected" : ""}>${val}</option>`;
+   });
+   ropeScalingSelect += `</select>`;
+   html += `<div class="panel-item">
+     <span class="label">RoPE Scaling Type</span>
+     <span class="value">${ropeScalingSelect}</span>
+   </div>`;
+   
+   addEditable("RoPE Scale (context factor)", "rope_scale", data.rope_scale, "number", 0.1, 0.1);
+   addEditable("YaRN Orig Context", "yarn_orig_ctx", data.yarn_orig_ctx, "number", 1, 0);
+   addEditable("YaRN Ext Factor", "yarn_ext_factor", data.yarn_ext_factor, "number", 0.1);
+   addEditable("YaRN Attn Factor", "yarn_attn_factor", data.yarn_attn_factor, "number", 0.1, 0.1);
+addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0.1, 0.1);
+    addEditable("YaRN Beta Fast", "yarn_beta_fast", data.yarn_beta_fast, "number", 0.1, 0.1);
+
+  // Speculative Decoding section
+  html += `<div class="panel-section">
+    <h3>Speculative Decoding</h3>
+    <div class="panel-grid">`;
+
+  // Spec Type dropdown
+  const specTypeVal = data.spec_type || "none";
+  let specTypeSelect = `<select class="meta-input" data-field="spec_type">`;
+  ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"].forEach((val) => {
+    specTypeSelect += `<option value="${val}" ${specTypeVal === val ? "selected" : ""}>${val}</option>`;
+  });
+  specTypeSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">Spec Type</span>
+    <span class="value">${specTypeSelect}</span>
+  </div>`;
+
+  addEditable("Draft Model Path", "spec_draft_model", data.spec_draft_model, "text");
+  addEditable("Draft HF Repo", "spec_draft_hf_repo", data.spec_draft_hf_repo, "text");
+  addEditable("Draft N Max", "spec_draft_n_max", data.spec_draft_n_max, "number", 1, 0);
+  addEditable("Draft N Min", "spec_draft_n_min", data.spec_draft_n_min, "number", 1, 0);
+  addEditable("Draft P Split", "spec_draft_p_split", data.spec_draft_p_split, "number", 0.01, 0, 1);
+  addEditable("Draft P Min", "spec_draft_p_min", data.spec_draft_p_min, "number", 0.01, 0, 1);
+  addEditable("Draft NGL", "spec_draft_ngl", data.spec_draft_ngl, "text");
+  
+  // Ngram Simple settings
+  addEditable("Ngram Size N (lookup)", "spec_ngram_size_n", data.spec_ngram_size_n, "number", 1, 0);
+  addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);
+  addEditable("Ngram Min Hits", "spec_ngram_min_hits", data.spec_ngram_min_hits, "number", 1, 1);
+
+  html += `</div></div>`;
+
+  // Save/Cancel buttons for Properties section
+  html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
+    <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
+    <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
+  </div>`;
 
   html += `</div></div>`;
 
@@ -345,30 +452,58 @@ async function renderPanelProperties(data, modelName) {
 
   content.innerHTML = html;
 
-  // Attach meta input listeners for auto-save
+  // Attach meta input listeners (no auto-save - values collected on Save)
   content.closest(".properties-panel").dataset.modelName = modelName;
-  content.querySelectorAll(".meta-input").forEach((input) => {
-    input.addEventListener("change", async (e) => {
-      const field = e.target.dataset.field;
-      let value =
-        e.target.type === "checkbox" ? e.target.checked : e.target.value;
-      const numericFields = [
-        "cache_size",
-        "threads",
-        "threads_batch",
-        "timeout",
-        "parallel",
-        "ubatch_size",
-      ];
-      if (numericFields.includes(field)) {
-        value = Number(value);
-      }
+
+  // Save button handler
+  const saveBtn = document.getElementById(`meta-save-${modelSafeId}`);
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
       const panel = document.getElementById("properties-panel");
       const model = panel.dataset.modelName;
       if (!model) return;
+
+      const payload = { model };
+      let hasChanges = false;
+
+      content.querySelectorAll(".meta-input").forEach((input) => {
+        const field = input.dataset.field;
+        let value = input.type === "checkbox" ? input.checked : input.value;
+        const numericFields = [
+          "threads", "threads_batch", "timeout",
+          "ubatch_size", "gpu_layers", "batch_size",
+          "ctx_size", "rope_freq_base", "rope_freq_scale",
+          "rope_scale", "yarn_orig_ctx", "yarn_ext_factor",
+          "yarn_attn_factor", "yarn_beta_slow", "yarn_beta_fast",
+          "spec_draft_n_max", "spec_draft_n_min", "spec_draft_p_split",
+          "spec_draft_p_min", "spec_ngram_size_n", "spec_ngram_size_m",
+          "spec_ngram_min_hits"
+        ];
+        if (numericFields.includes(field)) {
+          value = Number(value);
+        }
+
+        // Only include changed values
+        const originalValue = window.originalModelMeta?.[field];
+        // For parallel field, compare as strings since it can be "auto" or numeric
+        const isChanged = field === "parallel" 
+          ? String(value) !== String(originalValue)
+          : value !== originalValue;
+        if (isChanged) {
+          payload[field] = value;
+          hasChanges = true;
+        }
+      });
+
+      if (!hasChanges) {
+        alert("No changes to save");
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+
       try {
-        const payload = { model };
-        payload[field] = value;
         const resp = await fetch("/api/update-model-meta", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -376,20 +511,113 @@ async function renderPanelProperties(data, modelName) {
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
-          alert(`Error updating ${field}: ${err.error || "unknown"}`);
+          alert(`Error saving changes: ${err.error || "unknown"}`);
+        } else {
+          // Update original values
+          Object.assign(window.originalModelMeta, payload);
+          alert("Changes saved successfully");
         }
       } catch (err) {
         console.error("Failed to update meta", err);
-        alert("Network error while updating");
+        alert("Network error while saving");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
       }
     });
-  });
+  }
+
+  // Cancel button handler
+  const cancelBtn = document.getElementById(`meta-cancel-${modelSafeId}`);
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      // Restore original values in the form
+      content.querySelectorAll(".meta-input").forEach((input) => {
+        const field = input.dataset.field;
+        const originalValue = window.originalModelMeta?.[field];
+        if (originalValue !== undefined) {
+          if (input.type === "checkbox") {
+            input.checked = originalValue;
+          } else if (input.tagName === "SELECT") {
+            input.value = originalValue;
+          } else {
+            input.value = originalValue;
+          }
+        }
+      });
+    });
+  }
 
   // Attach generate config button listener
   const configBtn = document.getElementById(`generate-config-${modelSafeId}`);
   if (configBtn) {
     configBtn.addEventListener("click", () => {
       openKiloCodeModal(data, modelName);
+    });
+  }
+
+  // Attach optimize settings button listener
+  const optimizeBtn = document.getElementById(`optimize-settings-${modelSafeId}`);
+  if (optimizeBtn) {
+    optimizeBtn.addEventListener("click", async () => {
+      const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
+      optimizeBtn.disabled = true;
+      optimizeBtn.textContent = "🔧 Optimizing…";
+      if (statusEl) {
+        statusEl.textContent = "Detecting hardware and computing optimal settings…";
+        statusEl.style.color = "var(--blue)";
+      }
+
+      try {
+        const resp = await fetch("/api/optimize-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelName }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+          throw new Error(result.error || "Failed to optimize settings");
+        }
+
+        const settings = result.optimal_settings;
+        const hardware = result.hardware;
+
+        // Populate form fields with optimal settings
+        let updatedCount = 0;
+        content.querySelectorAll(".meta-input").forEach((input) => {
+          const field = input.dataset.field;
+          if (settings.hasOwnProperty(field)) {
+            const value = settings[field];
+            if (input.type === "checkbox") {
+              input.checked = Boolean(value);
+            } else if (input.tagName === "SELECT") {
+              input.value = String(value);
+            } else {
+              input.value = value;
+            }
+            updatedCount++;
+          }
+        });
+
+        // Update original values to match
+        Object.assign(window.originalModelMeta, settings);
+
+        if (statusEl) {
+          statusEl.textContent = `Applied ${updatedCount} optimal settings based on: ${hardware.cpu_count_logical} CPUs, ${hardware.memory_total_gb}GB RAM${hardware.total_gpu_vram_gb ? `, ${hardware.total_gpu_vram_gb}GB GPU VRAM` : ""}${hardware.has_nvidia_gpu ? " (NVIDIA)" : ""}${hardware.has_amd_gpu ? " (AMD)" : ""}`;
+          statusEl.style.color = "var(--green)";
+        }
+        alert(`Optimization complete! Applied ${updatedCount} settings. Review and click Save to persist.`);
+      } catch (err) {
+        console.error("Optimization failed", err);
+        if (statusEl) {
+          statusEl.textContent = `Error: ${err.message}`;
+          statusEl.style.color = "var(--red)";
+        }
+        alert(`Optimization failed: ${err.message}`);
+      } finally {
+        optimizeBtn.disabled = false;
+        optimizeBtn.textContent = "🔧 Optimize Settings for Hardware";
+      }
     });
   }
 

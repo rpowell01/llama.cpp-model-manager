@@ -2,6 +2,9 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../../Bonsai-demo"
 		}
 	],
 	"settings": {
@@ -12,17 +15,26 @@
 			"activityBar.inactiveForeground": "#15202b99",
 			"activityBarBadge.background": "#558a8a",
 			"activityBarBadge.foreground": "#e7e7e7",
-			"commandCenter.border": "#15202b99",
 			"sash.hoverBorder": "#bfbf97",
 			"statusBar.background": "#acab77",
 			"statusBar.foreground": "#15202b",
 			"statusBarItem.hoverBackground": "#95945b",
-			"statusBarItem.remoteBackground": "#acab77",
+			"statusBarItem.remoteBackground": "#ebf3f3",
 			"statusBarItem.remoteForeground": "#15202b",
-			"titleBar.activeBackground": "#acab77",
-			"titleBar.activeForeground": "#15202b",
-			"titleBar.inactiveBackground": "#acab7799",
-			"titleBar.inactiveForeground": "#15202b99"
+			"activityBar.activeBorder": "#15202b",
+			"activityBarTop.activeBackground": "#bfbf97",
+			"activityBarTop.activeBorder": "#15202b",
+			"activityBarTop.background": "#bfbf97",
+			"activityBarTop.foreground": "#15202b",
+			"activityBarTop.inactiveForeground": "#15202b99",
+			"editorGroup.border": "#bfbf97",
+			"panel.border": "#bfbf97",
+			"sideBar.border": "#bfbf97",
+			"statusBar.border": "#acab77",
+			"statusBar.debuggingBackground": "#7778ac",
+			"statusBar.debuggingBorder": "#7778ac",
+			"statusBar.debuggingForeground": "#e7e7e7",
+			"tab.activeBorder": "#bfbf97"
 		},
 		"peacock.color": "#3fb4cd",
 		"peacock.remoteColor": "#acab77"

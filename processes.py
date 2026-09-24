@@ -30,6 +30,7 @@ from config import (
     WINDOWS,
     WSL,
     convert_path_for_binary,
+    resolve_model_path,
 )
 from models import InvalidModeError
 
@@ -129,8 +130,8 @@ def _get_wsl_host_ip() -> str | None:
                     if len(parts) >= 2:
                         ip = parts[1]
                         try:
-                            ipaddress.IPv4Address(ip)
-                            if ipaddress.IPv4Address(ip).is_private:
+                            ip_obj = ipaddress.IPv4Address(ip)
+                            if ip_obj.is_private:
                                 return ip
                         except ipaddress.AddressValueError:
                             pass
@@ -144,25 +145,26 @@ def get_server_host() -> str:
     Determine which host the client should use to connect to the server.
     For WSL2 running a Windows llama-server.exe, the server binds on the Windows
     host's IP (obtained from resolv.conf) and must be reachable from WSL. For all
-    other configurations, use the configured default host (typically 127.0.0.1).
+    other configurations, use 127.0.0.1 for client connections (0.0.0.0 is a bind
+    address, not a valid connect address).
     
     Note: The host is resolved on each call to handle network changes (e.g., DHCP
     lease renewal in WSL+Windows mode) that could result in stale cached IPs.
     """
-    host = DEFAULTS["host"]
     # When running in WSL with a Windows binary, the server runs on Windows
     # and listens on the Windows host IP. We need to connect to that IP.
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         wsl_host = _get_wsl_host_ip()
         if wsl_host:
-            host = wsl_host
-            log.info(f"WSL+Windows detected: using host {host} for client connections")
+            log.info(f"WSL+Windows detected: using host {wsl_host} for client connections")
+            return wsl_host
         else:
             # Fallback: try 127.0.0.1 which may work if Windows has loopback enabled
             log.warning("WSL+Windows detected but could not determine host IP; falling back to 127.0.0.1")
-            host = "127.0.0.1"
+            return "127.0.0.1"
 
-    return host
+    # For all other cases (native Windows, native Linux), client connects to localhost
+    return "127.0.0.1"
 
 
 def _validate_local_mode() -> None:
@@ -409,9 +411,9 @@ def check_port_active(port: int) -> bool:
     hosts_to_try = []
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
-        # Try the Windows host IP first, then localhost as fallback
-        wsl_host = _get_wsl_host_ip()
-        if wsl_host:
+        # Try the Windows host IP first (via get_server_host), then localhost as fallback
+        wsl_host = get_server_host()
+        if wsl_host and wsl_host != "127.0.0.1":
             hosts_to_try.append(wsl_host)
         hosts_to_try.append("127.0.0.1")
     else:
@@ -442,9 +444,9 @@ def _check_model_ready(port: int) -> bool:
     hosts_to_try = []
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
-        # Try the Windows host IP first, then localhost as fallback
-        wsl_host = _get_wsl_host_ip()
-        if wsl_host:
+        # Try the Windows host IP first (via get_server_host), then localhost as fallback
+        wsl_host = get_server_host()
+        if wsl_host and wsl_host != "127.0.0.1":
             hosts_to_try.append(wsl_host)
         hosts_to_try.append("127.0.0.1")
     else:
@@ -453,10 +455,12 @@ def _check_model_ready(port: int) -> bool:
     for host in hosts_to_try:
         url = f"http://{host}:{port}/v1/models"
         try:
-            resp = requests.get(url, timeout=0.5)
+            # Increased timeout to 5 seconds for slower model startup
+            resp = requests.get(url, timeout=5.0)
             if resp.status_code == 200:
                 return True
-        except Exception:
+        except Exception as e:
+            log.debug(f"Health check failed for {url}: {e}")
             continue
 
     return False
@@ -471,10 +475,14 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     # accepts connections from WSL. In all other cases, use the configured default.
     bind_host = "0.0.0.0" if (WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe')) else DEFAULTS["host"]
 
+    # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
+    model_path_str = meta.get("model_path", "")
+    model_path = resolve_model_path(model_path_str)
+
     cmd: list[str] = [
         str(LLAMA_SERVER),
         "-m",
-        convert_path_for_binary(BASE_DIR / meta["model_path"]),
+        convert_path_for_binary(model_path),
         "--alias",
         model,
         "--host",
@@ -485,24 +493,165 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         str(meta.get("threads", DEFAULTS["threads"])),
         "--threads-batch",
         str(meta.get("threads_batch", DEFAULTS["threads_batch"])),
-        "-c",
-        str(meta.get("cache_size", DEFAULTS["cache_size"])),
         "--timeout",
         str(meta.get("timeout", DEFAULTS["timeout"])),
     ]
+    # Handle load-mode for mlock and mmap (new llama.cpp API)
+    # llama.cpp expects "mmap+mlock" order (mmap first)
+    load_modes = []
+    # Enable mmap by default unless explicitly disabled
+    if not meta.get("no_mmap", DEFAULTS["no_mmap"]):
+        load_modes.append("mmap")
     if meta.get("mlock", DEFAULTS["mlock"]):
-        cmd += ["--mlock"]
+        load_modes.append("mlock")
+    # If neither mlock nor mmap, use "none"
+    if load_modes:
+        # Use '+' as separator for llama.cpp load-mode (e.g., "mmap+mlock")
+        cmd += ["--load-mode", "+".join(load_modes)]
+    else:
+        cmd += ["--load-mode", "none"]
+    
     flash = meta.get("flash_attn", DEFAULTS["flash_attn"])
     if flash and flash != "off":
         cmd += ["--flash-attn", flash]
-    if meta.get("no_mmap", DEFAULTS["no_mmap"]):
-        cmd += ["--no-mmap"]
-    if meta.get("parallel"):
-        cmd += ["--parallel", str(meta["parallel"])]
+    
+    # Handle parallel: if "auto", use --kv-unified instead of --parallel
+    parallel_val = meta.get("parallel")
+    if parallel_val == "auto":
+        cmd += ["--kv-unified"]
+    elif parallel_val:
+        cmd += ["--parallel", str(parallel_val)]
+    
     if meta.get("ubatch_size"):
         cmd += ["--ubatch-size", str(meta["ubatch_size"])]
+    
+    # Agent/Tool parameters
+    if meta.get("jinja", DEFAULTS["jinja"]):
+        cmd += ["--jinja"]
+    if meta.get("reasoning_preserve", DEFAULTS["reasoning_preserve"]):
+        cmd += ["--reasoning-preserve"]
+    
+    # CPU-only optimizations
+    gpu_layers = meta.get("gpu_layers", DEFAULTS["gpu_layers"])
+    if gpu_layers is not None:
+        cmd += ["-ngl", str(gpu_layers)]
+    
+    cache_type_k = meta.get("cache_type_k", DEFAULTS["cache_type_k"])
+    if cache_type_k and cache_type_k != "fp16":
+        cmd += ["--cache-type-k", cache_type_k]
+    
+    cache_type_v = meta.get("cache_type_v", DEFAULTS["cache_type_v"])
+    if cache_type_v and cache_type_v != "fp16":
+        cmd += ["--cache-type-v", cache_type_v]
+    
+    # NUMA requires a value: distribute, isolate, or numactl
+    numa = meta.get("numa", DEFAULTS["numa"])
+    if numa:
+        numa_value = meta.get("numa_value", "distribute")
+        cmd += ["--numa", numa_value]
+    
+    cpu_affinity = meta.get("cpu_affinity", DEFAULTS["cpu_affinity"])
+    if cpu_affinity and cpu_affinity != "auto":
+        cmd += ["--cpu-affinity", cpu_affinity]
+    
+    if meta.get("cpu_strict", DEFAULTS["cpu_strict"]):
+        cmd += ["--cpu-strict"]
+    
+    batch_size = meta.get("batch_size", DEFAULTS["batch_size"])
+    if batch_size:
+        cmd += ["-b", str(batch_size)]
+    
+    # ctx_size uses -c (context size) - this also controls KV cache size
+    ctx_size = meta.get("ctx_size", DEFAULTS["ctx_size"])
+    if ctx_size:
+        cmd += ["-c", str(ctx_size)]
+    
+    rope_freq_base = meta.get("rope_freq_base", DEFAULTS["rope_freq_base"])
+    if rope_freq_base and rope_freq_base != 10000.0:
+        cmd += ["--rope-freq-base", str(rope_freq_base)]
+    
+    rope_freq_scale = meta.get("rope_freq_scale", DEFAULTS["rope_freq_scale"])
+    if rope_freq_scale and rope_freq_scale != 1.0:
+        cmd += ["--rope-freq-scale", str(rope_freq_scale)]
+    
+    # YaRN RoPE scaling parameters
+    rope_scaling_type = meta.get("rope_scaling_type", DEFAULTS["rope_scaling_type"])
+    if rope_scaling_type and rope_scaling_type != "none":
+        cmd += ["--rope-scaling", rope_scaling_type]
+    
+    rope_scale = meta.get("rope_scale", DEFAULTS["rope_scale"])
+    if rope_scale and rope_scale != 1.0:
+        cmd += ["--rope-scale", str(rope_scale)]
+    
+    yarn_orig_ctx = meta.get("yarn_orig_ctx", DEFAULTS["yarn_orig_ctx"])
+    if yarn_orig_ctx and yarn_orig_ctx > 0:
+        cmd += ["--yarn-orig-ctx", str(yarn_orig_ctx)]
+    
+    yarn_ext_factor = meta.get("yarn_ext_factor", DEFAULTS["yarn_ext_factor"])
+    if yarn_ext_factor and yarn_ext_factor >= 0:
+        cmd += ["--yarn-ext-factor", str(yarn_ext_factor)]
+    
+    yarn_attn_factor = meta.get("yarn_attn_factor", DEFAULTS["yarn_attn_factor"])
+    if yarn_attn_factor and yarn_attn_factor != 1.0:
+        cmd += ["--yarn-attn-factor", str(yarn_attn_factor)]
+    
+    yarn_beta_slow = meta.get("yarn_beta_slow", DEFAULTS["yarn_beta_slow"])
+    if yarn_beta_slow and yarn_beta_slow != 1.0:
+        cmd += ["--yarn-beta-slow", str(yarn_beta_slow)]
+    
+    yarn_beta_fast = meta.get("yarn_beta_fast", DEFAULTS["yarn_beta_fast"])
+    if yarn_beta_fast and yarn_beta_fast != 32.0:
+        cmd += ["--yarn-beta-fast", str(yarn_beta_fast)]
+
     # Enable Prometheus metrics endpoint for performance monitoring
     cmd += ["--metrics"]
+
+    # Speculative decoding parameters
+    spec_type = meta.get("spec_type", DEFAULTS["spec_type"])
+    if spec_type and spec_type != "none":
+        cmd += ["--spec-type", spec_type]
+    
+    spec_draft_model = meta.get("spec_draft_model", DEFAULTS["spec_draft_model"])
+    if spec_draft_model:
+        cmd += ["--spec-draft-model", convert_path_for_binary(BASE_DIR / spec_draft_model)]
+    
+    spec_draft_hf_repo = meta.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])
+    if spec_draft_hf_repo:
+        cmd += ["--spec-draft-hf", spec_draft_hf_repo]
+    
+    spec_draft_n_max = meta.get("spec_draft_n_max", DEFAULTS["spec_draft_n_max"])
+    if spec_draft_n_max > 0:
+        cmd += ["--spec-draft-n-max", str(spec_draft_n_max)]
+    
+    spec_draft_n_min = meta.get("spec_draft_n_min", DEFAULTS["spec_draft_n_min"])
+    if spec_draft_n_min > 0:
+        cmd += ["--spec-draft-n-min", str(spec_draft_n_min)]
+    
+    spec_draft_p_split = meta.get("spec_draft_p_split", DEFAULTS["spec_draft_p_split"])
+    if spec_draft_p_split > 0:
+        cmd += ["--spec-draft-p-split", str(spec_draft_p_split)]
+    
+    spec_draft_p_min = meta.get("spec_draft_p_min", DEFAULTS["spec_draft_p_min"])
+    if spec_draft_p_min > 0:
+        cmd += ["--spec-draft-p-min", str(spec_draft_p_min)]
+    
+    spec_draft_ngl = meta.get("spec_draft_ngl", DEFAULTS["spec_draft_ngl"])
+    if spec_draft_ngl and spec_draft_ngl != "auto":
+        cmd += ["--spec-draft-ngl", str(spec_draft_ngl)]
+    
+    spec_ngram_size_n = meta.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])
+    if spec_ngram_size_n > 0:
+        # Correct argument names for ngram-simple spec type in newer llama.cpp
+        cmd += ["--spec-ngram-simple-size-n", str(spec_ngram_size_n)]
+    
+    spec_ngram_size_m = meta.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])
+    if spec_ngram_size_m > 0:
+        # Correct argument names for ngram-simple spec type in newer llama.cpp
+        cmd += ["--spec-ngram-simple-size-m", str(spec_ngram_size_m)]
+    
+    spec_ngram_min_hits = meta.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])
+    if spec_ngram_min_hits > 1:
+        cmd += ["--spec-ngram-simple-min-hits", str(spec_ngram_min_hits)]
 
     log.info(f"Build command for {model}: {cmd}")
     return cmd

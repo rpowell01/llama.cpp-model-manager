@@ -1,9 +1,10 @@
 """Status and health check endpoints."""
 import time
+from pathlib import Path
 from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
 
-from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config
+from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config, resolve_model_path
 from models import get_models, ModelRegistry
 from processes import check_port_active, find_pid_by_port
 from state import (
@@ -63,7 +64,28 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
     port = int(meta.get("port", 11000))
     
     # Get model status from remote API
-    remote_model = registry._remote_client.get_model(model)
+    try:
+        remote_model = registry._remote_client.get_model(model)
+    except Exception as e:
+        log = __import__('logging').getLogger("llamaweb")
+        log.warning(f"Failed to get remote model status for {model}: {e}")
+        # Remote server unreachable - mark as unknown status
+        return {
+            "model": model,
+            "port": port,
+            "status": "unknown",
+            "pid": None,
+            "file_exists": True,
+            "file_size_gb": meta.get("file_size_gb"),
+            "model_path": meta.get("model_path", ""),
+            "download_status": None,
+            "partial_download": 0,
+            "pp": None,
+            "tg": None,
+            "pg": None,
+            **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
+        }
+    
     status = "unknown"
     pid = None
     
@@ -110,7 +132,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
     # Local mode: use local process management
     port = int(meta.get("port", 11000))
     model_path_str = meta.get("model_path", "")
-    model_path = BASE_DIR / model_path_str if model_path_str else None
+    # Handle both relative (to BASE_DIR) and absolute paths using helper (respects MODEL_DIR env var)
+    model_path = resolve_model_path(model_path_str) if model_path_str else None
     exists = model_path.is_file() if model_path else False
     active = check_port_active(port)
     pid = None
@@ -202,16 +225,84 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
 
 @status_bp.route("/")
 def index():
-    models = get_models()
-    statuses = [_status_for_model(name, meta) for name, meta in models.items()]
+    registry = g.get('registry') or get_status_registry()
+    
+    if registry.is_remote_mode:
+        remote_models = registry.list_models()
+        statuses = []
+        for model in remote_models:
+            statuses.append({
+                "model": model.name,
+                "port": model.port,
+                "status": "running",
+                "pid": None,
+                "file_exists": True,
+                "file_size_gb": model.file_size_gb,
+                "model_path": model.model_path,
+                "download_status": None,
+                "partial_download": 0,
+                "pp": None,
+                "tg": None,
+                "pg": None,
+                "repo": model.repo,
+                "filename": model.filename,
+                "expected_size": model.expected_size,
+                "cache_size": model.cache_size,
+                "threads": model.threads,
+                "threads_batch": model.threads_batch,
+                "timeout": model.timeout,
+                "mlock": model.mlock,
+                "flash_attn": model.flash_attn,
+                "no_mmap": model.no_mmap,
+                "parallel": model.parallel,
+                "ubatch_size": model.ubatch_size,
+            })
+    else:
+        models = get_models()
+        statuses = [_status_for_model(name, meta) for name, meta in models.items()]
+    
     return render_template('index.html', statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT, cache_version="v2")
 
 
 @status_bp.route("/api/status")
 def api_status():
     registry = g.get('registry') or get_status_registry()
-    models = get_models()
-    results = [_status_for_model(name, meta) for name, meta in models.items()]
+    
+    # In remote mode, fetch models from remote server
+    if registry.is_remote_mode:
+        remote_models = registry.list_models()
+        results = []
+        for model in remote_models:
+            # Convert remote Model to status dict format
+            results.append({
+                "model": model.name,
+                "port": model.port,
+                "status": "running",
+                "pid": None,
+                "file_exists": True,
+                "file_size_gb": model.file_size_gb,
+                "model_path": model.model_path,
+                "download_status": None,
+                "partial_download": 0,
+                "pp": None,
+                "tg": None,
+                "pg": None,
+                "repo": model.repo,
+                "filename": model.filename,
+                "expected_size": model.expected_size,
+                "cache_size": model.cache_size,
+                "threads": model.threads,
+                "threads_batch": model.threads_batch,
+                "timeout": model.timeout,
+                "mlock": model.mlock,
+                "flash_attn": model.flash_attn,
+                "no_mmap": model.no_mmap,
+                "parallel": model.parallel,
+                "ubatch_size": model.ubatch_size,
+            })
+    else:
+        models = get_models()
+        results = [_status_for_model(name, meta) for name, meta in models.items()]
     
     # Add mode and remote health info to response
     response_data = {

@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON
+from config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, resolve_model_path
 
 # Thread-safe in-memory model cache
 _models: dict[str, dict[str, Any]] = {}
@@ -175,6 +175,40 @@ def add_model_entry(
     no_mmap: bool = True,
     parallel: int = 4,
     ubatch_size: int = 512,
+    # Agent/Tool parameters
+    jinja: bool = True,
+    reasoning_preserve: bool = True,
+    # CPU-only optimizations
+    gpu_layers: int = 0,
+    cache_type_k: str = "fp16",
+    cache_type_v: str = "fp16",
+    numa: bool = True,
+    numa_value: str = "distribute",
+    cpu_affinity: str = "auto",
+    cpu_strict: bool = False,
+    batch_size: int = 512,
+    ctx_size: int = 4096,
+    rope_freq_base: float = 10000.0,
+    rope_freq_scale: float = 1.0,
+    rope_scaling_type: str = "none",
+    rope_scale: float = 1.0,
+    yarn_orig_ctx: int = 0,
+    yarn_ext_factor: float = -1.0,
+    yarn_attn_factor: float = 1.0,
+    yarn_beta_slow: float = 1.0,
+    yarn_beta_fast: float = 32.0,
+    # Speculative decoding parameters
+    spec_type: str = "none",
+    spec_draft_model: str = "",
+    spec_draft_hf_repo: str = "",
+    spec_draft_n_max: int = 3,
+    spec_draft_n_min: int = 0,
+    spec_draft_p_split: float = 0.10,
+    spec_draft_p_min: float = 0.00,
+    spec_draft_ngl: str = "auto",
+    spec_ngram_size_n: int = 12,
+    spec_ngram_size_m: int = 48,
+    spec_ngram_min_hits: int = 1,
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
@@ -202,6 +236,40 @@ def add_model_entry(
             "no_mmap": no_mmap,
             "parallel": parallel,
             "ubatch_size": ubatch_size,
+            # Agent/Tool parameters
+            "jinja": jinja,
+            "reasoning_preserve": reasoning_preserve,
+            # CPU-only optimizations
+            "gpu_layers": gpu_layers,
+            "cache_type_k": cache_type_k,
+            "cache_type_v": cache_type_v,
+            "numa": numa,
+            "numa_value": numa_value,
+            "cpu_affinity": cpu_affinity,
+            "cpu_strict": cpu_strict,
+            "batch_size": batch_size,
+            "ctx_size": ctx_size,
+            "rope_freq_base": rope_freq_base,
+            "rope_freq_scale": rope_freq_scale,
+            "rope_scaling_type": rope_scaling_type,
+            "rope_scale": rope_scale,
+            "yarn_orig_ctx": yarn_orig_ctx,
+            "yarn_ext_factor": yarn_ext_factor,
+            "yarn_attn_factor": yarn_attn_factor,
+            "yarn_beta_slow": yarn_beta_slow,
+            "yarn_beta_fast": yarn_beta_fast,
+            # Speculative decoding parameters
+            "spec_type": spec_type,
+            "spec_draft_model": spec_draft_model,
+            "spec_draft_hf_repo": spec_draft_hf_repo,
+            "spec_draft_n_max": spec_draft_n_max,
+            "spec_draft_n_min": spec_draft_n_min,
+            "spec_draft_p_split": spec_draft_p_split,
+            "spec_draft_p_min": spec_draft_p_min,
+            "spec_draft_ngl": spec_draft_ngl,
+            "spec_ngram_size_n": spec_ngram_size_n,
+            "spec_ngram_size_m": spec_ngram_size_m,
+            "spec_ngram_min_hits": spec_ngram_min_hits,
         }
         save_models(models)
         return True
@@ -220,7 +288,7 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
         if delete_files:
             model_path_str = meta.get("model_path", "")
             if model_path_str:
-                model_path = BASE_DIR / model_path_str
+                model_path = resolve_model_path(model_path_str)
                 if model_path.exists():
                     model_path.unlink()
                 # Optionally remove directory if empty
@@ -290,9 +358,51 @@ def load_models_cache() -> None:
             if existing.get("repo") is None:
                 existing["repo"] = ""
 
+    # Apply defaults to all models for any missing fields
+    _apply_defaults_to_models(models)
+
     assign_ports(models)
     with _models_lock:
         _models = models
+
+
+def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
+    """Apply default values to models for any missing fields."""
+    default_fields = {
+        "cache_size": DEFAULTS["cache_size"],
+        "threads": DEFAULTS["threads"],
+        "threads_batch": DEFAULTS["threads_batch"],
+        "timeout": DEFAULTS["timeout"],
+        "mlock": DEFAULTS["mlock"],
+        "flash_attn": DEFAULTS["flash_attn"],
+        "no_mmap": DEFAULTS["no_mmap"],
+        "parallel": DEFAULTS["parallel"],
+        "ubatch_size": DEFAULTS["ubatch_size"],
+        "jinja": DEFAULTS["jinja"],
+        "reasoning_preserve": DEFAULTS["reasoning_preserve"],
+        "gpu_layers": DEFAULTS["gpu_layers"],
+        "cache_type_k": DEFAULTS["cache_type_k"],
+        "cache_type_v": DEFAULTS["cache_type_v"],
+        "numa": DEFAULTS["numa"],
+        "numa_value": DEFAULTS["numa_value"],
+        "cpu_affinity": DEFAULTS["cpu_affinity"],
+        "cpu_strict": DEFAULTS["cpu_strict"],
+        "batch_size": DEFAULTS["batch_size"],
+        "ctx_size": DEFAULTS["ctx_size"],
+        "rope_freq_base": DEFAULTS["rope_freq_base"],
+        "rope_freq_scale": DEFAULTS["rope_freq_scale"],
+        "rope_scaling_type": DEFAULTS["rope_scaling_type"],
+        "rope_scale": DEFAULTS["rope_scale"],
+        "yarn_orig_ctx": DEFAULTS["yarn_orig_ctx"],
+        "yarn_ext_factor": DEFAULTS["yarn_ext_factor"],
+        "yarn_attn_factor": DEFAULTS["yarn_attn_factor"],
+        "yarn_beta_slow": DEFAULTS["yarn_beta_slow"],
+        "yarn_beta_fast": DEFAULTS["yarn_beta_fast"],
+    }
+    for model in models.values():
+        for field, default_value in default_fields.items():
+            if field not in model:
+                model[field] = default_value
 
 
 def refresh_models_cache() -> None:
@@ -306,38 +416,53 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
     if not MODELS_DIR.exists():
         return models
 
-    for model_dir in sorted(MODELS_DIR.iterdir()):
-        if not model_dir.is_dir():
-            continue
+    # Recursively find all .gguf files
+    for model_file in MODELS_DIR.rglob("*.gguf"):
+        try:
+            # Use the parent directory name as model name
+            model_name = model_file.parent.name
+            file_size = model_file.stat().st_size
+            file_size_gb = round(file_size / (1024**3), 2)
 
-        model_name = model_dir.name
-
-        for model_file in model_dir.glob("*.gguf"):
+            # Try to make path relative to BASE_DIR, fall back to absolute path
             try:
-                file_size = model_file.stat().st_size
-                file_size_gb = round(file_size / (1024**3), 2)
+                model_path_str = str(model_file.relative_to(BASE_DIR))
+            except ValueError:
+                # Model is outside BASE_DIR, store absolute path
+                model_path_str = str(model_file)
 
-                models[model_name] = {
-                    "model_path": str(model_file.relative_to(BASE_DIR)),
-                    "repo": "",
-                    "filename": model_file.name,
-                    "expected_size": file_size,
-                    "port": 0,
-                    "cache_size": DEFAULTS["cache_size"],
-                    "threads": DEFAULTS["threads"],
-                    "threads_batch": DEFAULTS["threads_batch"],
-                    "timeout": DEFAULTS["timeout"],
-                    "mlock": DEFAULTS["mlock"],
-                    "flash_attn": DEFAULTS["flash_attn"],
-                    "no_mmap": DEFAULTS["no_mmap"],
-                    "parallel": DEFAULTS["parallel"],
-                    "ubatch_size": DEFAULTS["ubatch_size"],
-                    "file_size_gb": file_size_gb,
-                    "file_exists": True,
-                }
-                break
-            except OSError:
-                continue
+            models[model_name] = {
+                "model_path": model_path_str,
+                "repo": "",
+                "filename": model_file.name,
+                "expected_size": file_size,
+                "port": 0,
+                "cache_size": DEFAULTS["cache_size"],
+                "threads": DEFAULTS["threads"],
+                "threads_batch": DEFAULTS["threads_batch"],
+                "timeout": DEFAULTS["timeout"],
+                "mlock": DEFAULTS["mlock"],
+                "flash_attn": DEFAULTS["flash_attn"],
+                "no_mmap": DEFAULTS["no_mmap"],
+                "parallel": DEFAULTS["parallel"],
+                "ubatch_size": DEFAULTS["ubatch_size"],
+                # Speculative decoding defaults
+                "spec_type": DEFAULTS["spec_type"],
+                "spec_draft_model": DEFAULTS["spec_draft_model"],
+                "spec_draft_hf_repo": DEFAULTS["spec_draft_hf_repo"],
+                "spec_draft_n_max": DEFAULTS["spec_draft_n_max"],
+                "spec_draft_n_min": DEFAULTS["spec_draft_n_min"],
+                "spec_draft_p_split": DEFAULTS["spec_draft_p_split"],
+                "spec_draft_p_min": DEFAULTS["spec_draft_p_min"],
+                "spec_draft_ngl": DEFAULTS["spec_draft_ngl"],
+                "spec_ngram_size_n": DEFAULTS["spec_ngram_size_n"],
+                "spec_ngram_size_m": DEFAULTS["spec_ngram_size_m"],
+                "spec_ngram_min_hits": DEFAULTS["spec_ngram_min_hits"],
+                "file_size_gb": file_size_gb,
+                "file_exists": True,
+            }
+        except OSError:
+            continue
 
     return models
 

@@ -16,7 +16,7 @@ from typing import Any, Dict
 
 import requests
 
-from config import BASE_DIR
+from config import BASE_DIR, resolve_model_path
 from models import get_models
 from state import log_event
 
@@ -59,7 +59,11 @@ def _download_worker(
                 download_status[model_name] = {"status": "error", "error": "Model not found in config"}
             return
         meta = models[model_name]
-        out_path = BASE_DIR / meta["model_path"]
+        model_path_str = meta["model_path"]
+        
+        # Resolve model path using helper (handles MODEL_DIR env var)
+        out_path = resolve_model_path(model_path_str)
+        
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Check for existing file to resume (skip if force redownload)

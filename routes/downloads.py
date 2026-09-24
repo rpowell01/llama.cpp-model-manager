@@ -1,13 +1,15 @@
 """Download management endpoints."""
 import json
+import re
 from logging import getLogger
 import time
+from pathlib import Path
 from typing import Generator
 
 from flask import Blueprint, jsonify, request, Response
 import requests
 
-from config import BASE_DIR, DEFAULTS
+from config import BASE_DIR, DEFAULTS, MODELS_DIR, resolve_model_path
 from downloads import start_download, download_status, download_lock
 from models import get_models, save_models
 from utils import estimate_gguf_size
@@ -56,10 +58,18 @@ def api_download():
                 new_model_name = f"{original_name} {counter}"
                 counter += 1
 
-            model_dir = BASE_DIR / "models" / new_model_name.lower().replace(" ", "-")
+            import re
+            # Sanitize directory name for Windows
+            safe_dir_name = re.sub(r'[<>:"|?*]', '', new_model_name.lower().replace(" ", "-"))
+            model_dir = MODELS_DIR / safe_dir_name
             model_dir.mkdir(parents=True, exist_ok=True)
             model_path = model_dir / url_filename
-            rel_path = model_path.relative_to(BASE_DIR)
+            # Store path relative to BASE_DIR for compatibility
+            try:
+                rel_path = model_path.relative_to(BASE_DIR)
+            except ValueError:
+                # Model is outside BASE_DIR, store absolute path
+                rel_path = model_path
 
             repo = ""
             if "huggingface.co/" in url:
@@ -96,7 +106,9 @@ def api_download():
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
     meta = models[model]
-    target = BASE_DIR / meta["model_path"]
+    # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
+    model_path_str = meta.get("model_path", "")
+    target = resolve_model_path(model_path_str)
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if force and target.exists():
@@ -131,7 +143,9 @@ def api_download_search():
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     meta = models[model]
 
-    out_path = BASE_DIR / meta.get("model_path", "")
+    # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
+    model_path_str = meta.get("model_path", "")
+    out_path = resolve_model_path(model_path_str)
     if out_path.exists() and not force:
         existing_size = out_path.stat().st_size
         expected_size = meta.get("expected_size", 0)
@@ -176,7 +190,9 @@ def api_download_search():
         if len(results) == 1:
             url = results[0]["url"]
             size = results[0]["size"]
-            target = BASE_DIR / meta["model_path"]
+            # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
+            model_path_str = meta.get("model_path", "")
+            target = resolve_model_path(model_path_str)
             target.parent.mkdir(parents=True, exist_ok=True)
             start_download(model, url, size, force=force)
             return jsonify({"status": "download started", "model": model, "results": results})

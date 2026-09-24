@@ -5,7 +5,7 @@ import logging
 
 from config import BASE_DIR, Config
 from models import ModelRegistry, get_models
-from processes import check_port_active, get_server_host, _get_wsl_host_ip
+from processes import check_port_active, get_server_host
 from config import WSL, LLAMA_SERVER
 from routes.status import _status_for_model
 
@@ -41,7 +41,13 @@ def api_chat():
         remote_model = registry._remote_client.get_model(model)
         if not remote_model:
             return jsonify({"error": f"Model '{model}' is not loaded on remote server"}), 400
-        port = remote_model.port
+        # In remote mode, use the remote server URL directly
+        remote_url = registry._config.remote_url.rstrip("/")
+        port = 80  # Default HTTP port for URL parsing
+        host = remote_url.replace("http://", "").replace("https://", "")
+        if ":" in host:
+            host, port_str = host.split(":", 1)
+            port = int(port_str)
     else:
         # In local mode, check local cache and port
         models = registry.list_models()
@@ -89,34 +95,42 @@ def api_chat():
         else:
             timeout = 300
         
-        # Determine hosts to try - in WSL+Windows mode, try multiple options
-        hosts_to_try = []
-        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-            wsl_host = _get_wsl_host_ip()
-            if wsl_host:
-                hosts_to_try.append(wsl_host)
-            hosts_to_try.append("127.0.0.1")
+        # Determine the target URL for chat
+        if registry.is_remote_mode:
+            # In remote mode, use the remote server URL directly
+            target_url = f"{remote_url}/v1/chat/completions"
         else:
-            hosts_to_try.append(get_server_host())
+            # In local mode, determine hosts to try
+            hosts_to_try = []
+            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+                # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
+                # Try the Windows host IP first (via get_server_host), then localhost as fallback
+                wsl_host = get_server_host()
+                if wsl_host and wsl_host != "127.0.0.1":
+                    hosts_to_try.append(wsl_host)
+                hosts_to_try.append("127.0.0.1")
+            else:
+                hosts_to_try.append(get_server_host())
+            
+            # Try each host until one succeeds
+            target_url = None
+            for host in hosts_to_try:
+                url = f"http://{host}:{port_int}/v1/chat/completions"
+                log.info(f"Chat proxy to {model} at {url}")
+                try:
+                    resp = requests.post(url, json=payload, timeout=timeout)
+                    if resp.status_code == 200:
+                        target_url = url
+                        break
+                except requests.exceptions.RequestException as e:
+                    log.warning(f"Failed to connect to {url}: {e}")
+                    continue
+            if not target_url:
+                return jsonify({"error": "Failed to communicate with model server"}), 500
         
-        # Try each host until one succeeds
-        last_error = None
-        resp = None
-        for host in hosts_to_try:
-            target_url = f"http://{host}:{port_int}/v1/chat/completions"
-            log.info(f"Chat proxy to {model} at {target_url}")
-            try:
-                resp = requests.post(target_url, json=payload, timeout=timeout)
-                if resp.status_code == 200:
-                    break  # Success, exit the loop
-                last_error = f"Model API returned {resp.status_code}"
-            except requests.exceptions.RequestException as e:
-                last_error = str(e)
-                continue
-        else:
-            # All hosts failed
-            log.error(f"Chat proxy error for {model} on port {port_int}: {last_error}")
-            return jsonify({"error": "Failed to communicate with model server"}), 500
+        # Make the chat request
+        log.info(f"Chat proxy to {model} at {target_url}")
+        resp = requests.post(target_url, json=payload, timeout=timeout)
         
         if resp.status_code != 200:
             log.error(f"Model API returned {resp.status_code}: {resp.text[:500]}")
@@ -124,9 +138,9 @@ def api_chat():
         try:
             json_data = resp.json()
         except Exception as e:
-            log.error(f"Invalid JSON from model {model} on port {port_int}: {resp.text[:500]}")
+            log.error(f"Invalid JSON from model {model}: {resp.text[:500]}")
             return jsonify({"error": "Model returned invalid JSON response"}), 500
         return jsonify(json_data)
     except requests.exceptions.RequestException as e:
-        log.error(f"Chat proxy error for {model} on port {port_int}: {e}")
+        log.error(f"Chat proxy error for {model}: {e}")
         return jsonify({"error": "Failed to communicate with model server"}), 500

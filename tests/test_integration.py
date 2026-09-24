@@ -25,8 +25,12 @@ class MockRemoteServerHandler(BaseHTTPRequestHandler):
         pass
     
     def do_GET(self):
-        if self.path == "/api/models":
-            self._send_json({"models": [self.server.models_data]})
+        if self.path == "/v1/models":
+            # OpenAI-compatible format
+            self._send_json({
+                "object": "list",
+                "data": [self.server.models_data]
+            })
         elif self.path == "/" or self.path == "/status":
             # Real llama.cpp server has / at root for status (returns HTML)
             self.send_response(200)
@@ -35,13 +39,7 @@ class MockRemoteServerHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"<html><body>llama.cpp server</body></html>")
         elif self.path == "/api/status":
             # Also support /api/status for backwards compatibility
-            self._send_json({"status": "running", "models": [self.server.models_data["name"]]})
-        elif self.path.startswith("/api/models/"):
-            model_name = self.path.split("/")[-1]
-            if model_name == self.server.models_data["name"]:
-                self._send_json(self.server.models_data)
-            else:
-                self.send_error(404, "Model not found")
+            self._send_json({"status": "running", "models": [self.server.models_data["id"]]})
         else:
             self.send_error(404, "Not found")
     
@@ -65,21 +63,9 @@ def mock_remote_server():
     """Fixture for mock remote server."""
     port = 9999
     models_data = {
-        "name": "test-model",
-        "repo": "test/repo",
-        "filename": "test-model.gguf",
-        "model_path": "/models/test-model.gguf",
-        "expected_size": 1000000000,
-        "port": port,
-        "cache_size": 32768,
-        "threads": 16,
-        "threads_batch": 22,
-        "timeout": 3600,
-        "mlock": True,
-        "flash_attn": "off",
-        "no_mmap": True,
-        "parallel": 4,
-        "ubatch_size": 512,
+        "id": "test-model",
+        "object": "model",
+        "owned_by": "test",
     }
     
     server = HTTPServer(("127.0.0.1", port), MockRemoteServerHandler)

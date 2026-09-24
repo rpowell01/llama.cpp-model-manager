@@ -52,7 +52,7 @@ class TestRemoteModelRegistry:
         """Test initialization of RemoteModelRegistry."""
         client = RemoteModelRegistry("http://localhost:8080")
         
-        assert client.base_url == "http://localhost:8080/api/"
+        assert client.base_url == "http://localhost:8080"
         assert client.timeout == 30
         assert client.max_retries == 3
     
@@ -60,18 +60,21 @@ class TestRemoteModelRegistry:
         """Test that trailing slash is stripped from base_url."""
         client = RemoteModelRegistry("http://localhost:8080/")
         
-        assert client.base_url == "http://localhost:8080/api/"
+        assert client.base_url == "http://localhost:8080"
     
     @patch("remote_client.requests.Session")
     def test_list_models(self, mock_session_class):
-        """Test listing models."""
+        """Test listing models with OpenAI format response."""
         mock_session = Mock()
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [
-            {"name": "model1"},
-            {"name": "model2"},
-        ]
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": [
+                {"id": "model1"},
+                {"id": "model2"},
+            ]
+        }
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
         
@@ -84,12 +87,15 @@ class TestRemoteModelRegistry:
     
     @patch("remote_client.requests.Session")
     def test_list_models_dict_response(self, mock_session_class):
-        """Test listing models with dict wrapper response."""
+        """Test listing models with OpenAI format dict response."""
         mock_session = Mock()
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "models": [{"name": "model1"}]
+            "object": "list",
+            "data": [
+                {"id": "model1"}
+            ]
         }
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
@@ -102,11 +108,14 @@ class TestRemoteModelRegistry:
     
     @patch("remote_client.requests.Session")
     def test_load_model(self, mock_session_class):
-        """Test loading a model."""
+        """Test loading a model - checks if model exists in list."""
         mock_session = Mock()
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "loaded"}
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": [{"id": "test-model"}]
+        }
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
         
@@ -114,20 +123,36 @@ class TestRemoteModelRegistry:
         result = client.load_model("test-model")
         
         assert result is True
-        mock_session.request.assert_called_once_with(
-            "POST",
-            "http://localhost:8080/api/models/load",
-            json={"name": "test-model"},
-            timeout=30,
-        )
+        # load_model calls list_models to check if model exists
+        assert mock_session.request.call_count >= 1
     
     @patch("remote_client.requests.Session")
-    def test_unload_model(self, mock_session_class):
-        """Test unloading a model."""
+    def test_load_model_not_found(self, mock_session_class):
+        """Test loading a model that doesn't exist."""
         mock_session = Mock()
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "unloaded"}
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": []
+        }
+        mock_session.request.return_value = mock_response
+        mock_session_class.return_value = mock_session
+        
+        client = RemoteModelRegistry("http://localhost:8080")
+        with pytest.raises(ModelNotFoundError):
+            client.load_model("nonexistent")
+    
+    @patch("remote_client.requests.Session")
+    def test_unload_model(self, mock_session_class):
+        """Test unloading a model - checks if model exists in list."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": [{"id": "test-model"}]
+        }
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
         
@@ -137,11 +162,32 @@ class TestRemoteModelRegistry:
         assert result is True
     
     @patch("remote_client.requests.Session")
-    def test_get_model_not_found(self, mock_session_class):
-        """Test getting a model that doesn't exist."""
+    def test_unload_model_not_found(self, mock_session_class):
+        """Test unloading a model that doesn't exist."""
         mock_session = Mock()
         mock_response = Mock()
-        mock_response.status_code = 404
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": []
+        }
+        mock_session.request.return_value = mock_response
+        mock_session_class.return_value = mock_session
+        
+        client = RemoteModelRegistry("http://localhost:8080")
+        with pytest.raises(ModelNotFoundError):
+            client.unload_model("nonexistent")
+    
+    @patch("remote_client.requests.Session")
+    def test_get_model_not_found(self, mock_session_class):
+        """Test getting a model that doesn't exist in the list."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "object": "list",
+            "data": []
+        }
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
         
@@ -152,11 +198,11 @@ class TestRemoteModelRegistry:
     
     @patch("remote_client.requests.Session")
     def test_get_status(self, mock_session_class):
-        """Test getting server status."""
+        """Test getting server status - calls root endpoint."""
         mock_session = Mock()
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "running"}
+        mock_response.text = "<html><body>llama.cpp server</body></html>"
         mock_session.request.return_value = mock_response
         mock_session_class.return_value = mock_session
         
@@ -164,6 +210,12 @@ class TestRemoteModelRegistry:
         status = client.get_status()
         
         assert status["status"] == "running"
+        # get_status calls the root endpoint
+        mock_session.request.assert_called_once_with(
+            "GET",
+            "http://localhost:8080/",
+            timeout=30,
+        )
     
     @patch("remote_client.requests.Session")
     def test_context_manager(self, mock_session_class):
@@ -172,7 +224,7 @@ class TestRemoteModelRegistry:
         mock_session_class.return_value = mock_session
         
         with RemoteModelRegistry("http://localhost:8080") as client:
-            assert client.base_url == "http://localhost:8080/api/"
+            assert client.base_url == "http://localhost:8080"
         
         mock_session.close.assert_called_once()
 

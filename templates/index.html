@@ -69,15 +69,64 @@
       <label>Use MLock: <input type="checkbox" name="mlock" checked></label>
       <label>Flash Attn:
         <select name="flash_attn">
+          <option value="off">off</option>
           <option value="auto">auto</option>
-          <option value="no">no</option>
-          <option value="yes">yes</option>
+          <option value="on">on</option>
         </select>
       </label>
       <label>No MMap: <input type="checkbox" name="no_mmap" checked></label>
       <label>Auto-download: <input type="checkbox" name="auto_download" checked></label>
-      <label>Parallel: <input type="number" name="parallel" value="4" min="1"></label>
+      <label>Parallel:
+        <select name="parallel">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="auto">auto (set --kv-unified=true)</option>
+        </select>
+      </label>
       <label>UBatch Size: <input type="number" name="ubatch_size" value="512" min="1"></label>
+      <!-- Agent/Tool parameters -->
+      <hr style="margin: 1rem 0; border-color: var(--surface2);">
+      <h4 style="margin: 0.5rem 0; color: var(--text2);">Agent/Tool Parameters</h4>
+      <label>Jinja Tool Parsing: <input type="checkbox" name="jinja" checked></label>
+      <label>Reasoning Preserve: <input type="checkbox" name="reasoning_preserve" checked></label>
+      <!-- CPU-only optimizations -->
+      <hr style="margin: 1rem 0; border-color: var(--surface2);">
+      <h4 style="margin: 0.5rem 0; color: var(--text2);">CPU Optimizations</h4>
+      <label>GPU Layers (0=CPU only): <input type="number" name="gpu_layers" value="0" min="0"></label>
+      <label>KV Cache Type K:
+        <select name="cache_type_k">
+          <option value="fp16">fp16 (default)</option>
+          <option value="q4_0">q4_0 (4-bit, 3.5x less memory)</option>
+          <option value="q8_0">q8_0 (8-bit)</option>
+        </select>
+      </label>
+      <label>KV Cache Type V:
+        <select name="cache_type_v">
+          <option value="fp16">fp16 (default)</option>
+          <option value="q4_0">q4_0 (4-bit, 3.5x less memory)</option>
+          <option value="q8_0">q8_0 (8-bit)</option>
+        </select>
+      </label>
+      <label>NUMA Aware: <input type="checkbox" name="numa" checked></label>
+      <label>NUMA Mode:
+        <select name="numa_value">
+          <option value="distribute">distribute (spread across nodes)</option>
+          <option value="isolate">isolate (single node)</option>
+          <option value="numactl">numactl (use numactl CPU map)</option>
+        </select>
+      </label>
+      <label>CPU Affinity (auto/comma-separated cores): <input type="text" name="cpu_affinity" value="auto" placeholder="auto"></label>
+      <label>CPU Strict Mode: <input type="checkbox" name="cpu_strict"></label>
+      <label>Batch Size: <input type="number" name="batch_size" value="512" min="1"></label>
+      <label>Context Size: <input type="number" name="ctx_size" value="4096" min="1"></label>
+      <label>RoPE Freq Base: <input type="number" name="rope_freq_base" value="10000" step="0.1" min="1"></label>
+      <label>RoPE Freq Scale: <input type="number" name="rope_freq_scale" value="1" step="0.1" min="0.1"></label>
       <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
         <button type="button" class="btn-cancel" id="add-model-modal-cancel" style="padding: 0.4rem 1rem;">Cancel</button>
         <button type="submit" class="btn-add" style="padding: 0.4rem 1rem;">Add Model</button>

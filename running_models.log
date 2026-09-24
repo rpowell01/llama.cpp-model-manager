@@ -1,0 +1,186 @@
+{"time": "2026-09-20T02:56:00Z", "action": "start", "model": "27B", "port": 11000, "pid": 35596, "status": "running"}
+{"time": "2026-09-20T03:17:00Z", "action": "start", "model": "27B", "port": 11000, "pid": 32148, "status": "running"}
+{"time": "2026-09-20T03:28:51Z", "action": "stop", "model": "27B", "port": 11000, "pid": 32148, "status": "stopped"}
+{"time": "2026-09-20T03:30:42Z", "action": "start", "model": "27B", "port": 11000, "pid": 68824, "status": "running"}
+{"time": "2026-09-20T03:31:08Z", "action": "stop", "model": "27B", "port": 11000, "pid": 68824, "status": "stopped"}
+{"time": "2026-09-20T03:31:24Z", "action": "start", "model": "27B", "port": 11000, "pid": 69008, "status": "running"}
+{"time": "2026-09-20T03:39:18Z", "action": "stop", "model": "27B", "port": 11000, "pid": 69008, "status": "stopped"}
+{"time": "2026-09-20T03:40:47Z", "action": "start", "model": "deepseek-coder-7b-instruct-v1.5-gguf", "port": 11010, "pid": 39536, "status": "running"}
+{"time": "2026-09-20T03:43:14Z", "action": "stop", "model": "deepseek-coder-7b-instruct-v1.5-gguf", "port": 11010, "pid": 39536, "status": "stopped"}
+{"time": "2026-09-20T03:43:40Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 42736, "status": "running"}
+{"time": "2026-09-20T03:55:55Z", "action": "stop", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 42736, "status": "stopped"}
+{"time": "2026-09-20T14:01:44Z", "action": "download", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 0, "pid": null, "status": "completed (7381381664 bytes)"}
+{"time": "2026-09-20T14:07:17Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 9676, "status": "running"}
+{"time": "2026-09-20T14:12:00Z", "action": "stop", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 9676, "status": "stopped"}
+{"time": "2026-09-20T15:02:09Z", "action": "start", "model": "27B", "port": 11000, "pid": 44892, "status": "exited_early"}
+{"time": "2026-09-20T15:34:37Z", "action": "start", "model": "27B", "port": 11000, "pid": 17848, "status": "exited_early"}
+{"time": "2026-09-20T15:44:55Z", "action": "start", "model": "27B", "port": 11000, "pid": 5836, "status": "running"}
+{"time": "2026-09-20T15:50:32Z", "action": "start", "model": "27B", "port": 11000, "pid": 57728, "status": "running"}
+{"time": "2026-09-20T15:58:59Z", "action": "stop", "model": "27B", "port": 11000, "pid": 57728, "status": "stopped"}
+{"time": "2026-09-20T15:59:30Z", "action": "start", "model": "qwen3-14b", "port": 11080, "pid": 8188, "status": "running"}
+{"time": "2026-09-20T16:06:06Z", "action": "stop", "model": "qwen3-14b", "port": 11080, "pid": 8188, "status": "stopped"}
+{"time": "2026-09-20T16:16:18Z", "action": "start", "model": "27B", "port": 11000, "pid": 38472, "status": "running"}
+{"time": "2026-09-20T16:19:13Z", "action": "stop", "model": "27B", "port": 11000, "pid": 38472, "status": "stopped"}
+{"time": "2026-09-20T17:33:15Z", "action": "start", "model": "27B", "port": 11000, "pid": 30444, "status": "exited_early"}
+{"time": "2026-09-20T17:40:57Z", "action": "start", "model": "27B", "port": 11000, "pid": 21168, "status": "exited_early"}
+{"time": "2026-09-20T17:48:41Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 23344, "status": "exited_early"}
+{"time": "2026-09-20T17:51:36Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 36952, "status": "exited_early"}
+{"time": "2026-09-20T17:59:01Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 12088, "status": "running"}
+{"time": "2026-09-20T18:14:23Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 8604, "status": "exited_early"}
+{"time": "2026-09-20T18:23:50Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 27052, "status": "exited_early"}
+{"time": "2026-09-20T18:26:49Z", "action": "start", "model": "qwen3.5-a35b-claude-4.6-opus-reasoning-distilled-q4_k_m", "port": 11100, "pid": 11352, "status": "exited_early"}
+{"time": "2026-09-20T18:34:16Z", "action": "start", "model": "qwen3.5-a35b-claude-4.6-opus-reasoning-distilled-q4_k_m", "port": 11100, "pid": 5520, "status": "running"}
+{"time": "2026-09-20T18:40:44Z", "action": "stop", "model": "qwen3.5-a35b-claude-4.6-opus-reasoning-distilled-q4_k_m", "port": 11100, "pid": 5520, "status": "stopped"}
+{"time": "2026-09-20T18:41:16Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 7128, "status": "running"}
+{"time": "2026-09-20T18:47:00Z", "action": "stop", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 7128, "status": "stopped"}
+{"time": "2026-09-20T18:47:35Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 6852, "status": "running"}
+{"time": "2026-09-20T20:14:04Z", "action": "start", "model": "phi-4", "port": 11080, "pid": 21352, "status": "running"}
+{"time": "2026-09-20T20:15:33Z", "action": "stop", "model": "phi-4", "port": 11080, "pid": 21352, "status": "stopped"}
+{"time": "2026-09-20T20:17:10Z", "action": "start", "model": "27B", "port": 11000, "pid": 41668, "status": "exited_early"}
+{"time": "2026-09-20T20:18:14Z", "action": "start", "model": "27B", "port": 11000, "pid": 23068, "status": "exited_early"}
+{"time": "2026-09-20T20:18:54Z", "action": "start", "model": "27B", "port": 11000, "pid": 24372, "status": "exited_early"}
+{"time": "2026-09-20T21:48:15Z", "action": "start", "model": "27B", "port": 11000, "pid": 18672, "status": "exited_early"}
+{"time": "2026-09-20T21:49:23Z", "action": "start", "model": "deepseek-r1-distill-llama-70b", "port": 11020, "pid": 2516, "status": "running"}
+{"time": "2026-09-20T22:07:47Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 19400, "status": "running"}
+{"time": "2026-09-20T22:17:48Z", "action": "stop", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 19400, "status": "stopped"}
+{"time": "2026-09-20T22:18:21Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 31856, "status": "running"}
+{"time": "2026-09-20T22:19:53Z", "action": "stop", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 31856, "status": "stopped"}
+{"time": "2026-09-20T22:30:09Z", "action": "start", "model": "deepseek-r1-distill-qwen-14b", "port": 11030, "pid": 28080, "status": "running"}
+{"time": "2026-09-20T23:14:56Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 7772, "status": "running"}
+{"time": "2026-09-20T23:29:59Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 13736, "status": "running"}
+{"time": "2026-09-21T00:16:06Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 5656, "status": "running"}
+{"time": "2026-09-21T00:19:46Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 12996, "status": "running"}
+{"time": "2026-09-21T00:51:12Z", "action": "start", "model": "deepseek-r1-distill-qwen-32b", "port": 11040, "pid": 33676, "status": "running"}
+{"time": "2026-09-21T01:14:43Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11060, "pid": 29440, "status": "running"}
+{"time": "2026-09-21T01:23:50Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 23660, "status": "running"}
+{"time": "2026-09-21T01:48:01Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11050, "pid": 26556, "status": "running"}
+{"time": "2026-09-21T02:00:04Z", "action": "start", "model": "qwen3.5-a35b-claude-4.6-opus-reasoning-distilled-q4_k_m", "port": 11100, "pid": 32984, "status": "running"}
+{"time": "2026-09-21T02:17:03Z", "action": "start", "model": "qwen3.5-a35b-claude-4.6-opus-reasoning-distilled-q4_k_m", "port": 11100, "pid": 31628, "status": "running"}
+{"time": "2026-09-21T02:50:35Z", "action": "download", "model": "DeepSeek Coder V2 Lite Instruct Q5 K M", "port": 0, "pid": null, "status": "completed (11851313920 bytes)"}
+{"time": "2026-09-21T02:50:55Z", "action": "start", "model": "DeepSeek Coder V2 Lite Instruct Q5 K M", "port": 11001, "pid": 15016, "status": "running"}
+{"time": "2026-09-21T03:34:03Z", "action": "download", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 0, "pid": null, "status": "completed (18556689568 bytes)"}
+{"time": "2026-09-21T13:07:21Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 41556, "status": "running"}
+{"time": "2026-09-21T13:17:05Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 15312, "status": "running"}
+{"time": "2026-09-21T15:08:11Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 25828, "status": "running"}
+{"time": "2026-09-21T15:25:06Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 28176, "status": "running"}
+{"time": "2026-09-21T15:29:50Z", "action": "start", "model": "DeepSeek Coder V2 Lite Instruct Q5 K M", "port": 11001, "pid": 41860, "status": "running"}
+{"time": "2026-09-21T15:31:24Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 42724, "status": "running"}
+{"time": "2026-09-21T15:57:38Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 31564, "status": "exited_early"}
+{"time": "2026-09-21T16:27:08Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 41992, "status": "running"}
+{"time": "2026-09-21T16:47:34Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 31460, "status": "exited_early"}
+{"time": "2026-09-21T16:48:49Z", "action": "start", "model": "qwen3-14b", "port": 11090, "pid": 33500, "status": "exited_early"}
+{"time": "2026-09-21T16:52:35Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 17896, "status": "exited_early"}
+{"time": "2026-09-21T17:58:31Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 13060, "status": "exited_early"}
+{"time": "2026-09-21T18:06:51Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 13044, "status": "running"}
+{"time": "2026-09-21T18:37:21Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 35484, "status": "running"}
+{"time": "2026-09-21T18:58:37Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 17856, "status": "running"}
+{"time": "2026-09-21T20:37:06Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 30800, "status": "running"}
+{"time": "2026-09-22T00:25:14Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 27592, "status": "exited_early"}
+{"time": "2026-09-22T00:37:04Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 1956, "status": "exited_early"}
+{"time": "2026-09-22T00:40:15Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 7064, "status": "running"}
+{"time": "2026-09-22T01:16:44Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 21560, "status": "running"}
+{"time": "2026-09-22T01:36:18Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 12060, "status": "exited_early"}
+{"time": "2026-09-22T02:54:18Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 7300, "status": "exited_early"}
+{"time": "2026-09-22T03:04:21Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 31544, "status": "exited_early"}
+{"time": "2026-09-22T03:09:07Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 3612, "status": "exited_early"}
+{"time": "2026-09-22T14:41:30Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 29604, "status": "exited_early"}
+{"time": "2026-09-22T15:53:59Z", "action": "download", "model": "TernaryQuench Qwen3.8 27B Q2 K", "port": 0, "pid": null, "status": "completed (10863895520 bytes)"}
+{"time": "2026-09-22T16:31:32Z", "action": "start", "model": "Ternary Bonsai 27B Q2 g64", "port": 11003, "pid": 32400, "status": "running"}
+{"time": "2026-09-22T16:43:27Z", "action": "start", "model": "Ternary Bonsai 27B Q2 g64", "port": 11003, "pid": 34252, "status": "running"}
+{"time": "2026-09-22T16:47:36Z", "action": "start", "model": "Ternary Bonsai 27B Q2 g64", "port": 11003, "pid": 37764, "status": "running"}
+{"time": "2026-09-22T17:53:25Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 11180, "status": "exited_early"}
+{"time": "2026-09-22T18:08:09Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 51956, "status": "exited_early"}
+{"time": "2026-09-22T18:10:10Z", "action": "start", "model": "DeepSeek Coder V2 Lite Instruct Q5 K M", "port": 11001, "pid": 39576, "status": "exited_early"}
+{"time": "2026-09-22T18:11:23Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 13768, "status": "exited_early"}
+{"time": "2026-09-22T18:18:38Z", "action": "download", "model": "qwen3.5 4B super coder.Q4 0", "port": 0, "pid": null, "status": "completed (2611783040 bytes)"}
+{"time": "2026-09-22T18:23:44Z", "action": "start", "model": "Qwen3 Coder 30B A3B Instruct Q4 K M", "port": 11002, "pid": 53580, "status": "exited_early"}
+{"time": "2026-09-22T18:35:05Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 25496, "status": "exited_early"}
+{"time": "2026-09-22T18:39:55Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 17068, "status": "exited_early"}
+{"time": "2026-09-22T18:42:05Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 42932, "status": "exited_early"}
+{"time": "2026-09-22T18:46:44Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 44848, "status": "exited_early"}
+{"time": "2026-09-22T18:58:21Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 33352, "status": "exited_early"}
+{"time": "2026-09-22T19:05:52Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 14556, "status": "exited_early"}
+{"time": "2026-09-22T19:07:15Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11100, "pid": 17668, "status": "exited_early"}
+{"time": "2026-09-22T19:11:53Z", "action": "download", "model": "qwen2.5 coder 1.5b instruct q4 k m", "port": 0, "pid": null, "status": "completed (1117320768 bytes)"}
+{"time": "2026-09-22T19:20:25Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11120, "pid": 16388, "status": "running"}
+{"time": "2026-09-22T19:26:37Z", "action": "start", "model": "qwen3-coder-30b-a3b-instruct-q4-k-m", "port": 11120, "pid": 2128, "status": "running"}
+{"time": "2026-09-22T20:24:53Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 4764, "status": "running"}
+{"time": "2026-09-22T20:28:01Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 17032, "status": "running"}
+{"time": "2026-09-22T20:29:35Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 32192, "status": "running"}
+{"time": "2026-09-22T20:49:30Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 36784, "status": "running"}
+{"time": "2026-09-22T21:19:27Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 17632, "status": "running"}
+{"time": "2026-09-22T21:43:44Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 8104, "status": "running"}
+{"time": "2026-09-22T21:48:12Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 38036, "status": "exited_early"}
+{"time": "2026-09-22T21:50:49Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 33732, "status": "exited_early"}
+{"time": "2026-09-22T21:58:05Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 37100, "status": "exited_early"}
+{"time": "2026-09-22T21:59:10Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 18968, "status": "exited_early"}
+{"time": "2026-09-22T22:01:51Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 28076, "status": "exited_early"}
+{"time": "2026-09-22T22:08:20Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 24480, "status": "exited_early"}
+{"time": "2026-09-22T22:09:27Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 35824, "status": "exited_early"}
+{"time": "2026-09-22T22:10:49Z", "action": "start", "model": "Ternary-Bonsai-27B-dspark-Q4_1", "port": 11010, "pid": 17352, "status": "exited_early"}
+{"time": "2026-09-22T22:13:15Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 17056, "status": "exited_early"}
+{"time": "2026-09-22T22:14:07Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 14068, "status": "running"}
+{"time": "2026-09-22T22:36:28Z", "action": "start", "model": "deepseek-coder-v2-lite-instruct-q5-k-m", "port": 11030, "pid": 20376, "status": "exited_early"}
+{"time": "2026-09-22T22:47:24Z", "action": "start", "model": "deepseek-coder-v2-lite-instruct-q5-k-m", "port": 11030, "pid": 10024, "status": "exited_early"}
+{"time": "2026-09-22T22:51:29Z", "action": "start", "model": "deepseek-coder-v2-lite-instruct-q5-k-m", "port": 11030, "pid": 39224, "status": "exited_early"}
+{"time": "2026-09-22T22:51:31Z", "action": "start", "model": "deepseek-coder-7b-instruct-v1.5-gguf", "port": 11020, "pid": 38384, "status": "running"}
+{"time": "2026-09-22T22:53:13Z", "action": "start", "model": "deepseek-coder-v2-lite-instruct-q5-k-m", "port": 11030, "pid": 22900, "status": "exited_early"}
+{"time": "2026-09-23T00:25:49Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11070, "pid": 36028, "status": "exited_early"}
+{"time": "2026-09-23T00:30:45Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11070, "pid": 26680, "status": "running"}
+{"time": "2026-09-23T00:40:34Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11070, "pid": 36440, "status": "running"}
+{"time": "2026-09-23T02:03:56Z", "action": "start", "model": "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf", "port": 11070, "pid": 41432, "status": "exited_early"}
+{"time": "2026-09-23T13:32:59Z", "action": "start", "model": "qwen3-14b", "port": 11100, "pid": 32484, "status": "running"}
+{"time": "2026-09-23T13:34:42Z", "action": "start", "model": "qwen3-14b", "port": 11100, "pid": 32568, "status": "running"}
+{"time": "2026-09-23T13:54:15Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 48184, "status": "running"}
+{"time": "2026-09-23T14:07:01Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 2608, "status": "running"}
+{"time": "2026-09-23T14:08:23Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 38712, "status": "running"}
+{"time": "2026-09-23T14:30:11Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 23132, "status": "running"}
+{"time": "2026-09-23T15:14:18Z", "action": "start", "model": "Ternary Bonsai 27B Q2 0", "port": 11000, "pid": 42740, "status": "exited_early"}
+{"time": "2026-09-23T15:31:51Z", "action": "download", "model": "Qwen3.5 9B The Defiant Fable Uncnr Heretic NEO MAX MTP Q4 K S", "port": 0, "pid": null, "status": "completed (6688438496 bytes)"}
+{"time": "2026-09-23T15:35:08Z", "action": "start", "model": "qwen3.5-9b-the-defiant-fable-uncnr-heretic-neo-max-mtp-q4-k-s", "port": 11100, "pid": 32668, "status": "exited_early"}
+{"time": "2026-09-23T15:38:41Z", "action": "start", "model": "Qwen3.5 9B The Defiant Fable Uncnr Heretic NEO MAX MTP Q4 K S", "port": 11001, "pid": 22156, "status": "running"}
+{"time": "2026-09-23T15:45:06Z", "action": "start", "model": "Qwen3.5 9B The Defiant Fable Uncnr Heretic NEO MAX MTP Q4 K S", "port": 11001, "pid": 27760, "status": "running"}
+{"time": "2026-09-23T16:24:24Z", "action": "download", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 0, "pid": null, "status": "completed (3612423424 bytes)"}
+{"time": "2026-09-23T16:25:40Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11000, "pid": 15480, "status": "running"}
+{"time": "2026-09-23T17:57:36Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11000, "pid": 26404, "status": "exited_early"}
+{"time": "2026-09-23T18:14:37Z", "action": "start", "model": "sharp-spark-x2.5-4b-q6-k-xl", "port": 11110, "pid": 5580, "status": "exited_early"}
+{"time": "2026-09-23T18:15:57Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 37696, "status": "running"}
+{"time": "2026-09-23T18:24:20Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11000, "pid": 44628, "status": "exited_early"}
+{"time": "2026-09-23T20:17:07Z", "action": "start", "model": "sharp-spark-x2.5-4b-q6-k-xl", "port": 11110, "pid": 7976, "status": "exited_early"}
+{"time": "2026-09-23T20:20:55Z", "action": "start", "model": "sharp-spark-x2.5-4b-q6-k-xl", "port": 11110, "pid": 50912, "status": "running"}
+{"time": "2026-09-23T20:27:49Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11000, "pid": 49848, "status": "running"}
+{"time": "2026-09-23T20:30:12Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 26452, "status": "running"}
+{"time": "2026-09-23T20:33:28Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 41432, "status": "running"}
+{"time": "2026-09-23T20:41:07Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 26188, "status": "exited_early"}
+{"time": "2026-09-23T20:43:02Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 40300, "status": "exited_early"}
+{"time": "2026-09-23T20:44:26Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 36768, "status": "exited_early"}
+{"time": "2026-09-23T20:46:13Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 39980, "status": "exited_early"}
+{"time": "2026-09-23T20:48:17Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 49344, "status": "exited_early"}
+{"time": "2026-09-23T21:02:17Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 36008, "status": "exited_early"}
+{"time": "2026-09-23T21:07:14Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 37332, "status": "exited_early"}
+{"time": "2026-09-23T21:07:47Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 1372, "status": "running"}
+{"time": "2026-09-23T21:14:32Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 29796, "status": "exited_early"}
+{"time": "2026-09-23T21:17:01Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 24408, "status": "exited_early"}
+{"time": "2026-09-23T21:22:49Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 3624, "status": "exited_early"}
+{"time": "2026-09-23T21:23:48Z", "action": "start", "model": "ternary-bonsai-27b-q2-g64", "port": 11130, "pid": 6808, "status": "exited_early"}
+{"time": "2026-09-23T21:25:09Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 18848, "status": "exited_early"}
+{"time": "2026-09-23T21:27:20Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11060, "pid": 17736, "status": "running"}
+{"time": "2026-09-23T21:53:12Z", "action": "start", "model": "Sharp Spark X2.5 4B Q6 K XL", "port": 11110, "pid": 36400, "status": "running"}
+{"time": "2026-09-23T22:01:35Z", "action": "download", "model": "glm 4.7 flash claude 4.5 opus.q4 k m", "port": 0, "pid": null, "status": "completed (18132721856 bytes)"}
+{"time": "2026-09-23T22:53:56Z", "action": "start", "model": "glm 4.7 flash claude 4.5 opus.q4 k m", "port": 11000, "pid": 23420, "status": "exited_early"}
+{"time": "2026-09-23T22:54:48Z", "action": "start", "model": "glm 4.7 flash claude 4.5 opus.q4 k m", "port": 11000, "pid": 3016, "status": "exited_early"}
+{"time": "2026-09-23T23:05:25Z", "action": "start", "model": "glm 4.7 flash claude 4.5 opus.q4 k m", "port": 11000, "pid": 20264, "status": "exited_early"}
+{"time": "2026-09-23T23:07:25Z", "action": "start", "model": "glm 4.7 flash claude 4.5 opus.q4 k m", "port": 11000, "pid": 8540, "status": "running"}
+{"time": "2026-09-23T23:43:58Z", "action": "start", "model": "phi-4", "port": 11090, "pid": 37188, "status": "exited_early"}
+{"time": "2026-09-23T23:46:43Z", "action": "start", "model": "phi-4", "port": 11090, "pid": 31324, "status": "running"}
+{"time": "2026-09-24T01:37:53Z", "action": "start", "model": "Phi 4 mini instruct Q4 K M", "port": 11000, "pid": 6816, "status": "running"}
+{"time": "2026-09-24T01:57:26Z", "action": "start", "model": "Phi 4 mini instruct Q4 K M", "port": 11000, "pid": 33388, "status": "running"}
+{"time": "2026-09-24T02:13:00Z", "action": "start", "model": "Phi 4 mini instruct Q4 K M", "port": 11000, "pid": 27404, "status": "running"}
+{"time": "2026-09-24T02:29:23Z", "action": "download", "model": "phi 3 mini 128k instruct Q4 K M", "port": 0, "pid": null, "status": "completed (2393231072 bytes)"}
+{"time": "2026-09-24T02:32:38Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 36880, "status": "exited_early"}
+{"time": "2026-09-24T02:36:06Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 22184, "status": "exited_early"}
+{"time": "2026-09-24T02:38:07Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 6404, "status": "exited_early"}
+{"time": "2026-09-24T02:42:55Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 18036, "status": "exited_early"}
+{"time": "2026-09-24T02:58:21Z", "action": "start", "model": "models", "port": 11080, "pid": 22540, "status": "exited_early"}
+{"time": "2026-09-24T02:58:55Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 31240, "status": "exited_early"}
+{"time": "2026-09-24T03:00:19Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 36648, "status": "running"}

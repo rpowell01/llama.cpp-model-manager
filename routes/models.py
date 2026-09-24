@@ -35,8 +35,42 @@ def api_add_model():
         mlock=bool(data.get("mlock", DEFAULTS["mlock"])),
         flash_attn=str(data.get("flash_attn", DEFAULTS["flash_attn"])),
         no_mmap=bool(data.get("no_mmap", DEFAULTS["no_mmap"])),
-        parallel=int(data.get("parallel", DEFAULTS["parallel"])),
+        parallel=str(data.get("parallel", DEFAULTS["parallel"])),
         ubatch_size=int(data.get("ubatch_size", DEFAULTS["ubatch_size"])),
+        # Agent/Tool parameters
+        jinja=bool(data.get("jinja", DEFAULTS["jinja"])),
+        reasoning_preserve=bool(data.get("reasoning_preserve", DEFAULTS["reasoning_preserve"])),
+        # CPU-only optimizations
+        gpu_layers=int(data.get("gpu_layers", DEFAULTS["gpu_layers"])),
+        cache_type_k=str(data.get("cache_type_k", DEFAULTS["cache_type_k"])),
+        cache_type_v=str(data.get("cache_type_v", DEFAULTS["cache_type_v"])),
+        numa=bool(data.get("numa", DEFAULTS["numa"])),
+        numa_value=str(data.get("numa_value", DEFAULTS["numa_value"])),
+        cpu_affinity=str(data.get("cpu_affinity", DEFAULTS["cpu_affinity"])),
+        cpu_strict=bool(data.get("cpu_strict", DEFAULTS["cpu_strict"])),
+        batch_size=int(data.get("batch_size", DEFAULTS["batch_size"])),
+        ctx_size=int(data.get("ctx_size", DEFAULTS["ctx_size"])),
+        rope_freq_base=float(data.get("rope_freq_base", DEFAULTS["rope_freq_base"])),
+        rope_freq_scale=float(data.get("rope_freq_scale", DEFAULTS["rope_freq_scale"])),
+        rope_scaling_type=str(data.get("rope_scaling_type", DEFAULTS["rope_scaling_type"])),
+        rope_scale=float(data.get("rope_scale", DEFAULTS["rope_scale"])),
+        yarn_orig_ctx=int(data.get("yarn_orig_ctx", DEFAULTS["yarn_orig_ctx"])),
+        yarn_ext_factor=float(data.get("yarn_ext_factor", DEFAULTS["yarn_ext_factor"])),
+        yarn_attn_factor=float(data.get("yarn_attn_factor", DEFAULTS["yarn_attn_factor"])),
+        yarn_beta_slow=float(data.get("yarn_beta_slow", DEFAULTS["yarn_beta_slow"])),
+        yarn_beta_fast=float(data.get("yarn_beta_fast", DEFAULTS["yarn_beta_fast"])),
+        # Speculative decoding parameters
+        spec_type=str(data.get("spec_type", DEFAULTS["spec_type"])),
+        spec_draft_model=str(data.get("spec_draft_model", DEFAULTS["spec_draft_model"])),
+        spec_draft_hf_repo=str(data.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])),
+        spec_draft_n_max=int(data.get("spec_draft_n_max", DEFAULTS["spec_draft_n_max"])),
+        spec_draft_n_min=int(data.get("spec_draft_n_min", DEFAULTS["spec_draft_n_min"])),
+        spec_draft_p_split=float(data.get("spec_draft_p_split", DEFAULTS["spec_draft_p_split"])),
+        spec_draft_p_min=float(data.get("spec_draft_p_min", DEFAULTS["spec_draft_p_min"])),
+        spec_draft_ngl=str(data.get("spec_draft_ngl", DEFAULTS["spec_draft_ngl"])),
+        spec_ngram_size_n=int(data.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])),
+        spec_ngram_size_m=int(data.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])),
+        spec_ngram_min_hits=int(data.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])),
     )
     if not success:
         return jsonify({"error": f"Model '{data['name']}' already exists or failed to add"}), 409
@@ -90,15 +124,48 @@ def api_update_model_meta():
     meta = models[model]
     allowed_fields = {
         "port": int,
-        "cache_size": int,
         "threads": int,
         "threads_batch": int,
         "timeout": int,
         "mlock": bool,
         "flash_attn": str,
         "no_mmap": bool,
-        "parallel": int,
+        "parallel": str,
         "ubatch_size": int,
+        # Agent/Tool parameters
+        "jinja": bool,
+        "reasoning_preserve": bool,
+        # CPU-only optimizations
+        "gpu_layers": int,
+        "cache_type_k": str,
+        "cache_type_v": str,
+        "numa": bool,
+        "numa_value": str,
+        "cpu_affinity": str,
+        "cpu_strict": bool,
+        "batch_size": int,
+        "ctx_size": int,
+        "rope_freq_base": float,
+        "rope_freq_scale": float,
+        "rope_scaling_type": str,
+        "rope_scale": float,
+        "yarn_orig_ctx": int,
+        "yarn_ext_factor": float,
+        "yarn_attn_factor": float,
+        "yarn_beta_slow": float,
+        "yarn_beta_fast": float,
+        # Speculative decoding parameters
+        "spec_type": str,
+        "spec_draft_model": str,
+        "spec_draft_hf_repo": str,
+        "spec_draft_n_max": int,
+        "spec_draft_n_min": int,
+        "spec_draft_p_split": float,
+        "spec_draft_p_min": float,
+        "spec_draft_ngl": str,
+        "spec_ngram_size_n": int,
+        "spec_ngram_size_m": int,
+        "spec_ngram_min_hits": int,
     }
     changes = {}
     for field, typ in allowed_fields.items():
@@ -109,6 +176,8 @@ def api_update_model_meta():
                     value = int(value)
                 elif typ is bool:
                     value = bool(value)
+                elif typ is float:
+                    value = float(value)
                 else:
                     value = str(value)
                 meta[field] = value
