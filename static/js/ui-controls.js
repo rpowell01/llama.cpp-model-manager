@@ -12,14 +12,33 @@ function renderTiles(rows, dlMap, query) {
   const grid = document.getElementById("tile-grid");
   if (!grid) return;
 
-  const filtered = rows.filter((r) => {
+  // Normalize model names to consistent casing for deduplication
+  const normalizeModelName = (name) => {
+    // Remove extra whitespace, convert to consistent case
+    return name.trim().toLowerCase();
+  };
+
+  // Deduplicate: keep the first occurrence of each normalized model name
+  const seen = new Set();
+  const deduplicated = [];
+  for (const r of rows) {
+    const normalized = normalizeModelName(r.model);
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      deduplicated.push(r);
+    }
+  }
+
+  const filtered = deduplicated.filter((r) => {
     const q = query.toLowerCase();
     return r.model.toLowerCase().includes(q) || String(r.port).includes(q);
   });
 
-  // Sort by model name, then by filename
+  // Sort by normalized model name, then by filename
   filtered.sort((a, b) => {
-    const modelCompare = a.model.localeCompare(b.model);
+    const aNorm = normalizeModelName(a.model);
+    const bNorm = normalizeModelName(b.model);
+    const modelCompare = aNorm.localeCompare(bNorm);
     if (modelCompare !== 0) return modelCompare;
     const aFilename =
       a.filename || (a.model_path ? a.model_path.split("/").pop() : a.model);

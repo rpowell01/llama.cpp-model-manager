@@ -7,21 +7,37 @@
  * @param {string} modelName
  */
 function selectModel(modelName) {
-  selectedModel = modelName;
-  const panel = document.getElementById('properties-panel');
-  const contentArea = document.getElementById('content-area');
-  panel.style.display = 'block';
-  contentArea.classList.add('has-panel');
-  panel.dataset.modelName = modelName;
-
-  const modelData = currentModelRows.find(r => r.model === modelName);
+  // Normalize the model name for consistent matching
+  const normalizedModelName = modelName.trim().toLowerCase();
+  
+  // Find the model using normalized comparison
+  const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedModelName);
   if (!modelData) {
     console.error('Model data not found for', modelName);
     return;
   }
 
-  document.getElementById('panel-model-name').textContent = modelName;
-  renderPanelProperties(modelData, modelName);
+  // Use the original (unnormalized) model name for display
+  const displayName = modelData.model;
+  selectedModel = displayName;
+  
+  const panel = document.getElementById('properties-panel');
+  const contentArea = document.getElementById('content-area');
+  panel.style.display = 'block';
+  contentArea.classList.add('has-panel');
+  panel.dataset.modelName = displayName;
+
+  document.getElementById('panel-model-name').textContent = displayName;
+  renderPanelProperties(modelData, displayName);
+}
+
+/**
+ * Normalize a model name for consistent comparison
+ * @param {string} name - Model name to normalize
+ * @returns {string} Lowercase, trimmed model name
+ */
+function normalizeModelName(name) {
+  return name.trim().toLowerCase();
 }
 
 /**
@@ -73,33 +89,51 @@ async function refresh(showLoading = true) {
      }
      let rows = data.models;
      console.log('Received', rows.length, 'models');
-     currentModelRows = rows;
+     
+     // Deduplicate models by normalized name on refresh as well
+     const seen = new Set();
+     const deduplicated = [];
+     for (const r of rows) {
+       const normalized = normalizeModelName(r.model);
+       if (!seen.has(normalized)) {
+         seen.add(normalized);
+         deduplicated.push(r);
+       }
+     }
+     console.log('After deduplication:', deduplicated.length, 'models');
+     
+     currentModelRows = deduplicated;
 
-    const dlRes = await fetch('/api/download-status?' + Date.now(), {
-      cache: 'no-store',
-      signal: controller.signal
-    });
-    const dlText = await dlRes.text();
-    const dlMap = {};
-    let dlJson;
-    try {
-      dlJson = JSON.parse(dlText);
-    } catch (e) {
-      console.error('Failed to parse /api/download-status response:', dlText);
-      dlJson = {};
-    }
-    Object.assign(dlMap, dlJson);
+     const dlRes = await fetch('/api/download-status?' + Date.now(), {
+       cache: 'no-store',
+       signal: controller.signal
+     });
+     const dlText = await dlRes.text();
+     const dlMap = {};
+     let dlJson;
+     try {
+       dlJson = JSON.parse(dlText);
+     } catch (e) {
+       console.error('Failed to parse /api/download-status response:', dlText);
+       dlJson = {};
+     }
+     Object.assign(dlMap, dlJson);
 
-    renderTiles(rows, dlMap, document.getElementById('search').value.toLowerCase());
+     renderTiles(deduplicated, dlMap, document.getElementById('search').value.toLowerCase());
 
-    if (selectedModel) {
-      const modelData = currentModelRows.find(r => r.model === selectedModel);
-      if (modelData) {
-        renderPanelProperties(modelData, selectedModel);
-      } else {
-        closePanel();
-      }
-    }
+     if (selectedModel) {
+       // Use normalized comparison to find the model
+       const normalizedSelected = normalizeModelName(selectedModel);
+       const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedSelected);
+       if (modelData) {
+         // Use the original (unnormalized) model name for display
+         const displayName = modelData.model;
+         renderPanelProperties(modelData, displayName);
+       } else {
+         console.warn('Model not found after refresh:', selectedModel);
+         closePanel();
+       }
+     }
   } catch (e) {
     console.error('Refresh failed:', e);
   } finally {
