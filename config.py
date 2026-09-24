@@ -48,28 +48,28 @@ def _get_cpu_count() -> int:
 DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 11000,
-    "cache_size": 32768,
+    "cache_size": 128000,
     "threads": _get_cpu_count(),  # Use all logical CPUs
     "threads_batch": _get_cpu_count(),  # Use all logical CPUs for batch
     "timeout": 3600,
     "mlock": True,  # Prevent swapping - critical for CPU performance
-    "flash_attn": "off",  # Disable flash attention on CPU
-    "no_mmap": True,  # Disable mmap on CPU for better performance
-    "parallel": 1,  # Single parallel sequence for CPU
-    "ubatch_size": 512,
+    "flash_attn": "auto",  # Disable flash attention on CPU
+    "no_mmap": False,  # Disable mmap on CPU for better performance
+    "parallel": "auto",  # Single parallel sequence for CPU
+    "ubatch_size": 1024,
     # Agent/Tool parameters
     "jinja": True,  # Enable Jinja tool parsing for agent loops (Claude Code/OpenAI tool schemas)
     "reasoning_preserve": True,  # Preserve reasoning/thinking inner monologue across tool steps
     # CPU-only optimizations
-    "gpu_layers": 0,  # 0 = CPU-only (no GPU offload)
-    "cache_type_k": "fp16",  # KV cache type: fp16, q4_0, q8_0 (q4_0 saves ~3.5x memory)
-    "cache_type_v": "fp16",  # KV cache type for V
+    "gpu_layers": 99,  # 0 = CPU-only (no GPU offload)
+    "cache_type_k": "q4_0",  # KV cache type: fp16, q4_0, q8_0 (q4_0 saves ~3.5x memory)
+    "cache_type_v": "q4_0",  # KV cache type for V
     "numa": True,  # Enable NUMA awareness
     "numa_value": "distribute",  # NUMA mode: distribute, isolate, numactl
     "cpu_affinity": "auto",  # CPU core pinning: "auto", "none", or comma-separated core IDs
     "cpu_strict": False,  # Strict CPU mode (disable GPU ops)
-    "batch_size": 512,  # Batch size for prompt processing
-    "ctx_size": 4096,  # Context window size
+    "batch_size": 4096,  # Batch size for prompt processing
+    "ctx_size": 128000,  # Context window size
     "rope_freq_base": 10000.0,  # RoPE frequency base
     "rope_freq_scale": 1.0,  # RoPE frequency scaling
     # YaRN RoPE scaling
@@ -84,8 +84,8 @@ DEFAULTS: dict[str, Any] = {
     "spec_type": "none",
     "spec_draft_model": "",
     "spec_draft_hf_repo": "",
-    "spec_draft_n_max": 3,
-    "spec_draft_n_min": 0,
+    "spec_draft_n_max": 8,
+    "spec_draft_n_min": 3,
     "spec_draft_p_split": 0.10,
     "spec_draft_p_min": 0.00,
     "spec_draft_ngl": "auto",
