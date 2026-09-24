@@ -329,8 +329,28 @@ async function renderPanelProperties(data, modelName) {
   addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
   // CPU-only optimizations
   addEditable("GPU Layers (0=CPU)", "gpu_layers", data.gpu_layers, "number", 1, 0);
-  addEditable("KV Cache Type K", "cache_type_k", data.cache_type_k, "text");
-  addEditable("KV Cache Type V", "cache_type_v", data.cache_type_v, "text");
+  // KV Cache Type dropdowns
+  const kvCacheKVal = data.cache_type_k || "fp16";
+  let kvCacheKSelect = `<select class="meta-input" data-field="cache_type_k">`;
+  ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+    kvCacheKSelect += `<option value="${val}" ${kvCacheKVal === val ? "selected" : ""}>${val}</option>`;
+  });
+  kvCacheKSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">KV Cache Type K</span>
+    <span class="value">${kvCacheKSelect}</span>
+  </div>`;
+
+  const kvCacheVVal = data.cache_type_v || "fp16";
+  let kvCacheVSelect = `<select class="meta-input" data-field="cache_type_v">`;
+  ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+    kvCacheVSelect += `<option value="${val}" ${kvCacheVVal === val ? "selected" : ""}>${val}</option>`;
+  });
+  kvCacheVSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">KV Cache Type V</span>
+    <span class="value">${kvCacheVSelect}</span>
+  </div>`;
   addEditable("NUMA Aware", "numa", data.numa, "checkbox");
   
   // NUMA Mode dropdown
