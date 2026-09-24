@@ -216,11 +216,15 @@ def add_model_entry(
         if name in models:
             return False  # already exists
         # Ensure model directory exists
-        model_dir = BASE_DIR / "models" / name.lower().replace(" ", "-")
+        model_dir = MODELS_DIR / name.lower().replace(" ", "-")
         model_dir.mkdir(parents=True, exist_ok=True)
         model_path = model_dir / filename
-        # Relative path from BASE_DIR
-        rel_path = model_path.relative_to(BASE_DIR)
+        # Try to make path relative to BASE_DIR, fall back to absolute path
+        try:
+            rel_path = model_path.relative_to(BASE_DIR)
+        except ValueError:
+            # Model is outside BASE_DIR, store absolute path
+            rel_path = model_path
         models[name] = {
             "model_path": str(rel_path),
             "repo": repo,
