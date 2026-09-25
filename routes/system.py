@@ -6,6 +6,7 @@ import os
 import platform
 import subprocess
 from logging import getLogger
+from gpu_detector import detect, GPUInfo
 
 from config import LOG_FILE
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
@@ -27,8 +28,10 @@ def get_hardware_info():
         "gpu_info": [],
         "has_nvidia_gpu": False,
         "has_amd_gpu": False,
+        "has_intel_gpu": False,
         "cuda_version": None,
         "rocm_version": None,
+        "opencl_version": None,
     }
     
     # Try to get physical CPU count
@@ -79,6 +82,23 @@ def get_hardware_info():
     except Exception:
         pass
     
+    # Detect Intel Arc GPU using gpu_detector
+    try:
+        gpus = detect()
+        for gpu in gpus:
+            if gpu.vendor == "Intel" and gpu.memory_mb > 0:
+                info["has_intel_gpu"] = True
+                info["gpu_info"].append({
+                    "name": gpu.name,
+                    "memory_mb": gpu.memory_mb,
+                    "vendor": "Intel",
+                    "device_id": gpu.device_id,
+                    "driver_version": gpu.driver_version,
+                    "source": "gpu_detector"
+                })
+    except Exception as e:
+        log.debug(f"gpu_detector failed: {e}")
+    
     # Get CUDA version
     try:
         result = subprocess.run(["nvcc", "--version"], capture_output=True, text=True, timeout=5)
@@ -86,6 +106,19 @@ def get_hardware_info():
             for line in result.stdout.split('\n'):
                 if "release" in line:
                     info["cuda_version"] = line.split("release")[-1].split(",")[0].strip()
+                    break
+    except Exception:
+        pass
+    
+    # Get OpenCL version (for Intel)
+    try:
+        result = subprocess.run(
+            ["clinfo", "--version"], capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if "OpenCL version" in line:
+                    info["opencl_version"] = line.split("OpenCL version")[-1].strip()
                     break
     except Exception:
         pass
@@ -125,6 +158,7 @@ def compute_optimal_settings(hardware_info, model_info=None):
     # GPU settings
     has_nvidia = hardware_info.get("has_nvidia_gpu", False)
     has_amd = hardware_info.get("has_amd_gpu", False)
+    has_intel = hardware_info.get("has_intel_gpu", False)
     total_vram = hardware_info.get("total_gpu_vram_gb", 0)
     gpu_info = hardware_info.get("gpu_info", [])
     
@@ -135,7 +169,7 @@ def compute_optimal_settings(hardware_info, model_info=None):
         model_size_gb = model_info.get("file_size_gb", 0)
         model_ctx = model_info.get("ctx_size", 4096)
     
-    if has_nvidia or has_amd:
+    if has_nvidia or has_amd or has_intel:
         # GPU mode - determine how many layers to offload
         # Rule of thumb: ~1.5GB VRAM per 1B params at Q4_K_M
         if model_size_gb > 0 and total_vram > 0:
@@ -176,7 +210,7 @@ def compute_optimal_settings(hardware_info, model_info=None):
         settings["parallel"] = min(4, cpu_physical // 2)
     
     # Batch sizes
-    if has_nvidia or has_amd:
+    if has_nvidia or has_amd or has_intel:
         settings["batch_size"] = 2048
         settings["ubatch_size"] = 512
     else:
@@ -209,7 +243,7 @@ def compute_optimal_settings(hardware_info, model_info=None):
     settings["timeout"] = 3600
     
     # Speculative decoding - enable ngram-simple for larger models on GPU
-    if (has_nvidia or has_amd) and model_size_gb >= 6:
+    if (has_nvidia or has_amd or has_intel) and model_size_gb >= 6:
         settings["spec_type"] = "ngram-simple"
         settings["spec_draft_n_max"] = 3
         settings["spec_draft_p_split"] = 0.1
