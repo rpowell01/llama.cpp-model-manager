@@ -29,8 +29,9 @@ from routes.status import status_bp
 from routes.system import system_bp
 
 
-def _get_wsl_ip() -> str | None:
-    """Get the WSL IP address for display purposes."""
+def _get_wsl_ips() -> list[str]:
+    """Get all WSL IP addresses in the 100.x - 172.x range (excluding docker 172.17.x)."""
+    ips: list[str] = []
     try:
         # Method 1: Check network interfaces directly (most reliable for WSL)
         import subprocess
@@ -48,23 +49,45 @@ def _get_wsl_ip() -> str | None:
                     parts = line.split()
                     if len(parts) >= 2:
                         ip = parts[1].split("/")[0]
-                        # Skip loopback and docker interfaces
+                        # Skip loopback and docker interfaces (172.17.x.x)
                         if not ip.startswith("127.") and not ip.startswith("172.17."):
-                            return ip
+                            # Check if first octet is 100-172
+                            try:
+                                first_octet = int(ip.split(".")[0])
+                                if 100 <= first_octet <= 172:
+                                    ips.append(ip)
+                            except (ValueError, IndexError):
+                                pass
         
         # Method 2: Fallback to hostname resolution
-        hostname = socket.gethostname()
-        ips = socket.gethostbyname_ex(hostname)[2]
-        for ip in ips:
-            if ip.startswith(("172.", "192.168.", "10.")) and not ip.startswith("127."):
-                return ip
+        if not ips:
+            hostname = socket.gethostname()
+            host_ips = socket.gethostbyname_ex(hostname)[2]
+            for ip in host_ips:
+                if not ip.startswith("127.") and not ip.startswith("172.17."):
+                    try:
+                        first_octet = int(ip.split(".")[0])
+                        if 100 <= first_octet <= 172:
+                            ips.append(ip)
+                    except (ValueError, IndexError):
+                        pass
         
-        # Method 3: Fallback to socket connection
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_ips = []
+        for ip in ips:
+            if ip not in seen:
+                seen.add(ip)
+                unique_ips.append(ip)
+        return unique_ips
     except Exception:
-        return None
+        return []
+
+
+def _get_wsl_ip() -> str | None:
+    """Get the first WSL IP address for backward compatibility."""
+    ips = _get_wsl_ips()
+    return ips[0] if ips else None
 
 
 def main() -> None:
@@ -112,10 +135,12 @@ def main() -> None:
     
     # Show WSL-specific connection info
     if WSL:
-        wsl_ip = _get_wsl_ip()
-        if wsl_ip:
-            log.info("WSL detected: Access the web UI at http://%s:%d (WSL IP) or http://127.0.0.1:%d (via port forwarding)", 
-                     wsl_ip, args.port, args.port)
+        wsl_ips = _get_wsl_ips()
+        if wsl_ips:
+            log.info("WSL detected - Access the web UI at:")
+            for ip in wsl_ips:
+                log.info("  http://%s:%d (WSL IP)", ip, args.port)
+            log.info("  http://127.0.0.1:%d (via port forwarding)", args.port)
             log.info("Note: The Windows IP shown by Flask below is NOT accessible in WSL2 default networking mode.")
     
     app.run(host=args.host, port=args.port, debug=False, threaded=True)

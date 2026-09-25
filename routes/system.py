@@ -5,6 +5,7 @@ import time
 import os
 import platform
 import subprocess
+import re
 from logging import getLogger
 from gpu_detector import detect, GPUInfo
 
@@ -13,6 +14,102 @@ from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_mo
 
 system_bp = Blueprint("system", __name__)
 log = getLogger("llamaweb")
+
+
+def _detect_windows_gpu() -> list[dict]:
+    """Detect GPUs from Windows host when running in WSL.
+    
+    Uses PowerShell WMI queries to get GPU information from the Windows host.
+    This is useful when running in WSL where Linux GPU detection tools
+    cannot see the Windows-hosted GPUs.
+    
+    Returns:
+        List of GPU info dictionaries with keys: name, vendor, driver_version,
+        device_id, source, memory_mb (if available)
+    """
+    gpus = []
+    try:
+        # Check if we're in WSL
+        with open("/proc/version", "r") as f:
+            if "microsoft" not in f.read().lower() and "wsl" not in f.read().lower():
+                return gpus
+    except Exception:
+        return gpus
+    
+    # Query Windows for video controllers
+    # Use cmd.exe /c to avoid Python subprocess timeout issues in WSL
+    try:
+        cmd = [
+            "cmd.exe", "/c", "powershell.exe", "-Command",
+            "Get-CimInstance Win32_VideoController | "
+            "Select-Object Name, AdapterRAM, DriverVersion, PNPDeviceID | "
+            "ConvertTo-Json -Compress"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return gpus
+        
+        import json
+        data = json.loads(result.stdout)
+        # Handle both single object and array
+        if isinstance(data, dict):
+            data = [data]
+        
+        for gpu in data:
+            name = gpu.get("Name", "")
+            if not name:
+                continue
+            
+            # Determine vendor from name
+            name_lower = name.lower()
+            if "nvidia" in name_lower or "geforce" in name_lower or "quadro" in name_lower or "tesla" in name_lower:
+                vendor = "NVIDIA"
+            elif "amd" in name_lower or "radeon" in name_lower:
+                vendor = "AMD"
+            elif "intel" in name_lower or "arc" in name_lower or "uhd" in name_lower or "iris" in name_lower:
+                vendor = "Intel"
+            else:
+                vendor = "Unknown"
+            
+            # Parse AdapterRAM (comes in bytes, may be null or weird format)
+            # Windows WMI sometimes returns values near max int32 (2147483647) as a placeholder
+            # for unknown VRAM, which equals ~2047 MB - we should ignore these
+            memory_mb = None
+            adapter_ram = gpu.get("AdapterRAM")
+            # Check for bogus max int32 values that indicate unknown VRAM
+            # Use a threshold since the exact value may vary (e.g., 2147479552 = 0x7ffff000)
+            MAX_INT32 = 2147483647
+            BOGUS_THRESHOLD = MAX_INT32 - 10000  # Values within 10KB of max int32 are likely bogus
+            is_bogus = adapter_ram and isinstance(adapter_ram, (int, float)) and adapter_ram >= BOGUS_THRESHOLD
+            if adapter_ram and isinstance(adapter_ram, (int, float)) and adapter_ram > 0 and adapter_ram < BOGUS_THRESHOLD:
+                memory_mb = int(adapter_ram / (1024 * 1024))
+            
+            # Store whether this is a shared memory GPU with bogus VRAM for later estimation
+            is_shared_memory = vendor == "Intel" and (memory_mb is None or is_bogus)
+            
+            # Extract device ID from PNPDeviceID
+            device_id = None
+            pnp_id = gpu.get("PNPDeviceID", "")
+            if pnp_id:
+                # Format: PCI\VEN_8086&DEV_7D55&SUBSYS_3F9617AA&REV_08\3&11583659&0&10
+                ven_match = re.search(r"VEN_([0-9A-Fa-f]{4})", pnp_id)
+                dev_match = re.search(r"DEV_([0-9A-Fa-f]{4})", pnp_id)
+                if ven_match and dev_match:
+                    device_id = f"{ven_match.group(1)}:{dev_match.group(1)}"
+            
+            gpus.append({
+                "name": name,
+                "vendor": vendor,
+                "driver_version": gpu.get("DriverVersion"),
+                "device_id": device_id,
+                "memory_mb": memory_mb,
+                "source": "windows_wmi",
+                "is_shared_memory": is_shared_memory
+            })
+    except Exception as e:
+        log.debug(f"Windows GPU detection failed: {e}")
+    
+    return gpus
 
 
 def get_hardware_info():
@@ -45,6 +142,7 @@ def get_hardware_info():
         pass
     
     # Detect NVIDIA GPU
+    nvidia_detected = False
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader,nounits"],
@@ -52,6 +150,7 @@ def get_hardware_info():
         )
         if result.returncode == 0:
             info["has_nvidia_gpu"] = True
+            nvidia_detected = True
             for line in result.stdout.strip().split('\n'):
                 parts = [p.strip() for p in line.split(',')]
                 if len(parts) >= 3:
@@ -65,6 +164,7 @@ def get_hardware_info():
         pass
     
     # Detect AMD GPU (rocm-smi)
+    amd_detected = False
     try:
         result = subprocess.run(
             ["rocm-smi", "--showproductname", "--showmeminfo", "vram"],
@@ -72,6 +172,7 @@ def get_hardware_info():
         )
         if result.returncode == 0 and "GPU" in result.stdout:
             info["has_amd_gpu"] = True
+            amd_detected = True
             # Parse rocm-smi output for GPU details
             for line in result.stdout.strip().split('\n'):
                 if "GPU" in line and ":" in line:
@@ -82,12 +183,14 @@ def get_hardware_info():
     except Exception:
         pass
     
-    # Detect Intel Arc GPU using gpu_detector
+    # Detect Intel Arc GPU using gpu_detector (Linux native)
+    intel_detected = False
     try:
         gpus = detect()
         for gpu in gpus:
             if gpu.vendor == "Intel" and gpu.memory_mb > 0:
                 info["has_intel_gpu"] = True
+                intel_detected = True
                 info["gpu_info"].append({
                     "name": gpu.name,
                     "memory_mb": gpu.memory_mb,
@@ -98,6 +201,61 @@ def get_hardware_info():
                 })
     except Exception as e:
         log.debug(f"gpu_detector failed: {e}")
+    
+    # Fallback: Detect GPUs from Windows host (for WSL environments)
+    # Only run Windows detection if we're in WSL and at least one GPU type wasn't detected
+    if not (nvidia_detected and amd_detected and intel_detected):
+        windows_gpus = _detect_windows_gpu()
+        for gpu in windows_gpus:
+            if gpu["vendor"] == "NVIDIA" and not nvidia_detected:
+                info["has_nvidia_gpu"] = True
+                info["gpu_info"].append({
+                    "name": gpu["name"],
+                    "memory_mb": gpu["memory_mb"],
+                    "vendor": "NVIDIA",
+                    "device_id": gpu["device_id"],
+                    "driver_version": gpu["driver_version"],
+                    "source": "windows_wmi"
+                })
+                log.info(f"Detected NVIDIA GPU via Windows WMI: {gpu['name']}")
+            elif gpu["vendor"] == "AMD" and not amd_detected:
+                info["has_amd_gpu"] = True
+                info["gpu_info"].append({
+                    "name": gpu["name"],
+                    "memory_mb": gpu["memory_mb"],
+                    "vendor": "AMD",
+                    "device_id": gpu["device_id"],
+                    "driver_version": gpu["driver_version"],
+                    "source": "windows_wmi"
+                })
+                log.info(f"Detected AMD GPU via Windows WMI: {gpu['name']}")
+            elif gpu["vendor"] == "Intel" and not intel_detected:
+                info["has_intel_gpu"] = True
+                info["gpu_info"].append({
+                    "name": gpu["name"],
+                    "memory_mb": gpu["memory_mb"],
+                    "vendor": "Intel",
+                    "device_id": gpu["device_id"],
+                    "driver_version": gpu["driver_version"],
+                    "source": "windows_wmi",
+                    "is_shared_memory": gpu.get("is_shared_memory", False)
+                })
+                log.info(f"Detected Intel GPU via Windows WMI: {gpu['name']}")
+    
+    # Estimate shared memory for Intel integrated/Arc GPUs with unknown VRAM
+    # Intel Arc and integrated GPUs use shared system memory
+    system_ram_gb = info.get("memory_total_gb")
+    if system_ram_gb:
+        for gpu in info["gpu_info"]:
+            if gpu.get("vendor") == "Intel" and gpu.get("is_shared_memory"):
+                # Intel Arc typically reserves up to 50% of system RAM for graphics
+                # Use a conservative estimate of 50% for Arc, 25% for integrated
+                is_arc = "arc" in gpu.get("name", "").lower()
+                reserve_pct = 0.5 if is_arc else 0.25
+                estimated_mb = int(system_ram_gb * 1024 * reserve_pct)
+                gpu["memory_mb"] = estimated_mb
+                gpu["memory_estimated"] = True
+                log.info(f"Estimated shared memory for {gpu['name']}: {estimated_mb} MB ({reserve_pct*100}% of {system_ram_gb} GB system RAM)")
     
     # Get CUDA version
     try:
@@ -124,7 +282,7 @@ def get_hardware_info():
         pass
     
     # Determine total GPU VRAM
-    total_vram_gb = sum(g.get("memory_mb", 0) for g in info["gpu_info"]) / 1024
+    total_vram_gb = sum((g.get("memory_mb") or 0) for g in info["gpu_info"]) / 1024
     info["total_gpu_vram_gb"] = round(total_vram_gb, 1) if total_vram_gb > 0 else 0
     
     return info
