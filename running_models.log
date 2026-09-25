@@ -184,3 +184,35 @@
 {"time": "2026-09-24T02:58:21Z", "action": "start", "model": "models", "port": 11080, "pid": 22540, "status": "exited_early"}
 {"time": "2026-09-24T02:58:55Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 31240, "status": "exited_early"}
 {"time": "2026-09-24T03:00:19Z", "action": "start", "model": "phi 3 mini 128k instruct Q4 K M", "port": 11100, "pid": 36648, "status": "running"}
+{"time": "2026-09-24T15:53:33Z", "action": "download", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 0, "pid": null, "status": "completed (5629105408 bytes)"}
+{"time": "2026-09-24T15:59:01Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 37352, "status": "exited_early"}
+{"time": "2026-09-24T16:00:40Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 18380, "status": "exited_early"}
+{"time": "2026-09-24T16:57:25Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 36540, "status": "running"}
+{"time": "2026-09-24T18:27:35Z", "action": "download", "model": "Phi 3.5 mini 3.8B ArliAI RPMax v1.1 Q4 K M", "port": 0, "pid": null, "status": "completed (2393232512 bytes)"}
+{"time": "2026-09-24T18:33:42Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 12928, "status": "exited_early"}
+{"time": "2026-09-24T18:37:21Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 39420, "status": "exited_early"}
+{"time": "2026-09-24T18:46:03Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 46568, "status": "exited_early"}
+{"time": "2026-09-24T18:51:55Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 14580, "status": "exited_early"}
+{"time": "2026-09-24T19:00:25Z", "action": "start", "model": "qwen3.5-9b-glm5.1-distill-v1-q4-k-m", "port": 11090, "pid": 48352, "status": "running"}
+{"time": "2026-09-24T19:01:40Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 10888, "status": "exited_early"}
+{"time": "2026-09-24T19:04:14Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 48484, "status": "running"}
+{"time": "2026-09-24T19:21:43Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 7512, "status": "exited_early"}
+{"time": "2026-09-24T19:23:26Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 48976, "status": "exited_early"}
+{"time": "2026-09-24T19:26:30Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 3968, "status": "exited_early"}
+{"time": "2026-09-24T19:27:48Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 38160, "status": "running"}
+{"time": "2026-09-24T19:31:19Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 32644, "status": "exited_early"}
+{"time": "2026-09-24T19:32:00Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 27356, "status": "running"}
+{"time": "2026-09-24T19:44:23Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 42228, "status": "running"}
+{"time": "2026-09-24T20:13:31Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 47128, "status": "exited_early"}
+{"time": "2026-09-24T20:19:52Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 11868, "status": "running"}
+{"time": "2026-09-24T21:33:22Z", "action": "start", "model": "Qwen3.5 9B GLM5.1 Distill v1 Q4 K M", "port": 11001, "pid": 29492, "status": "running"}
+{"time": "2026-09-24T23:19:48Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 47928, "status": "exited_early"}
+{"time": "2026-09-24T23:28:43Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 47916, "status": "exited_early"}
+{"time": "2026-09-24T23:30:00Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 34984, "status": "exited_early"}
+{"time": "2026-09-24T23:35:50Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 18668, "status": "running"}
+{"time": "2026-09-24T23:40:17Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 29692, "status": "running"}
+{"time": "2026-09-24T23:42:26Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 23668, "status": "running"}
+{"time": "2026-09-25T00:08:13Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 32300, "status": "exited_early"}
+{"time": "2026-09-25T13:54:05Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11000, "pid": 37992, "status": "running"}
+{"time": "2026-09-25T15:34:33Z", "action": "start", "model": "models", "port": 11020, "pid": 21540, "status": "running"}
+{"time": "2026-09-25T15:44:51Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 36712, "status": "running"}

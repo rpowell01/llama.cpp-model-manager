@@ -73,7 +73,15 @@ create_venv() {
 # Activate virtual environment
 activate_venv() {
     log_info "Activating virtual environment..."
-    source "${VENV_PATH}/bin/activate"
+    # Handle both Unix (bin/) and Windows (Scripts/) venv layouts
+    if [ -f "${VENV_PATH}/bin/activate" ]; then
+        source "${VENV_PATH}/bin/activate"
+    elif [ -f "${VENV_PATH}/Scripts/activate" ]; then
+        source "${VENV_PATH}/Scripts/activate"
+    else
+        log_error "Virtual environment activation script not found at ${VENV_PATH}/bin/activate or ${VENV_PATH}/Scripts/activate"
+        exit 1
+    fi
     log_success "Virtual environment activated."
 }
 
@@ -119,10 +127,22 @@ install_requirements() {
             continue
         fi
         
+        # Map PyPI package names to Python import names
+        local import_name="$module_name"
+        case "$module_name" in
+            "python-dotenv") import_name="dotenv" ;;
+            "gpu-detector") import_name="gpu_detector" ;;
+            "pyyaml") import_name="yaml" ;;
+            "pillow") import_name="PIL" ;;
+            "opencv-python") import_name="cv2" ;;
+            "scikit-learn") import_name="sklearn" ;;
+            "beautifulsoup4") import_name="bs4" ;;
+        esac
+        
         # Check if module is installed using the activated python
-        if ! python -c "import ${module_name}" 2>/dev/null; then
+        if ! python -c "import ${import_name}" 2>/dev/null; then
             missing_modules+=("$line")
-            log_warning "Module ${module_name} is not installed."
+            log_warning "Module ${module_name} (import: ${import_name}) is not installed."
         else
             log_info "Module ${module_name} is already installed."
         fi
@@ -157,9 +177,21 @@ verify_modules() {
             continue
         fi
         
+        # Map PyPI package names to Python import names
+        local import_name="$module_name"
+        case "$module_name" in
+            "python-dotenv") import_name="dotenv" ;;
+            "gpu-detector") import_name="gpu_detector" ;;
+            "pyyaml") import_name="yaml" ;;
+            "pillow") import_name="PIL" ;;
+            "opencv-python") import_name="cv2" ;;
+            "scikit-learn") import_name="sklearn" ;;
+            "beautifulsoup4") import_name="bs4" ;;
+        esac
+        
         # Use the activated python to check
-        if ! python -c "import ${module_name}" 2>/dev/null; then
-            log_error "Module ${module_name} is still not available after installation."
+        if ! python -c "import ${import_name}" 2>/dev/null; then
+            log_error "Module ${module_name} (import: ${import_name}) is still not available after installation."
             all_ok=false
         fi
     done < "$REQUIREMENTS_FILE"

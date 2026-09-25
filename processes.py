@@ -613,7 +613,8 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     spec_draft_model = meta.get("spec_draft_model", DEFAULTS["spec_draft_model"])
     if spec_draft_model:
-        cmd += ["--spec-draft-model", convert_path_for_binary(BASE_DIR / spec_draft_model)]
+        draft_path = resolve_model_path(spec_draft_model)
+        cmd += ["--spec-draft-model", convert_path_for_binary(draft_path)]
     
     spec_draft_hf_repo = meta.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])
     if spec_draft_hf_repo:

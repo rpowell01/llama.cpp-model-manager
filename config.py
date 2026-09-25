@@ -14,6 +14,60 @@ from pathlib import Path
 from typing import Any
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Platform detection
+# ──────────────────────────────────────────────────────────────────────────────
+WINDOWS = platform.system() == "Windows"
+
+# Check for WSL (Windows Subsystem for Linux)
+WSL = False
+if not WINDOWS:
+    try:
+        proc_version = Path("/proc/version")
+        if proc_version.exists() and "microsoft" in proc_version.read_text().lower():
+            WSL = True
+    except Exception:
+        pass
+
+
+def _convert_windows_path_to_wsl(path: Path) -> Path:
+    """
+    Convert a Windows absolute path to a WSL mount path.
+    
+    Args:
+        path: Windows Path (e.g., C:\\Users\\...)
+        
+    Returns:
+        WSL Path (e.g., /mnt/c/Users/...) if conversion applies, otherwise original path
+    """
+    if not WSL:
+        return path
+    
+    path_str = str(path)
+    # Check if it's a Windows absolute path (e.g., C:\..., D:/...)
+    # Windows paths can use backslash or forward slash
+    if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] in ('\\', '/'):
+        drive = path_str[0].lower()
+        # Convert to WSL mount path: /mnt/c/...
+        # path_str[3:] gives us everything after C: (including the separator)
+        # Normalize backslashes to forward slashes
+        rest = path_str[3:].replace('\\', '/')
+        # Ensure leading slash for the rest of the path
+        if rest and not rest.startswith('/'):
+            rest = '/' + rest
+        wsl_path = f"/mnt/{drive}{rest}"
+        return Path(wsl_path)
+    
+    return path
+
+
+def _is_windows_absolute_path(path_str: str) -> bool:
+    """Check if a string is a Windows absolute path (e.g., C:\\..., D:/...)."""
+    if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] in ('\\', '/'):
+        return True
+    return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -28,7 +82,13 @@ except ImportError:
 
 # MODEL_DIR can be overridden via .env to point to an external models directory
 MODEL_DIR_ENV = os.getenv("MODEL_DIR")
-MODELS_DIR = Path(MODEL_DIR_ENV) if MODEL_DIR_ENV else BASE_DIR / "models"
+if MODEL_DIR_ENV:
+    model_dir_path = Path(MODEL_DIR_ENV)
+    # Convert Windows paths to WSL paths when running in WSL
+    model_dir_path = _convert_windows_path_to_wsl(model_dir_path)
+    MODELS_DIR = model_dir_path
+else:
+    MODELS_DIR = BASE_DIR / "models"
 
 MODELS_JSON = BASE_DIR / "models.json"
 LOG_FILE = BASE_DIR / "running_models.log"
@@ -36,7 +96,6 @@ LOG_FILE = BASE_DIR / "running_models.log"
 # ──────────────────────────────────────────────────────────────────────────────
 # Default server parameters
 # CPU-optimized defaults for llama.cpp server
-import os
 
 def _get_cpu_count() -> int:
     """Get logical CPU count for thread defaults."""
@@ -98,21 +157,6 @@ DEFAULTS: dict[str, Any] = {
 FLASK_PORT: int = 5000
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Platform detection
-# ──────────────────────────────────────────────────────────────────────────────
-WINDOWS = platform.system() == "Windows"
-
-# Check for WSL (Windows Subsystem for Linux)
-WSL = False
-if not WINDOWS:
-    try:
-        proc_version = Path("/proc/version")
-        if proc_version.exists() and "microsoft" in proc_version.read_text().lower():
-            WSL = True
-    except Exception:
-        pass
-
-# ──────────────────────────────────────────────────────────────────────────────
 # llama-server binary location
 # ──────────────────────────────────────────────────────────────────────────────
 LLAMA_SERVER = None
@@ -121,6 +165,8 @@ LLAMA_SERVER = None
 llama_server_dir_env = os.getenv("LLAMA_SERVER_DIR")
 if llama_server_dir_env:
     llama_server_dir = Path(llama_server_dir_env)
+    # Convert Windows paths to WSL paths when running in WSL
+    llama_server_dir = _convert_windows_path_to_wsl(llama_server_dir)
     if WINDOWS or WSL:
         candidate = llama_server_dir / "llama-server.exe"
         if candidate.exists():
@@ -166,12 +212,50 @@ PYTHON = sys.executable
 # Utility functions
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _convert_windows_path_to_wsl(path: Path) -> Path:
+    """
+    Convert a Windows absolute path to a WSL mount path.
+    
+    Args:
+        path: Windows Path (e.g., C:\\Users\\...)
+        
+    Returns:
+        WSL Path (e.g., /mnt/c/Users/...) if conversion applies, otherwise original path
+    """
+    if not WSL:
+        return path
+    
+    path_str = str(path)
+    # Check if it's a Windows absolute path (e.g., C:\..., D:/...)
+    # Windows paths can use backslash or forward slash
+    if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] in ('\\', '/'):
+        drive = path_str[0].lower()
+        # Convert to WSL mount path: /mnt/c/...
+        # path_str[3:] gives us everything after C: (including the separator)
+        # Normalize backslashes to forward slashes
+        rest = path_str[3:].replace('\\', '/')
+        # Ensure leading slash for the rest of the path
+        if rest and not rest.startswith('/'):
+            rest = '/' + rest
+        wsl_path = f"/mnt/{drive}{rest}"
+        return Path(wsl_path)
+    
+    return path
+
+
+def _is_windows_absolute_path(path_str: str) -> bool:
+    """Check if a string is a Windows absolute path (e.g., C:\\..., D:/...)."""
+    if len(path_str) >= 3 and path_str[1] == ':' and path_str[2] in ('\\', '/'):
+        return True
+    return False
+
+
 def resolve_model_path(model_path_str: str) -> Path:
     """
     Resolve a model path string to an absolute Path.
     
     Handles three cases:
-    1. Absolute path - return as-is
+    1. Absolute path (Linux or Windows) - return as-is (with WSL conversion if needed)
     2. Relative path starting with "models/" - resolve relative to MODELS_DIR (respects MODEL_DIR env var)
     3. Other relative paths - resolve relative to BASE_DIR
     
@@ -184,9 +268,15 @@ def resolve_model_path(model_path_str: str) -> Path:
     if not model_path_str:
         return BASE_DIR
     
+    # Check for Windows absolute path first (not detected by Path.is_absolute() on Linux)
+    if _is_windows_absolute_path(model_path_str):
+        model_path = Path(model_path_str)
+        return _convert_windows_path_to_wsl(model_path)
+    
     model_path = Path(model_path_str)
     if model_path.is_absolute():
-        return model_path
+        # Convert Windows paths to WSL paths when running in WSL
+        return _convert_windows_path_to_wsl(model_path)
     
     # If path starts with "models/", resolve relative to MODELS_DIR
     # This respects the MODEL_DIR environment variable

@@ -1,0 +1,30 @@
+[0;34m[INFO][0m Starting Llama.cpp Web App...
+[0;34m[INFO][0m Script directory: /mnt/c/Users/russe/code/llama.cpp-model-manager
+[0;34m[INFO][0m Found Python: Python 3.13.5
+[0;34m[INFO][0m Virtual environment already exists at /mnt/c/Users/russe/code/llama.cpp-model-manager/venv.
+[0;34m[INFO][0m Activating virtual environment...
+[0;32m[SUCCESS][0m Virtual environment activated.
+[0;34m[INFO][0m Found pip: pip 25.1.1 from /mnt/c/Users/russe/code/llama.cpp-model-manager/venv/lib/python3.13/site-packages/pip (python 3.13)
+[0;34m[INFO][0m Checking required Python modules...
+[0;34m[INFO][0m Module flask is already installed.
+[0;34m[INFO][0m Module requests is already installed.
+[0;34m[INFO][0m Module urllib3 is already installed.
+[0;34m[INFO][0m Module python-dotenv is already installed.
+[0;34m[INFO][0m Module gpu-detector is already installed.
+[0;34m[INFO][0m Module psutil is already installed.
+[0;32m[SUCCESS][0m All required modules are already installed.
+[0;34m[INFO][0m Verifying all required modules are available...
+[0;32m[SUCCESS][0m All modules verified successfully.
+[0;34m[INFO][0m Starting the web application...
+[0;34m[INFO][0m Working directory: /mnt/c/Users/russe/code/llama.cpp-model-manager
+[0;34m[INFO][0m Python interpreter: /mnt/c/Users/russe/code/llama.cpp-model-manager/venv/bin/python
+2026-09-25 10:23:21,884 INFO Remote mode: False, URL: http://localhost:8080
+2026-09-25 10:23:21,891 INFO Loading models cache...
+2026-09-25 10:23:22,044 INFO Starting web UI on http://0.0.0.0:5000 from /mnt/c/Users/russe/code/llama.cpp-model-manager
+ * Serving Flask app 'main'
+ * Debug mode: off
+2026-09-25 10:23:22,069 INFO [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.86.51:5000
+2026-09-25 10:23:22,071 INFO [33mPress CTRL+C to quit[0m
