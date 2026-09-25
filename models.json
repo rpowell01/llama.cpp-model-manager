@@ -50,7 +50,7 @@
   },
   "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf": {
     "model_path": "C:\\llama.cpp\\models\\gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf\\gemma4-v2-Q4_K_M.gguf",
-    "repo": "",
+    "repo": "yuxinlu1/gemma-4-12B-agentic-fable5-composer2.5-v2-3.5x-tau2-GGUF",
     "filename": "gemma4-v2-Q4_K_M.gguf",
     "expected_size": 7381381664,
     "port": 11000,
@@ -99,12 +99,12 @@
   },
   "gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf": {
     "model_path": "C:\\llama.cpp\\models\\gemma-4-e4b-agentic-opus-reasoning-geminicli-gguf\\gemma4-e4b-opus-f16.gguf",
-    "repo": "",
+    "repo": "deadbydawn101/gemma-4-E4B-Agentic-Opus-Reasoning-GeminiCLI-GGUF",
     "filename": "gemma4-e4b-opus-f16.gguf",
     "expected_size": 15053090336,
     "port": 11030,
     "cache_size": 128000,
-    "threads": 22,
+    "threads": 10,
     "threads_batch": 22,
     "timeout": 3600,
     "mlock": true,
@@ -148,7 +148,7 @@
   },
   "qwen3-coder-30b-a3b-instruct-q4-k-m": {
     "model_path": "C:\\llama.cpp\\models\\qwen3-coder-30b-a3b-instruct-q4-k-m\\Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
-    "repo": "",
+    "repo": "n00b001/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M-GGUF",
     "filename": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
     "expected_size": 18556689568,
     "port": 11040,

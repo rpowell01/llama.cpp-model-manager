@@ -638,8 +638,8 @@ addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0
           }
         });
 
-        // Update original values to match
-        Object.assign(window.originalModelMeta, settings);
+        // Note: do NOT update originalModelMeta here - save should compare
+        // against the pre-optimization baseline so changes are detected
 
         if (statusEl) {
           statusEl.textContent = `Applied ${updatedCount} optimal settings based on: ${hardware.cpu_count_logical} CPUs, ${hardware.memory_total_gb}GB RAM${hardware.total_gpu_vram_gb ? `, ${hardware.total_gpu_vram_gb}GB GPU VRAM` : ""}${hardware.has_nvidia_gpu ? " (NVIDIA)" : ""}${hardware.has_amd_gpu ? " (AMD)" : ""}`;
