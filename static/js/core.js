@@ -2,6 +2,52 @@
  * Core utility functions
  */
 
+let _eventSource = null;
+
+/**
+ * Initialize SSE log streaming
+ */
+function initLogStream() {
+  if (_eventSource) return;
+  
+  const el = document.getElementById('log');
+  if (!el) return;
+  const contentEl = el.querySelector('.log-content');
+  if (!contentEl) return;
+
+  _eventSource = new EventSource('/api/logs/stream');
+  
+  _eventSource.onmessage = function(event) {
+    try {
+      const entry = JSON.parse(event.data);
+      if (entry.timestamp && entry.message) {
+        const escapedMsg = he(entry.message);
+        const color = entry.color || 'inherit';
+        const logEntry = `<span style="color:${color}">[${entry.timestamp}] ${escapedMsg}</span>\n`;
+        contentEl.insertAdjacentHTML('afterbegin', logEntry);
+        
+        // Limit to 200 entries
+        const entries = contentEl.getElementsByTagName('span');
+        if (entries.length > 200) {
+          while (entries.length > 200) {
+            contentEl.removeChild(entries[entries.length - 1]);
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  };
+  
+  _eventSource.onerror = function() {
+    console.warn('Log stream disconnected, reconnecting...');
+    _eventSource.close();
+    _eventSource = null;
+    // Reconnect after 5 seconds
+    setTimeout(initLogStream, 5000);
+  };
+}
+
 /**
  * Format value as GB with 2 decimal places
  * @param {number|null} v - Value in GB
@@ -31,10 +77,10 @@ function fmtSize(bytes) {
  */
 function he(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&#039;');
 }
 
@@ -66,7 +112,7 @@ function portUrl(p) {
 }
 
 /**
- * Log message to the log panel
+ * Log message to the log panel (for frontend-generated logs)
  * @param {string} msg - Message to log
  * @param {string} color - Optional color
  */
@@ -90,3 +136,6 @@ function log(msg, color) {
     }
   }
 }
+
+// Auto-initialize log stream when DOM is ready
+document.addEventListener('DOMContentLoaded', initLogStream);

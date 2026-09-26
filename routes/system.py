@@ -11,6 +11,7 @@ from gpu_detector import detect, GPUInfo
 
 from config import LOG_FILE
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
+from state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
 
 system_bp = Blueprint("system", __name__)
 log = getLogger("llamaweb")
@@ -472,6 +473,40 @@ def api_logs():
     lines = LOG_FILE.read_text("utf-8", errors="replace").strip().splitlines()
     return jsonify(lines[-100:])
 
+
+
+@system_bp.route("/api/logs/stream")
+def api_logs_stream():
+    """Server-Sent Events endpoint for real-time log streaming."""
+    from flask import Response
+    import queue
+    client_queue = register_sse_client()
+    
+    def generate():
+        try:
+            # Send recent logs first
+            recent = get_recent_logs(100)
+            for entry in recent:
+                import json
+                yield f"data: {json.dumps(entry)}\n\n"
+            
+            # Then stream new entries
+            while True:
+                try:
+                    data = client_queue.get(timeout=30)
+                    yield data
+                except queue.Empty:
+                    # Send keepalive comment
+                    yield ": keepalive\n\n"
+                except GeneratorExit:
+                    break
+        finally:
+            unregister_sse_client(client_queue)
+    
+    return Response(generate(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 @system_bp.route("/api/shutdown", methods=["POST"])
 def api_shutdown():

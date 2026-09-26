@@ -25,6 +25,7 @@ from state import (
     _start_timestamps,
     _start_timestamps_lock,
     log_event,
+    add_log_entry,
 )
 
 log = logging.getLogger("llamaweb")
@@ -276,26 +277,36 @@ def api_start():
 
         # Launch process
         log.info(f"Starting model {model}: {' '.join(cmd)}")
+        add_log_entry(f"▶ Start: {model} on port {port}", "green")
         try:
-            if WINDOWS or (WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe')):
-                proc = subprocess.Popen(
-                    cmd,
-                    env=env,
-                    cwd=BASE_DIR,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
-                )
-                pid = proc.pid
-                if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
-                    with _wsl_pids_lock:
-                        _wsl_pids[model] = pid
-            else:
-                proc = subprocess.Popen(
-                    cmd,
-                    env=env,
-                    cwd=BASE_DIR,
-                    start_new_session=True,
-                )
-                pid = proc.pid
+            # Capture stdout/stderr for real-time logging
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                cwd=BASE_DIR,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout
+                text=True,
+                bufsize=1,  # Line buffered
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
+            )
+            pid = proc.pid
+            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+                with _wsl_pids_lock:
+                    _wsl_pids[model] = pid
+            
+            # Start a thread to read subprocess output and stream to log buffer
+            def _stream_output():
+                try:
+                    for line in proc.stdout:
+                        line = line.rstrip()
+                        if line:
+                            add_log_entry(f"[{model}] {line}", "inherit")
+                except Exception:
+                    pass  # Ignore errors when reading from closed pipe
+            
+            output_thread = threading.Thread(target=_stream_output, daemon=True)
+            output_thread.start()
         except Exception as e:
             with _start_timestamps_lock:
                 _start_timestamps.pop(model, None)
