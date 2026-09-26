@@ -566,6 +566,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if ctx_size:
         cmd += ["-c", str(ctx_size)]
     
+    # cache_size - maximum size of the KV cache in tokens
+    cache_size = meta.get("cache_size", DEFAULTS["cache_size"])
+    if cache_size != DEFAULTS["cache_size"]:
+        cmd += ["--cache-size", str(cache_size)]
+    
     rope_freq_base = meta.get("rope_freq_base", DEFAULTS["rope_freq_base"])
     if rope_freq_base and rope_freq_base != 10000.0:
         cmd += ["--rope-freq-base", str(rope_freq_base)]
