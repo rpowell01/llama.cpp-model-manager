@@ -209,6 +209,11 @@ def add_model_entry(
     spec_ngram_size_n: int = 12,
     spec_ngram_size_m: int = 48,
     spec_ngram_min_hits: int = 1,
+    # Intel/AMD GPU Options
+    sycl: bool = False,
+    grp_attn: bool = False,
+    grp_attn_n: int = 8,
+    cache_quant: str = "",
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
@@ -274,6 +279,11 @@ def add_model_entry(
             "spec_ngram_size_n": spec_ngram_size_n,
             "spec_ngram_size_m": spec_ngram_size_m,
             "spec_ngram_min_hits": spec_ngram_min_hits,
+            # Intel/AMD GPU Options
+            "sycl": sycl,
+            "grp_attn": grp_attn,
+            "grp_attn_n": grp_attn_n,
+            "cache_quant": cache_quant,
         }
         save_models(models)
         return True
@@ -402,6 +412,11 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "yarn_attn_factor": DEFAULTS["yarn_attn_factor"],
         "yarn_beta_slow": DEFAULTS["yarn_beta_slow"],
         "yarn_beta_fast": DEFAULTS["yarn_beta_fast"],
+        # Intel/AMD GPU Options
+        "sycl": DEFAULTS["sycl"],
+        "grp_attn": DEFAULTS["grp_attn"],
+        "grp_attn_n": DEFAULTS["grp_attn_n"],
+        "cache_quant": DEFAULTS["cache_quant"],
     }
     for model in models.values():
         for field, default_value in default_fields.items():
@@ -462,6 +477,11 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "spec_ngram_size_n": DEFAULTS["spec_ngram_size_n"],
                 "spec_ngram_size_m": DEFAULTS["spec_ngram_size_m"],
                 "spec_ngram_min_hits": DEFAULTS["spec_ngram_min_hits"],
+                # Intel/AMD GPU Options
+                "sycl": DEFAULTS["sycl"],
+                "grp_attn": DEFAULTS["grp_attn"],
+                "grp_attn_n": DEFAULTS["grp_attn_n"],
+                "cache_quant": DEFAULTS["cache_quant"],
                 "file_size_gb": file_size_gb,
                 "file_exists": True,
             }

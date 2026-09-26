@@ -71,6 +71,11 @@ def api_add_model():
         spec_ngram_size_n=int(data.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])),
         spec_ngram_size_m=int(data.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])),
         spec_ngram_min_hits=int(data.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])),
+        # Intel/AMD GPU Options
+        sycl=bool(data.get("sycl", DEFAULTS["sycl"])),
+        grp_attn=bool(data.get("grp_attn", DEFAULTS["grp_attn"])),
+        grp_attn_n=int(data.get("grp_attn_n", DEFAULTS["grp_attn_n"])),
+        cache_quant=str(data.get("cache_quant", DEFAULTS["cache_quant"])),
     )
     if not success:
         return jsonify({"error": f"Model '{data['name']}' already exists or failed to add"}), 409
@@ -166,6 +171,11 @@ def api_update_model_meta():
         "spec_ngram_size_n": int,
         "spec_ngram_size_m": int,
         "spec_ngram_min_hits": int,
+        # Intel/AMD GPU Options
+        "sycl": bool,
+        "grp_attn": bool,
+        "grp_attn_n": int,
+        "cache_quant": str,
     }
     changes = {}
     for field, typ in allowed_fields.items():

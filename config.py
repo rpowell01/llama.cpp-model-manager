@@ -151,6 +151,11 @@ DEFAULTS: dict[str, Any] = {
     "spec_ngram_size_n": 12,
     "spec_ngram_size_m": 48,
     "spec_ngram_min_hits": 1,
+    # Intel/AMD GPU Options
+    "sycl": False,
+    "grp_attn": False,
+    "grp_attn_n": 8,
+    "cache_quant": "",
 }
 
 # Flask server port (set by main.py at runtime)

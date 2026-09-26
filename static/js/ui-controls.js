@@ -385,10 +385,29 @@ async function renderPanelProperties(data, modelName) {
   </div>`;
   
   addEditable("CPU Affinity", "cpu_affinity", data.cpu_affinity, "text");
-  addEditable("CPU Strict", "cpu_strict", data.cpu_strict, "checkbox");
+addEditable("CPU Strict", "cpu_strict", data.cpu_strict, "checkbox");
   addEditable("Batch Size", "batch_size", data.batch_size, "number", 1, 1);
   addEditable("Context Size", "ctx_size", data.ctx_size, "number", 1, 1);
-addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
+  
+  // Intel/AMD GPU Options
+  addEditable("SYCL (Intel GPU)", "sycl", data.sycl, "checkbox");
+  addEditable("Group Attention", "grp_attn", data.grp_attn, "checkbox");
+  addEditable("Group Attention N", "grp_attn_n", data.grp_attn_n, "number", 1, 1);
+  
+  // Cache Quantization dropdown
+  const cacheQuantVal = data.cache_quant || "";
+  let cacheQuantSelect = `<select class="meta-input" data-field="cache_quant">`;
+  ["", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "fp16", "fp8"].forEach((val) => {
+    const displayVal = val === "" ? "Default (auto)" : val;
+    cacheQuantSelect += `<option value="${val}" ${cacheQuantVal === val ? "selected" : ""}>${displayVal}</option>`;
+  });
+  cacheQuantSelect += `</select>`;
+  html += `<div class="panel-item">
+    <span class="label">Cache Quantization</span>
+    <span class="value">${cacheQuantSelect}</span>
+  </div>`;
+  
+  addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
    addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
    
    // RoPE Scaling Type dropdown
@@ -516,7 +535,8 @@ addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0
           "yarn_attn_factor", "yarn_beta_slow", "yarn_beta_fast",
           "spec_draft_n_max", "spec_draft_n_min", "spec_draft_p_split",
           "spec_draft_p_min", "spec_ngram_size_n", "spec_ngram_size_m",
-          "spec_ngram_min_hits"
+          "spec_ngram_min_hits",
+          "grp_attn_n"
         ];
         if (numericFields.includes(field)) {
           value = Number(value);
