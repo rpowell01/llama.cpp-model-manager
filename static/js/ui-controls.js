@@ -322,11 +322,12 @@ async function renderPanelProperties(data, modelName) {
     addEditable("Timeout", "timeout", data.timeout, "number", 1, 0);
     
     // Parallel dropdown with "auto" option
-    const parallelVal = data.parallel == null ? 1 : data.parallel;
+    const parallelVal = data.parallel == null ? "1" : String(data.parallel);
     let parallelSelect = `<select class="meta-input" data-field="parallel">`;
     [1, 2, 3, 4, 5, 6, 7, 8, "auto"].forEach((val) => {
+      const valStr = String(val);
       const displayVal = val === "auto" ? "auto (set --kv-unified=true)" : val;
-      parallelSelect += `<option value="${val}" ${parallelVal === val ? "selected" : ""}>${displayVal}</option>`;
+      parallelSelect += `<option value="${valStr}" ${parallelVal === valStr ? "selected" : ""}>${displayVal}</option>`;
     });
     parallelSelect += `</select>`;
     html += `<div class="panel-item">
