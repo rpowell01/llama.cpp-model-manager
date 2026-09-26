@@ -247,219 +247,274 @@ async function renderPanelProperties(data, modelName) {
     </div>
   </div>`;
 
-  // Static Properties section
+// Basic Configuration
   html += `<div class="panel-section">
-    <h3>Properties</h3>
+    <h3>Basic Configuration</h3>
     <div class="panel-grid">`;
+    
+    const addItem = (label, value, isCode = false, isHtml = false) => {
+      const escapedLabel = he(label);
+      let escapedValue;
+      if (isHtml) {
+        escapedValue = value;
+      } else if (isCode) {
+        escapedValue = `<code>${he(value)}</code>`;
+      } else {
+        escapedValue = he(value);
+      }
+      html += `<div class="panel-item">
+        <span class="label">${escapedLabel}</span>
+        <span class="value">${escapedValue}</span>
+      </div>`;
+    };
 
-  const addItem = (label, value, isCode = false, isHtml = false) => {
-    const escapedLabel = he(label);
-    let escapedValue;
-    if (isHtml) {
-      escapedValue = value;
-    } else if (isCode) {
-      escapedValue = `<code>${he(value)}</code>`;
-    } else {
-      escapedValue = he(value);
+    const addEditable = (
+      label,
+      field,
+      value,
+      inputType = "number",
+      step = 1,
+      min,
+      max,
+    ) => {
+      let input;
+      const escapedLabel = he(label);
+      const escapedValue = he(String(value));
+      if (inputType === "checkbox") {
+        input = `<input type="checkbox" class="meta-input" data-field="${he(field)}" ${value ? "checked" : ""}>`;
+      } else if (inputType === "text") {
+        input = `<input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}">`;
+      } else {
+        const minAttr = min !== undefined ? `min="${he(String(min))}"` : "";
+        const maxAttr = max !== undefined ? `max="${he(String(max))}"` : "";
+        input = `<input type="number" class="meta-input" data-field="${he(field)}" value="${escapedValue}" step="${step}" ${minAttr} ${maxAttr}>`;
+      }
+      html += `<div class="panel-item">
+        <span class="label">${escapedLabel}</span>
+        <span class="value">${input}</span>
+      </div>`;
+    };
+
+    addItem("Model Name", modelName);
+    addEditable("Port", "port", data.port, "number", 1, 0);
+    // Note: Hugging Face Repo, Filename, Expected Size are typically static/model info
+    // These would come from data but aren't in the standard model metadata API
+    // For now, we'll show them as static info if available
+    if (data.repo) {
+      addItem("Hugging Face Repo", data.repo);
     }
-    html += `<div class="panel-item">
-      <span class="label">${escapedLabel}</span>
-      <span class="value">${escapedValue}</span>
-    </div>`;
-  };
-
-  const addEditable = (
-    label,
-    field,
-    value,
-    inputType = "number",
-    step = 1,
-    min,
-    max,
-  ) => {
-    let input;
-    const escapedLabel = he(label);
-    const escapedValue = he(String(value));
-    if (inputType === "checkbox") {
-      input = `<input type="checkbox" class="meta-input" data-field="${he(field)}" ${value ? "checked" : ""}>`;
-    } else if (inputType === "text") {
-      input = `<input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}">`;
-    } else {
-      const minAttr = min !== undefined ? `min="${he(String(min))}"` : "";
-      const maxAttr = max !== undefined ? `max="${he(String(max))}"` : "";
-      input = `<input type="number" class="meta-input" data-field="${he(field)}" value="${escapedValue}" step="${step}" ${minAttr} ${maxAttr}>`;
+    if (data.filename) {
+      addItem("Filename", data.filename);
     }
+    if (data.file_size_gb) {
+      addItem("Expected Size (GB)", fmtGb(data.file_size_gb));
+    }
+    
+    html += `</div></div>`;
+
+  // Performance & Threading
+  html += `<div class="panel-section">
+    <h3>Performance & Threading</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("Cache Size", "cache_size", data.cache_size, "number", 1, 0);
+    addEditable("Threads", "threads", data.threads, "number", 1, 0);
+    addEditable("Threads Batch", "threads_batch", data.threads_batch, "number", 1, 0);
+    addEditable("Timeout", "timeout", data.timeout, "number", 1, 0);
+    
+    // Parallel dropdown with "auto" option
+    const parallelVal = data.parallel || 1;
+    let parallelSelect = `<select class="meta-input" data-field="parallel">`;
+    [1, 2, 3, 4, 5, 6, 7, 8, "auto"].forEach((val) => {
+      const displayVal = val === "auto" ? "auto (set --kv-unified=true)" : val;
+      parallelSelect += `<option value="${val}" ${parallelVal === val ? "selected" : ""}>${displayVal}</option>`;
+    });
+    parallelSelect += `</select>`;
     html += `<div class="panel-item">
-      <span class="label">${escapedLabel}</span>
-      <span class="value">${input}</span>
+      <span class="label">Parallel</span>
+      <span class="value">${parallelSelect}</span>
     </div>`;
-  };
+    
+    addEditable("UBatch Size", "ubatch_size", data.ubatch_size, "number", 1, 1);
+    addEditable("Batch Size", "batch_size", data.batch_size, "number", 1, 1);
+    
+    html += `</div></div>`;
 
-  addItem(
-    "File",
-    data.model_path ? data.model_path.split("/").pop() : data.filename || "-",
-  );
-  addItem("Size", fmtGb(data.file_size_gb));
-  addItem("Port", data.port ? `:${data.port}` : "-");
-  addEditable("Threads", "threads", data.threads, "number", 1, 0);
-  addEditable(
-    "Threads Batch",
-    "threads_batch",
-    data.threads_batch,
-    "number",
-    1,
-    0,
-  );
-  addEditable("Timeout", "timeout", data.timeout, "number", 1, 0);
-  addEditable("MLock", "mlock", data.mlock, "checkbox");
+  // Memory Management
+  html += `<div class="panel-section">
+    <h3>Memory Management</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("Use MLock", "mlock", data.mlock, "checkbox");
+    addEditable("No MMap", "no_mmap", data.no_mmap, "checkbox");
+    addEditable("NUMA Aware", "numa", data.numa, "checkbox");
+    
+    // NUMA Mode dropdown
+    const numaVal = data.numa_value || "distribute";
+    let numaSelect = `<select class="meta-input" data-field="numa_value">`;
+    ["distribute", "isolate", "numactl"].forEach((val) => {
+      numaSelect += `<option value="${val}" ${numaVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    numaSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">NUMA Mode</span>
+      <span class="value">${numaSelect}</span>
+    </div>`;
+    
+    addEditable("CPU Affinity", "cpu_affinity", data.cpu_affinity, "text");
+    addEditable("CPU Strict Mode", "cpu_strict", data.cpu_strict, "checkbox");
+    
+    html += `</div></div>`;
 
-  // Flash Attn dropdown
-  const flashVal = data.flash_attn || "off";
-  const isFlashSelected = (val) =>
-    flashVal === val;
-  let flashSelect = `<select class="meta-input" data-field="flash_attn">`;
-  ["off", "auto", "on"].forEach((val) => {
-    flashSelect += `<option value="${val}" ${isFlashSelected(val) ? "selected" : ""}>${val}</option>`;
-  });
-  flashSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">Flash Attn</span>
-    <span class="value">${flashSelect}</span>
-  </div>`;
+  // GPU & Acceleration
+  html += `<div class="panel-section">
+    <h3>GPU & Acceleration</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("GPU Layers (0=CPU only)", "gpu_layers", data.gpu_layers, "number", 1, 0);
+    
+    // Flash Attn dropdown
+    const flashVal = data.flash_attn || "off";
+    const isFlashSelected = (val) =>
+      flashVal === val;
+    let flashSelect = `<select class="meta-input" data-field="flash_attn">`;
+    ["off", "auto", "on"].forEach((val) => {
+      flashSelect += `<option value="${val}" ${isFlashSelected(val) ? "selected" : ""}>${val}</option>`;
+    });
+    flashSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Flash Attn</span>
+      <span class="value">${flashSelect}</span>
+    </div>`;
+    
+    addEditable("SYCL (Intel GPU)", "sycl", data.sycl, "checkbox");
+    addEditable("Group Attention", "grp_attn", data.grp_attn, "checkbox");
+    addEditable("Group Attention N", "grp_attn_n", data.grp_attn_n, "number", 1, 1);
+    
+    // Cache Quantization dropdown
+    const cacheQuantVal = data.cache_quant || "";
+    let cacheQuantSelect = `<select class="meta-input" data-field="cache_quant">`;
+    ["", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "fp16", "fp8"].forEach((val) => {
+      const displayVal = val === "" ? "Default (auto)" : val;
+      cacheQuantSelect += `<option value="${val}" ${cacheQuantVal === val ? "selected" : ""}>${displayVal}</option>`;
+    });
+    cacheQuantSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Cache Quantization</span>
+      <span class="value">${cacheQuantSelect}</span>
+    </div>`;
+    
+    html += `</div></div>`;
 
-  addEditable("No MMAP", "no_mmap", data.no_mmap, "checkbox");
-  
-  // Parallel dropdown with "auto" option
-  const parallelVal = data.parallel || 1;
-  let parallelSelect = `<select class="meta-input" data-field="parallel">`;
-  [1, 2, 3, 4, 5, 6, 7, 8, "auto"].forEach((val) => {
-    const displayVal = val === "auto" ? "auto (set --kv-unified=true)" : val;
-    parallelSelect += `<option value="${val}" ${parallelVal === val ? "selected" : ""}>${displayVal}</option>`;
-  });
-  parallelSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">Parallel</span>
-    <span class="value">${parallelSelect}</span>
-  </div>`;
-  
-  addEditable("UBatch Size", "ubatch_size", data.ubatch_size, "number", 1, 1);
-  // Agent/Tool parameters
-  addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
-  addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
-  // CPU-only optimizations
-  addEditable("GPU Layers (0=CPU)", "gpu_layers", data.gpu_layers, "number", 1, 0);
-  // KV Cache Type dropdowns
-  const kvCacheKVal = data.cache_type_k || "fp16";
-  let kvCacheKSelect = `<select class="meta-input" data-field="cache_type_k">`;
-  ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
-    kvCacheKSelect += `<option value="${val}" ${kvCacheKVal === val ? "selected" : ""}>${val}</option>`;
-  });
-  kvCacheKSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">KV Cache Type K</span>
-    <span class="value">${kvCacheKSelect}</span>
-  </div>`;
-
-  const kvCacheVVal = data.cache_type_v || "fp16";
-  let kvCacheVSelect = `<select class="meta-input" data-field="cache_type_v">`;
-  ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
-    kvCacheVSelect += `<option value="${val}" ${kvCacheVVal === val ? "selected" : ""}>${val}</option>`;
-  });
-  kvCacheVSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">KV Cache Type V</span>
-    <span class="value">${kvCacheVSelect}</span>
-  </div>`;
-  addEditable("NUMA Aware", "numa", data.numa, "checkbox");
-  
-  // NUMA Mode dropdown
-  const numaVal = data.numa_value || "distribute";
-  let numaSelect = `<select class="meta-input" data-field="numa_value">`;
-  ["distribute", "isolate", "numactl"].forEach((val) => {
-    numaSelect += `<option value="${val}" ${numaVal === val ? "selected" : ""}>${val}</option>`;
-  });
-  numaSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">NUMA Mode</span>
-    <span class="value">${numaSelect}</span>
-  </div>`;
-  
-  addEditable("CPU Affinity", "cpu_affinity", data.cpu_affinity, "text");
-addEditable("CPU Strict", "cpu_strict", data.cpu_strict, "checkbox");
-  addEditable("Batch Size", "batch_size", data.batch_size, "number", 1, 1);
-  addEditable("Context Size", "ctx_size", data.ctx_size, "number", 1, 1);
-  
-  // Intel/AMD GPU Options
-  addEditable("SYCL (Intel GPU)", "sycl", data.sycl, "checkbox");
-  addEditable("Group Attention", "grp_attn", data.grp_attn, "checkbox");
-  addEditable("Group Attention N", "grp_attn_n", data.grp_attn_n, "number", 1, 1);
-  
-  // Cache Quantization dropdown
-  const cacheQuantVal = data.cache_quant || "";
-  let cacheQuantSelect = `<select class="meta-input" data-field="cache_quant">`;
-  ["", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "fp16", "fp8"].forEach((val) => {
-    const displayVal = val === "" ? "Default (auto)" : val;
-    cacheQuantSelect += `<option value="${val}" ${cacheQuantVal === val ? "selected" : ""}>${displayVal}</option>`;
-  });
-  cacheQuantSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">Cache Quantization</span>
-    <span class="value">${cacheQuantSelect}</span>
-  </div>`;
-  
-  addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
-   addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
-   
-   // RoPE Scaling Type dropdown
-   const ropeScalingVal = data.rope_scaling_type || "none";
-   let ropeScalingSelect = `<select class="meta-input" data-field="rope_scaling_type">`;
-   ["none", "linear", "yarn"].forEach((val) => {
-     ropeScalingSelect += `<option value="${val}" ${ropeScalingVal === val ? "selected" : ""}>${val}</option>`;
-   });
-   ropeScalingSelect += `</select>`;
-   html += `<div class="panel-item">
-     <span class="label">RoPE Scaling Type</span>
-     <span class="value">${ropeScalingSelect}</span>
-   </div>`;
-   
-   addEditable("RoPE Scale (context factor)", "rope_scale", data.rope_scale, "number", 0.1, 0.1);
-   addEditable("YaRN Orig Context", "yarn_orig_ctx", data.yarn_orig_ctx, "number", 1, 0);
-   addEditable("YaRN Ext Factor", "yarn_ext_factor", data.yarn_ext_factor, "number", 0.1);
-   addEditable("YaRN Attn Factor", "yarn_attn_factor", data.yarn_attn_factor, "number", 0.1, 0.1);
-addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0.1, 0.1);
+  // Context & RoPE/YaRN
+  html += `<div class="panel-section">
+    <h3>Context & RoPE / YaRN</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("Context Size", "ctx_size", data.ctx_size, "number", 1, 1);
+    addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
+    addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
+    
+    // RoPE Scaling Type dropdown
+    const ropeScalingVal = data.rope_scaling_type || "none";
+    let ropeScalingSelect = `<select class="meta-input" data-field="rope_scaling_type">`;
+    ["none", "linear", "yarn"].forEach((val) => {
+      ropeScalingSelect += `<option value="${val}" ${ropeScalingVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    ropeScalingSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">RoPE Scaling Type</span>
+      <span class="value">${ropeScalingSelect}</span>
+    </div>`;
+    
+    addEditable("RoPE Scale (context factor)", "rope_scale", data.rope_scale, "number", 0.1, 0.1);
+    addEditable("YaRN Orig Context", "yarn_orig_ctx", data.yarn_orig_ctx, "number", 1, 0);
+    addEditable("YaRN Ext Factor", "yarn_ext_factor", data.yarn_ext_factor, "number", 0.1);
+    addEditable("YaRN Attn Factor", "yarn_attn_factor", data.yarn_attn_factor, "number", 0.1, 0.1);
+    addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0.1, 0.1);
     addEditable("YaRN Beta Fast", "yarn_beta_fast", data.yarn_beta_fast, "number", 0.1, 0.1);
+    
+    html += `</div></div>`;
 
-  // Speculative Decoding section
+  // KV Cache
+  html += `<div class="panel-section">
+    <h3>KV Cache</h3>
+    <div class="panel-grid">`;
+    
+    // KV Cache Type K dropdown
+    const kvCacheKVal = data.cache_type_k || "fp16";
+    let kvCacheKSelect = `<select class="meta-input" data-field="cache_type_k">`;
+    ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+      kvCacheKSelect += `<option value="${val}" ${kvCacheKVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    kvCacheKSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">KV Cache Type K</span>
+      <span class="value">${kvCacheKSelect}</span>
+    </div>`;
+    
+    // KV Cache Type V dropdown
+    const kvCacheVVal = data.cache_type_v || "fp16";
+    let kvCacheVSelect = `<select class="meta-input" data-field="cache_type_v">`;
+    ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+      kvCacheVSelect += `<option value="${val}" ${kvCacheVVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    kvCacheVSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">KV Cache Type V</span>
+      <span class="value">${kvCacheVSelect}</span>
+    </div>`;
+    
+    html += `</div></div>`;
+
+  // Speculative Decoding
   html += `<div class="panel-section">
     <h3>Speculative Decoding</h3>
     <div class="panel-grid">`;
+    
+    // Spec Type dropdown
+    const specTypeVal = data.spec_type || "none";
+    let specTypeSelect = `<select class="meta-input" data-field="spec_type">`;
+    ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"].forEach((val) => {
+      specTypeSelect += `<option value="${val}" ${specTypeVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    specTypeSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Spec Type</span>
+      <span class="value">${specTypeSelect}</span>
+    </div>`;
+    
+    addEditable("Draft Model Path", "spec_draft_model", data.spec_draft_model, "text");
+    addEditable("Draft HF Repo", "spec_draft_hf_repo", data.spec_draft_hf_repo, "text");
+    addEditable("Draft N Max", "spec_draft_n_max", data.spec_draft_n_max, "number", 1, 0);
+    addEditable("Draft N Min", "spec_draft_n_min", data.spec_draft_n_min, "number", 1, 0);
+    addEditable("Draft P Split", "spec_draft_p_split", data.spec_draft_p_split, "number", 0.01, 0, 1);
+    addEditable("Draft P Min", "spec_draft_p_min", data.spec_draft_p_min, "number", 0.01, 0, 1);
+    addEditable("Draft NGL", "spec_draft_ngl", data.spec_draft_ngl, "text");
+    
+    // Ngram Simple settings
+    addEditable("Ngram Size N (lookup)", "spec_ngram_size_n", data.spec_ngram_size_n, "number", 1, 0);
+    addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);
+    addEditable("Ngram Min Hits", "spec_ngram_min_hits", data.spec_ngram_min_hits, "number", 1, 1);
+    
+    html += `</div></div>`;
 
-  // Spec Type dropdown
-  const specTypeVal = data.spec_type || "none";
-  let specTypeSelect = `<select class="meta-input" data-field="spec_type">`;
-  ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"].forEach((val) => {
-    specTypeSelect += `<option value="${val}" ${specTypeVal === val ? "selected" : ""}>${val}</option>`;
-  });
-  specTypeSelect += `</select>`;
-  html += `<div class="panel-item">
-    <span class="label">Spec Type</span>
-    <span class="value">${specTypeSelect}</span>
+  // Agent/Tool Parameters
+  html += `<div class="panel-section">
+    <h3>Agent/Tool Parameters</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
+    addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
+    addEditable("Auto-download", "auto_download", data.auto_download, "checkbox");
+    
+    html += `</div></div>`;
+
+  // Save/Cancel buttons
+  html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
+    <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
+    <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
   </div>`;
-
-  addEditable("Draft Model Path", "spec_draft_model", data.spec_draft_model, "text");
-  addEditable("Draft HF Repo", "spec_draft_hf_repo", data.spec_draft_hf_repo, "text");
-  addEditable("Draft N Max", "spec_draft_n_max", data.spec_draft_n_max, "number", 1, 0);
-  addEditable("Draft N Min", "spec_draft_n_min", data.spec_draft_n_min, "number", 1, 0);
-  addEditable("Draft P Split", "spec_draft_p_split", data.spec_draft_p_split, "number", 0.01, 0, 1);
-  addEditable("Draft P Min", "spec_draft_p_min", data.spec_draft_p_min, "number", 0.01, 0, 1);
-  addEditable("Draft NGL", "spec_draft_ngl", data.spec_draft_ngl, "text");
-  
-  // Ngram Simple settings
-  addEditable("Ngram Size N (lookup)", "spec_ngram_size_n", data.spec_ngram_size_n, "number", 1, 0);
-  addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);
-  addEditable("Ngram Min Hits", "spec_ngram_min_hits", data.spec_ngram_min_hits, "number", 1, 1);
-
-  html += `</div></div>`;
 
   // Save/Cancel buttons for Properties section
   html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">

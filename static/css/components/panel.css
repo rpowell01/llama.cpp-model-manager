@@ -5,7 +5,7 @@
   border-radius: 8px;
   padding: 1rem;
   position: relative;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 80px);
   overflow-y: auto;
 }
 
