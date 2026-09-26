@@ -209,7 +209,6 @@ def api_start():
             "model_path": model_dict.model_path if hasattr(model_dict, 'model_path') else "",
             "threads": model_dict.threads,
             "threads_batch": model_dict.threads_batch,
-            "cache_size": model_dict.cache_size,
             "timeout": model_dict.timeout,
             "mlock": model_dict.mlock,
             "flash_attn": model_dict.flash_attn,

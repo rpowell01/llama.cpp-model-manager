@@ -84,7 +84,6 @@ def api_download():
                 "filename": url_filename,
                 "expected_size": expected_size,
                 "port": port,
-                "cache_size": DEFAULTS["cache_size"],
                 "threads": DEFAULTS["threads"],
                 "threads_batch": DEFAULTS["threads_batch"],
                 "timeout": DEFAULTS["timeout"],

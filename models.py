@@ -166,7 +166,6 @@ def add_model_entry(
     filename: str,
     expected_size: int,
     port: int,
-    cache_size: int = 32768,
     threads: int = 16,
     threads_batch: int = 22,
     timeout: int = 3600,
@@ -236,7 +235,6 @@ def add_model_entry(
             "filename": filename,
             "expected_size": expected_size,
             "port": port,
-            "cache_size": cache_size,
             "threads": threads,
             "threads_batch": threads_batch,
             "timeout": timeout,
@@ -383,7 +381,6 @@ def load_models_cache() -> None:
 def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
     """Apply default values to models for any missing fields."""
     default_fields = {
-        "cache_size": DEFAULTS["cache_size"],
         "threads": DEFAULTS["threads"],
         "threads_batch": DEFAULTS["threads_batch"],
         "timeout": DEFAULTS["timeout"],
@@ -456,7 +453,6 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "filename": model_file.name,
                 "expected_size": file_size,
                 "port": 0,
-                "cache_size": DEFAULTS["cache_size"],
                 "threads": DEFAULTS["threads"],
                 "threads_batch": DEFAULTS["threads_batch"],
                 "timeout": DEFAULTS["timeout"],

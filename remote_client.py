@@ -58,7 +58,6 @@ class Model:
     model_path: str = ""
     expected_size: int = 0
     port: int = 0
-    cache_size: int = 32768
     threads: int = 16
     threads_batch: int = 22
     timeout: int = 3600
@@ -115,7 +114,6 @@ class Model:
             model_path=data.get("model_path", ""),
             expected_size=data.get("expected_size", 0),
             port=data.get("port", 0),
-            cache_size=data.get("cache_size", 32768),
             threads=data.get("threads", 16),
             threads_batch=data.get("threads_batch", 22),
             timeout=data.get("timeout", 3600),
@@ -329,7 +327,6 @@ class RemoteModelRegistry:
                 "model_path": full_id,
                 "expected_size": m.get("meta", {}).get("size", 0) or 0,
                 "port": 0,
-                "cache_size": 32768,
                 "threads": 16,
                 "threads_batch": 22,
                 "timeout": 3600,

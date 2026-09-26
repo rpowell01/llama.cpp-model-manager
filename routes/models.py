@@ -28,7 +28,6 @@ def api_add_model():
         filename=data["filename"].strip(),
         expected_size=expected_size,
         port=port,
-        cache_size=int(data.get("cache_size", DEFAULTS["cache_size"])),
         threads=int(data.get("threads", DEFAULTS["threads"])),
         threads_batch=int(data.get("threads_batch", DEFAULTS["threads_batch"])),
         timeout=int(data.get("timeout", DEFAULTS["timeout"])),

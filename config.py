@@ -107,7 +107,6 @@ def _get_cpu_count() -> int:
 DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 11000,
-    "cache_size": 128000,
     "threads": _get_cpu_count(),  # Use all logical CPUs
     "threads_batch": _get_cpu_count(),  # Use all logical CPUs for batch
     "timeout": 3600,
@@ -156,6 +155,7 @@ DEFAULTS: dict[str, Any] = {
     "grp_attn": False,
     "grp_attn_n": 8,
     "cache_quant": "",
+    # Feature flags
 }
 
 # Flask server port (set by main.py at runtime)

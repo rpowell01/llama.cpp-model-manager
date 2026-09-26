@@ -317,7 +317,6 @@ async function renderPanelProperties(data, modelName) {
     <h3>Performance & Threading</h3>
     <div class="panel-grid">`;
     
-    addEditable("Cache Size", "cache_size", data.cache_size, "number", 1, 0);
     addEditable("Threads", "threads", data.threads, "number", 1, 0);
     addEditable("Threads Batch", "threads_batch", data.threads_batch, "number", 1, 0);
     addEditable("Timeout", "timeout", data.timeout, "number", 1, 0);

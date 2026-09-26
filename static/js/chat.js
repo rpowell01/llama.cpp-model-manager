@@ -278,7 +278,7 @@ function renderChatInModal(modelName) {
   const ppVal = isRunning && modelData.pp ? modelData.pp + " ms" : "-";
   const tgVal = isRunning && modelData.tg ? modelData.tg + " t/s" : "-";
   const pgVal = isRunning && modelData.pg ? modelData.pg : "-";
-  const maxTokens = modelData?.cache_size || 512;
+  const maxTokens = modelData?.ctx_size || 512;
 
   contentDiv.innerHTML = `
     <div class="tile-chat modal-chat">
