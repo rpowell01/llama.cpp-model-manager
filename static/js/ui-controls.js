@@ -323,7 +323,7 @@ async function renderPanelProperties(data, modelName) {
     addEditable("Timeout", "timeout", data.timeout, "number", 1, 0);
     
     // Parallel dropdown with "auto" option
-    const parallelVal = data.parallel || 1;
+    const parallelVal = data.parallel == null ? 1 : data.parallel;
     let parallelSelect = `<select class="meta-input" data-field="parallel">`;
     [1, 2, 3, 4, 5, 6, 7, 8, "auto"].forEach((val) => {
       const displayVal = val === "auto" ? "auto (set --kv-unified=true)" : val;
@@ -350,7 +350,7 @@ async function renderPanelProperties(data, modelName) {
     addEditable("NUMA Aware", "numa", data.numa, "checkbox");
     
     // NUMA Mode dropdown
-    const numaVal = data.numa_value || "distribute";
+    const numaVal = data.numa_value == null ? "distribute" : data.numa_value;
     let numaSelect = `<select class="meta-input" data-field="numa_value">`;
     ["distribute", "isolate", "numactl"].forEach((val) => {
       numaSelect += `<option value="${val}" ${numaVal === val ? "selected" : ""}>${val}</option>`;
@@ -374,7 +374,7 @@ async function renderPanelProperties(data, modelName) {
     addEditable("GPU Layers (0=CPU only)", "gpu_layers", data.gpu_layers, "number", 1, 0);
     
     // Flash Attn dropdown
-    const flashVal = data.flash_attn || "off";
+    const flashVal = data.flash_attn == null ? "off" : data.flash_attn;
     const isFlashSelected = (val) =>
       flashVal === val;
     let flashSelect = `<select class="meta-input" data-field="flash_attn">`;
@@ -416,7 +416,7 @@ async function renderPanelProperties(data, modelName) {
     addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
     
     // RoPE Scaling Type dropdown
-    const ropeScalingVal = data.rope_scaling_type || "none";
+    const ropeScalingVal = data.rope_scaling_type == null ? "none" : data.rope_scaling_type;
     let ropeScalingSelect = `<select class="meta-input" data-field="rope_scaling_type">`;
     ["none", "linear", "yarn"].forEach((val) => {
       ropeScalingSelect += `<option value="${val}" ${ropeScalingVal === val ? "selected" : ""}>${val}</option>`;
@@ -442,7 +442,7 @@ async function renderPanelProperties(data, modelName) {
     <div class="panel-grid">`;
     
     // KV Cache Type K dropdown
-    const kvCacheKVal = data.cache_type_k || "fp16";
+    const kvCacheKVal = data.cache_type_k == null ? "fp16" : data.cache_type_k;
     let kvCacheKSelect = `<select class="meta-input" data-field="cache_type_k">`;
     ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
       kvCacheKSelect += `<option value="${val}" ${kvCacheKVal === val ? "selected" : ""}>${val}</option>`;
@@ -454,7 +454,7 @@ async function renderPanelProperties(data, modelName) {
     </div>`;
     
     // KV Cache Type V dropdown
-    const kvCacheVVal = data.cache_type_v || "fp16";
+    const kvCacheVVal = data.cache_type_v == null ? "fp16" : data.cache_type_v;
     let kvCacheVSelect = `<select class="meta-input" data-field="cache_type_v">`;
     ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
       kvCacheVSelect += `<option value="${val}" ${kvCacheVVal === val ? "selected" : ""}>${val}</option>`;
@@ -473,7 +473,7 @@ async function renderPanelProperties(data, modelName) {
     <div class="panel-grid">`;
     
     // Spec Type dropdown
-    const specTypeVal = data.spec_type || "none";
+    const specTypeVal = data.spec_type == null ? "none" : data.spec_type;
     let specTypeSelect = `<select class="meta-input" data-field="spec_type">`;
     ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"].forEach((val) => {
       specTypeSelect += `<option value="${val}" ${specTypeVal === val ? "selected" : ""}>${val}</option>`;
@@ -510,17 +510,11 @@ async function renderPanelProperties(data, modelName) {
     
     html += `</div></div>`;
 
-  // Save/Cancel buttons
-  html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
-    <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
-    <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
-  </div>`;
-
-  // Save/Cancel buttons for Properties section
-  html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
-    <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
-    <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
-  </div>`;
+// Save/Cancel buttons
+   html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
+     <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
+     <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
+   </div>`;
 
   html += `</div></div>`;
 

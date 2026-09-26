@@ -72,8 +72,21 @@ function portUrl(p) {
  */
 function log(msg, color) {
   const el = document.getElementById('log');
+  if (!el) return;
+  const contentEl = el.querySelector('.log-content');
+  if (!contentEl) return;
+  
   const ts = new Date().toISOString().slice(11, 19);
   const escapedMsg = he(msg);
-  el.innerHTML = `<span style="color:${color || 'inherit'}">[${ts}] ${escapedMsg}</span>\n` + el.innerHTML;
-  if (el.children.length > 200) el.innerHTML = el.innerHTML.slice(0, 8000);
+  const entry = `<span style="color:${color || 'inherit'}">[${ts}] ${escapedMsg}</span>\n`;
+  contentEl.insertAdjacentHTML('afterbegin', entry);
+  
+  // Limit to 200 entries to prevent excessive memory usage
+  const entries = contentEl.getElementsByTagName('span');
+  if (entries.length > 200) {
+    // Remove excess entries from the end
+    while (entries.length > 200) {
+      contentEl.removeChild(entries[entries.length - 1]);
+    }
+  }
 }

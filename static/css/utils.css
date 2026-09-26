@@ -43,15 +43,65 @@
 /* Log window */
 #log {
   background: var(--surface);
-  padding: 0.8rem 1rem;
   border-radius: 6px;
-  font-family: monospace;
+  font-family: 'Fira Code', 'Courier New', monospace;
   font-size: 0.82rem;
-  max-height: 260px;
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 900;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+}
+#log .log-header {
+  background: var(--surface2);
+  color: var(--text);
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px 6px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--surface2);
+}
+#log .log-content {
+  flex: 1;
   overflow-y: auto;
-  margin-top: 1.4rem;
+  padding: 0.8rem;
+  background: var(--surface);
+  border-radius: 0 0 6px 6px;
   white-space: pre-wrap;
   color: var(--text2);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.82rem;
+}
+#log .log-content:empty::before {
+  content: '▶ Console ready - waiting for log messages...';
+  color: var(--text2);
+  opacity: 0.5;
+  font-style: italic;
+  display: block;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+/* Enhance log entry styling */
+#log .log-content span {
+  display: block;
+  margin-bottom: 0.1rem;
+  line-height: 1.4;
+  padding: 0.2rem 0;
+}
+
+/* Hide the empty state placeholder when there are actual logs */
+#log .log-content:not(:empty)::before {
+  display: none;
+}
+
+/* Adjust main content bottom margin when log is visible */
+main {
+  margin-bottom: 216px; /* Height of log panel (200px) + bottom offset (1rem = 16px) */
 }
 
 #log b {
