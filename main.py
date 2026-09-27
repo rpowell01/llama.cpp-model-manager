@@ -106,8 +106,19 @@ def main() -> None:
     cfg = Config()
     log.info("Remote mode: %s, URL: %s", cfg.is_remote_mode, cfg.remote_url)
 
+    # Parse command line arguments early so we can set app config
+    parser = argparse.ArgumentParser(description="llama.cpp web frontend")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default 5000)")
+    args = parser.parse_args()
+
     # Create Flask app
     app = Flask(__name__)
+    
+    # Set app config for template variables
+    app.config["SERVER_HOST"] = args.host if args.host != "0.0.0.0" else "127.0.0.1"
+    app.config["FLASK_PORT"] = args.port
+    app.config["CACHE_VERSION"] = "1"
 
     # Register blueprints
     app.register_blueprint(chat_bp)
@@ -124,12 +135,6 @@ def main() -> None:
         load_models_cache()
     else:
         log.info("Remote mode: skipping local models cache")
-
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="llama.cpp web frontend")
-    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default 5000)")
-    args = parser.parse_args()
 
     log.info("Starting web UI on http://%s:%d from %s", args.host, args.port, BASE_DIR)
     
