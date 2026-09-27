@@ -584,7 +584,15 @@ async function renderPanelProperties(data, modelName) {
 
       content.querySelectorAll(".meta-input").forEach((input) => {
         const field = input.dataset.field;
-        let value = input.type === "checkbox" ? input.checked : input.value;
+        let value;
+        if (input.multiple) {
+          // Handle multi-select: get all selected options
+          value = Array.from(input.selectedOptions).map(opt => opt.value).join(",");
+        } else if (input.type === "checkbox") {
+          value = input.checked;
+        } else {
+          value = input.value;
+        }
         const numericFields = [
           "threads", "threads_batch", "timeout",
           "ubatch_size", "gpu_layers", "batch_size",
