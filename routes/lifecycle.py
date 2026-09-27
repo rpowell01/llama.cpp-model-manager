@@ -277,8 +277,10 @@ def api_start():
         env = os.environ.copy()
 
         # Launch process
-        log.info(f"Starting model {model}: {' '.join(cmd)}")
+        cmd_str = ' '.join(cmd)
+        log.info(f"Starting model {model}: {cmd_str}")
         add_log_entry(f"▶ Start: {model} on port {port}", "green")
+        add_log_entry(f"Command: {cmd_str}", "cyan")
         try:
             # Capture stdout/stderr for real-time logging
             proc = subprocess.Popen(
