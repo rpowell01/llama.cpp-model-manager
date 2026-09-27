@@ -28,10 +28,30 @@ function init() {
    // Restore chat input from localStorage (if needed)
    restoreChatInputs();
 
-   // Initial refresh
-   console.log('Calling initial refresh...');
-   refresh();
- }
+// Initial refresh with retry logic
+    console.log('Calling initial refresh...');
+    const maxRetries = 3;
+    const retryDelay = 1000;
+    
+    function attemptRefresh(attempt) {
+      return refresh().catch(err => {
+        console.error(`Initial refresh attempt ${attempt} failed:`, err);
+        if (attempt < maxRetries) {
+          console.log(`Retrying in ${retryDelay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          return new Promise(resolve => setTimeout(resolve, retryDelay))
+            .then(() => attemptRefresh(attempt + 1));
+        }
+        throw err;
+      });
+    }
+    
+    attemptRefresh(1).catch(err => {
+      console.error('All initial refresh attempts failed:', err);
+      // Hide loading spinner even on failure
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) loadingEl.style.display = 'none';
+    });
+  }
 
 // ──────────────────────────────────────────────────────────────
 // Theme Switching
