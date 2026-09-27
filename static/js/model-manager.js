@@ -64,15 +64,22 @@ async function refresh(showLoading = true) {
   console.log('refresh() called, showLoading:', showLoading);
   if (showLoading) {
     const loadingEl = document.getElementById('loading');
+    console.log('Loading element found:', !!loadingEl);
     if (loadingEl) loadingEl.style.display = 'block';
   }
   try {
+    console.log('Fetching /api/status...');
+    // Use Promise.race to enforce timeout even if fetch hangs
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
-    const res = await fetch('/api/status?' + Date.now(), {
+    const fetchPromise = fetch('/api/status?' + Date.now(), {
       cache: 'no-store',
       signal: controller.signal
     });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Fetch timeout')), 30000)
+    );
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
     clearTimeout(timeoutId);
     console.log('Fetched /api/status, status:', res.status);
     if (!res.ok) {
@@ -87,6 +94,7 @@ async function refresh(showLoading = true) {
        console.error('Failed to parse /api/status response:', text);
        throw e;
      }
+     console.log('Parsed data:', data);
      let rows = data.models;
      console.log('Received', rows.length, 'models');
      
