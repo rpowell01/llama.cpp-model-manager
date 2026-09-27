@@ -26,10 +26,10 @@ function initLogStream() {
         const logEntry = `<span style="color:${color}">[${entry.timestamp}] ${escapedMsg}</span>\n`;
         contentEl.insertAdjacentHTML('afterbegin', logEntry);
         
-        // Limit to 200 entries
+        // Limit to 1000 entries
         const entries = contentEl.getElementsByTagName('span');
-        if (entries.length > 200) {
-          while (entries.length > 200) {
+        if (entries.length > 1000) {
+          while (entries.length > 1000) {
             contentEl.removeChild(entries[entries.length - 1]);
           }
         }
@@ -127,11 +127,11 @@ function log(msg, color) {
   const entry = `<span style="color:${color || 'inherit'}">[${ts}] ${escapedMsg}</span>\n`;
   contentEl.insertAdjacentHTML('afterbegin', entry);
   
-  // Limit to 200 entries to prevent excessive memory usage
+  // Limit to 1000 entries to prevent excessive memory usage
   const entries = contentEl.getElementsByTagName('span');
-  if (entries.length > 200) {
+  if (entries.length > 1000) {
     // Remove excess entries from the end
-    while (entries.length > 200) {
+    while (entries.length > 1000) {
       contentEl.removeChild(entries[entries.length - 1]);
     }
   }

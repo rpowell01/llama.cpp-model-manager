@@ -26,7 +26,7 @@ _start_timestamps_lock = threading.Lock()
 
 # Log buffer for real-time streaming (SSE)
 # Stores tuples of (timestamp, message, color)
-_log_buffer: deque = deque(maxlen=500)
+_log_buffer: deque = deque(maxlen=5000)
 _log_buffer_lock = threading.Lock()
 
 # SSE client connections for log streaming
@@ -74,7 +74,7 @@ def _notify_sse_clients(entry: dict) -> None:
 
 def register_sse_client() -> "queue.Queue":
     """Register a new SSE client and return its queue."""
-    client_queue = queue.Queue(maxsize=100)
+    client_queue = queue.Queue(maxsize=2000)
     with _sse_clients_lock:
         _sse_clients.append(client_queue)
     return client_queue
