@@ -217,7 +217,8 @@ def add_model_entry(
     """Add a new model entry to models.json and reserve directory."""
     try:
         models = get_models()
-        if name in models:
+        # Case-insensitive check for existing model
+        if any(k.lower() == name.lower() for k in models):
             return False  # already exists
         # Ensure model directory exists
         model_dir = MODELS_DIR / name.lower().replace(" ", "-")
@@ -294,9 +295,15 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
     """Remove model from models.json and optionally delete its files."""
     try:
         models = get_models()
-        if name not in models:
+        # Case-insensitive lookup
+        model_key = None
+        for k in models:
+            if k.lower() == name.lower():
+                model_key = k
+                break
+        if model_key is None:
             return False
-        meta = models[name]
+        meta = models[model_key]
         if delete_files:
             model_path_str = meta.get("model_path", "")
             if model_path_str:
@@ -310,7 +317,7 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
                         model_dir.rmdir()
                 except Exception:
                     pass
-        del models[name]
+        del models[model_key]
         save_models(models)
         # Refresh the in-memory cache
         load_models_cache()
@@ -409,6 +416,18 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "yarn_attn_factor": DEFAULTS["yarn_attn_factor"],
         "yarn_beta_slow": DEFAULTS["yarn_beta_slow"],
         "yarn_beta_fast": DEFAULTS["yarn_beta_fast"],
+        # Speculative decoding parameters
+        "spec_type": DEFAULTS["spec_type"],
+        "spec_draft_model": DEFAULTS["spec_draft_model"],
+        "spec_draft_hf_repo": DEFAULTS["spec_draft_hf_repo"],
+        "spec_draft_n_max": DEFAULTS["spec_draft_n_max"],
+        "spec_draft_n_min": DEFAULTS["spec_draft_n_min"],
+        "spec_draft_p_split": DEFAULTS["spec_draft_p_split"],
+        "spec_draft_p_min": DEFAULTS["spec_draft_p_min"],
+        "spec_draft_ngl": DEFAULTS["spec_draft_ngl"],
+        "spec_ngram_size_n": DEFAULTS["spec_ngram_size_n"],
+        "spec_ngram_size_m": DEFAULTS["spec_ngram_size_m"],
+        "spec_ngram_min_hits": DEFAULTS["spec_ngram_min_hits"],
         # Intel/AMD GPU Options
         "sycl": DEFAULTS["sycl"],
         "grp_attn": DEFAULTS["grp_attn"],

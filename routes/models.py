@@ -105,10 +105,16 @@ def api_update_model_repo():
         return jsonify({"error": "Missing repo"}), 400
 
     models = get_models()
-    if model not in models:
+    # Case-insensitive lookup
+    model_key = None
+    for k in models:
+        if k.lower() == model.lower():
+            model_key = k
+            break
+    if model_key is None:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-    models[model]["repo"] = repo
+    models[model_key]["repo"] = repo
     save_models(models)
 
     return jsonify({"status": "repo updated", "model": model, "repo": repo})
@@ -122,10 +128,16 @@ def api_update_model_meta():
         return jsonify({"error": "Missing model name"}), 400
 
     models = get_models()
-    if model not in models:
+    # Case-insensitive lookup
+    model_key = None
+    for k in models:
+        if k.lower() == model.lower():
+            model_key = k
+            break
+    if model_key is None:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-    meta = models[model]
+    meta = models[model_key]
     allowed_fields = {
         "port": int,
         "threads": int,
