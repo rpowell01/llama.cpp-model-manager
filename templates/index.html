@@ -179,7 +179,7 @@
       <fieldset style="margin-bottom: 1rem;">
         <legend style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Speculative Decoding</legend>
         <label>Spec Type:
-          <select name="spec_type">
+          <select name="spec_type" multiple style="min-height: 120px;">
             <option value="none">none</option>
             <option value="draft-simple">draft-simple</option>
             <option value="draft-eagle3">draft-eagle3</option>
@@ -193,6 +193,7 @@
             <option value="ngram-cache">ngram-cache</option>
           </select>
         </label>
+        <small style="color: var(--muted); display: block; margin-top: 0.25rem;">Hold Ctrl/Cmd to select multiple (comma-separated)</small>
         <label>Draft Model Path: <input type="text" name="spec_draft_model"></label>
         <label>Draft HF Repo: <input type="text" name="spec_draft_hf_repo"></label>
         <label>Draft N Max: <input type="number" name="spec_draft_n_max" value="8" min="0"></label>

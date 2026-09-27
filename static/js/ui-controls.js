@@ -478,16 +478,19 @@ async function renderPanelProperties(data, modelName) {
     <h3>Speculative Decoding</h3>
     <div class="panel-grid">`;
     
-    // Spec Type dropdown
+    // Spec Type multi-select (comma-separated list)
     const specTypeVal = data.spec_type == null ? "none" : data.spec_type;
-    let specTypeSelect = `<select class="meta-input" data-field="spec_type">`;
-    ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"].forEach((val) => {
-      specTypeSelect += `<option value="${val}" ${specTypeVal === val ? "selected" : ""}>${val}</option>`;
+    const specTypeOptions = ["none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dspark", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"];
+    const selectedValues = specTypeVal === "none" ? ["none"] : specTypeVal.split(",").map(v => v.trim());
+    let specTypeSelect = `<select class="meta-input" data-field="spec_type" multiple style="min-height: 120px;">`;
+    specTypeOptions.forEach((val) => {
+      specTypeSelect += `<option value="${val}" ${selectedValues.includes(val) ? "selected" : ""}>${val}</option>`;
     });
     specTypeSelect += `</select>`;
     html += `<div class="panel-item">
       <span class="label">Spec Type</span>
       <span class="value">${specTypeSelect}</span>
+      <small style="color: var(--muted); display: block; margin-top: 0.25rem;">Hold Ctrl/Cmd to select multiple (comma-separated)</small>
     </div>`;
     
     addEditable("Draft Model Path", "spec_draft_model", data.spec_draft_model, "text");

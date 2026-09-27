@@ -140,18 +140,22 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       
 const formData = new FormData(e.target);
-       const data = {};
-       formData.forEach((value, key) => {
-         if (key === 'mlock' || key === 'no_mmap' || key === 'auto_download' || key === 'numa' || key === 'cpu_strict') {
-           data[key] = formData.get(key) === 'on';
-         } else if (['expected_size', 'port', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size', 'gpu_layers', 'batch_size', 'ctx_size'].includes(key)) {
-           data[key] = parseInt(value, 10);
-         } else if (['rope_freq_base', 'rope_freq_scale'].includes(key)) {
-           data[key] = parseFloat(value);
-         } else {
-           data[key] = value;
-         }
-       });
+        const data = {};
+        formData.forEach((value, key) => {
+          if (key === 'mlock' || key === 'no_mmap' || key === 'auto_download' || key === 'numa' || key === 'cpu_strict') {
+            data[key] = formData.get(key) === 'on';
+          } else if (['expected_size', 'port', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size', 'gpu_layers', 'batch_size', 'ctx_size'].includes(key)) {
+            data[key] = parseInt(value, 10);
+          } else if (['rope_freq_base', 'rope_freq_scale'].includes(key)) {
+            data[key] = parseFloat(value);
+          } else if (key === 'spec_type') {
+            // Handle multi-select for spec_type - get all selected values and join with commas
+            const values = formData.getAll(key);
+            data[key] = values.length > 0 ? values.join(',') : 'none';
+          } else {
+            data[key] = value;
+          }
+        });
       const submitBtn = e.target.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
       submitBtn.textContent = 'Adding…';
