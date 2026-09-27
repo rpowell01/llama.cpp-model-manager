@@ -68,7 +68,7 @@ async function refresh(showLoading = true) {
   }
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     const res = await fetch('/api/status?' + Date.now(), {
       cache: 'no-store',
       signal: controller.signal
