@@ -1,6 +1,7 @@
 """Lifecycle management: start and stop models."""
 import logging
 import time
+import threading
 import signal
 import psutil
 from flask import Blueprint, jsonify, request, g
