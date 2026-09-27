@@ -21,6 +21,61 @@
     <option value="nord">Nord</option>
   </select>
 </header>
+
+{% if hardware_info %}
+<div id="hardware-info" class="hardware-info-bar" style="
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface2);
+  padding: 0.75rem 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text2);
+">
+  <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
+    <!-- CPU Info -->
+    <span class="hw-item">
+      <strong>CPU:</strong> {{ hardware_info.cpu_count_logical }} logical
+      {% if hardware_info.cpu_count_physical %}({{ hardware_info.cpu_count_physical }} physical){% endif %}
+    </span>
+    
+    <!-- Memory Info -->
+    <span class="hw-item">
+      <strong>RAM:</strong> {{ hardware_info.memory_total_gb }} GB total
+      {% if hardware_info.memory_available_gb %}({{ hardware_info.memory_available_gb }} GB available){% endif %}
+    </span>
+    
+    <!-- GPU Info -->
+    {% if hardware_info.gpu_info %}
+    <span class="hw-item" style="flex-basis: 100%;">
+      <strong>GPU(s):</strong>
+      {% for gpu in hardware_info.gpu_info %}
+        <span style="margin-right: 1rem;">
+          {{ gpu.name }} ({{ gpu.vendor }})
+          {% if gpu.memory_mb %}{{ gpu.memory_mb | round(0) }} MB{% endif %}
+          {% if gpu.memory_estimated %} (estimated){% endif %}
+          {% if gpu.driver_version %} - driver {{ gpu.driver_version }}{% endif %}
+        </span>
+      {% endfor %}
+    </span>
+    {% else %}
+    <span class="hw-item"><strong>GPU:</strong> None detected (CPU-only mode)</span>
+    {% endif %}
+    
+    <!-- Platform Info -->
+    <span class="hw-item">
+      <strong>Platform:</strong> {{ hardware_info.platform }} {{ hardware_info.platform_version }}
+    </span>
+    
+    <!-- CUDA/OpenCL -->
+    {% if hardware_info.cuda_version %}
+    <span class="hw-item"><strong>CUDA:</strong> {{ hardware_info.cuda_version }}</span>
+    {% endif %}
+    {% if hardware_info.opencl_version %}
+    <span class="hw-item"><strong>OpenCL:</strong> {{ hardware_info.opencl_version }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <main>
 
 <div class="toolbar">

@@ -100,6 +100,10 @@ class Model:
     spec_draft_p_split: float = 0.10
     spec_draft_p_min: float = 0.00
     spec_draft_ngl: str = "auto"
+    spec_draft_temp: float = 0.0
+    spec_draft_top_p: float = 1.0
+    spec_draft_min_p: float = 0.0
+    spec_draft_typical: float = 1.0
     spec_ngram_size_n: int = 12
     spec_ngram_size_m: int = 48
     spec_ngram_min_hits: int = 1
@@ -156,6 +160,10 @@ class Model:
             spec_draft_p_split=data.get("spec_draft_p_split", 0.10),
             spec_draft_p_min=data.get("spec_draft_p_min", 0.00),
             spec_draft_ngl=data.get("spec_draft_ngl", "auto"),
+            spec_draft_temp=data.get("spec_draft_temp", 0.0),
+            spec_draft_top_p=data.get("spec_draft_top_p", 1.0),
+            spec_draft_min_p=data.get("spec_draft_min_p", 0.0),
+            spec_draft_typical=data.get("spec_draft_typical", 1.0),
             spec_ngram_size_n=data.get("spec_ngram_size_n", 12),
             spec_ngram_size_m=data.get("spec_ngram_size_m", 48),
             spec_ngram_min_hits=data.get("spec_ngram_min_hits", 1),

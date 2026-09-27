@@ -11,13 +11,16 @@ import socket
 import sys
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, render_template
 
 # Import configuration
 from config import BASE_DIR, Config, WSL
 
 # Import models functions
 from models import load_models_cache
+
+# Import hardware detection
+from routes.system import get_hardware_info
 
 # Import route blueprints
 from routes.chat import chat_bp

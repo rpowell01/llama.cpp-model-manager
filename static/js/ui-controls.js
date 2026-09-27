@@ -501,6 +501,12 @@ async function renderPanelProperties(data, modelName) {
     addEditable("Draft P Min", "spec_draft_p_min", data.spec_draft_p_min, "number", 0.01, 0, 1);
     addEditable("Draft NGL", "spec_draft_ngl", data.spec_draft_ngl, "text");
     
+    // Draft model sampling parameters
+    addEditable("Draft Temp", "spec_draft_temp", data.spec_draft_temp, "number", 0.1, 0, 2);
+    addEditable("Draft Top P", "spec_draft_top_p", data.spec_draft_top_p, "number", 0.01, 0, 1);
+    addEditable("Draft Min P", "spec_draft_min_p", data.spec_draft_min_p, "number", 0.01, 0, 1);
+    addEditable("Draft Typical", "spec_draft_typical", data.spec_draft_typical, "number", 0.01, 0, 1);
+    
     // Ngram Simple settings
     addEditable("Ngram Size N (lookup)", "spec_ngram_size_n", data.spec_ngram_size_n, "number", 1, 0);
     addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);

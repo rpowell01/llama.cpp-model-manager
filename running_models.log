@@ -216,3 +216,27 @@
 {"time": "2026-09-25T13:54:05Z", "action": "start", "model": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2-gguf", "port": 11000, "pid": 37992, "status": "running"}
 {"time": "2026-09-25T15:34:33Z", "action": "start", "model": "models", "port": 11020, "pid": 21540, "status": "running"}
 {"time": "2026-09-25T15:44:51Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 36712, "status": "running"}
+{"time": "2026-09-27T02:08:01Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 23876, "status": "running"}
+{"time": "2026-09-27T02:32:39Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 364134, "status": "exited_early"}
+{"time": "2026-09-27T02:43:40Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 367448, "status": "exited_early"}
+{"time": "2026-09-27T02:48:42Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 369034, "status": "exited_early"}
+{"time": "2026-09-27T03:42:40Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 381298, "status": "exited_early"}
+{"time": "2026-09-27T04:13:32Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 38116, "status": "running"}
+{"time": "2026-09-27T04:16:18Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 20788, "status": "running"}
+{"time": "2026-09-27T04:22:50Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 24232, "status": "running"}
+{"time": "2026-09-27T13:03:08Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-3.2bpw", "port": 11060, "pid": 18088, "status": "running"}
+{"time": "2026-09-27T14:37:32Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-iq3-s-intel-arc-tuned-mtp-q4-k", "port": 11070, "pid": 5744, "status": "running"}
+{"time": "2026-09-27T14:53:43Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-iq3-s-intel-arc-tuned-mtp-q4-k", "port": 11070, "pid": 2252, "status": "running"}
+{"time": "2026-09-27T15:03:47Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-iq3-s-intel-arc-tuned-mtp-q4-k", "port": 11070, "pid": 7028, "status": "running"}
+{"time": "2026-09-27T15:06:32Z", "action": "start", "model": "qwen3.8-27b-gsq-rco-iq3-s-intel-arc-tuned-mtp-q4-k", "port": 11070, "pid": 476267, "status": "exited_early"}
+{"time": "2026-09-27T16:29:46Z", "action": "download", "model": "Qwen3.6 14B A3B FableVibes Q5 K M", "port": 0, "pid": null, "status": "completed (9852131840 bytes)"}
+{"time": "2026-09-27T16:31:34Z", "action": "start", "model": "Qwen3.6 14B A3B FableVibes Q5 K M", "port": 11002, "pid": 486394, "status": "exited_early"}
+{"time": "2026-09-27T16:42:50Z", "action": "start", "model": "Qwen3.6 14B A3B FableVibes Q5 K M", "port": 11002, "pid": 490622, "status": "exited_early"}
+{"time": "2026-09-27T17:11:18Z", "action": "start", "model": "Qwen3.6 14B A3B FableVibes Q5 K M", "port": 11002, "pid": 41712, "status": "running"}
+{"time": "2026-09-27T17:55:05Z", "action": "download", "model": "Qwen3.6 14B A3B FableVibes Q4 K M", "port": 0, "pid": null, "status": "completed (8465553920 bytes)"}
+{"time": "2026-09-27T18:02:03Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 510972, "status": "exited_early"}
+{"time": "2026-09-27T18:25:09Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 46956, "status": "running"}
+{"time": "2026-09-27T19:02:54Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 36392, "status": "running"}
+{"time": "2026-09-27T19:21:38Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 42012, "status": "running"}
+{"time": "2026-09-27T19:41:43Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 29180, "status": "running"}
+{"time": "2026-09-27T20:04:07Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 24340, "status": "running"}

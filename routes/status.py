@@ -7,6 +7,7 @@ from typing import Generator
 from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config, resolve_model_path
 from models import get_models, ModelRegistry
 from processes import check_port_active, find_pid_by_port
+from routes.system import get_hardware_info
 from state import (
     _recent_stops,
     _recent_stops_lock,
@@ -260,7 +261,15 @@ def index():
         models = get_models()
         statuses = [_status_for_model(name, meta) for name, meta in models.items()]
     
-    return render_template('index.html', statuses=statuses, host=DEFAULTS["host"], flask_port=FLASK_PORT, cache_version="v2")
+    # Get hardware info for display
+    hardware_info = get_hardware_info()
+    
+    return render_template('index.html', 
+                           statuses=statuses, 
+                           host=DEFAULTS["host"], 
+                           flask_port=FLASK_PORT, 
+                           cache_version="v2",
+                           hardware_info=hardware_info)
 
 
 @status_bp.route("/api/status")

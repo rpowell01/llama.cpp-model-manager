@@ -7,7 +7,15 @@ import platform
 import subprocess
 import re
 from logging import getLogger
-from gpu_detector import detect, GPUInfo
+
+# Optional gpu_detector import (for Intel GPU detection on Linux)
+try:
+    from gpu_detector import detect, GPUInfo
+    GPU_DETECTOR_AVAILABLE = True
+except ImportError:
+    GPU_DETECTOR_AVAILABLE = False
+    detect = None
+    GPUInfo = None
 
 from config import LOG_FILE, FLASK_PORT
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
@@ -197,22 +205,23 @@ def get_hardware_info():
     
     # Detect Intel Arc GPU using gpu_detector (Linux native)
     intel_detected = False
-    try:
-        gpus = detect()
-        for gpu in gpus:
-            if gpu.vendor == "Intel" and gpu.memory_mb > 0:
-                info["has_intel_gpu"] = True
-                intel_detected = True
-                info["gpu_info"].append({
-                    "name": gpu.name,
-                    "memory_mb": gpu.memory_mb,
-                    "vendor": "Intel",
-                    "device_id": gpu.device_id,
-                    "driver_version": gpu.driver_version,
-                    "source": "gpu_detector"
-                })
-    except Exception as e:
-        log.debug(f"gpu_detector failed: {e}")
+    if GPU_DETECTOR_AVAILABLE:
+        try:
+            gpus = detect()
+            for gpu in gpus:
+                if gpu.vendor == "Intel" and gpu.memory_mb > 0:
+                    info["has_intel_gpu"] = True
+                    intel_detected = True
+                    info["gpu_info"].append({
+                        "name": gpu.name,
+                        "memory_mb": gpu.memory_mb,
+                        "vendor": "Intel",
+                        "device_id": gpu.device_id,
+                        "driver_version": gpu.driver_version,
+                        "source": "gpu_detector"
+                    })
+        except Exception as e:
+            log.debug(f"gpu_detector failed: {e}")
     
     # Fallback: Detect GPUs from Windows host (for WSL environments)
     # Only run Windows detection if we're in WSL and at least one GPU type wasn't detected

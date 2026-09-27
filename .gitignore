@@ -16,3 +16,4 @@ __pycache__/
 .beads/proxieddb/
 server.log
 .beads.gate.lock
+running_models.log

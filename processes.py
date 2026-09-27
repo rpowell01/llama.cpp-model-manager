@@ -611,49 +611,77 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     spec_type = meta.get("spec_type", DEFAULTS["spec_type"])
     if spec_type and spec_type != "none":
         cmd += ["--spec-type", spec_type]
-    
-    spec_draft_model = meta.get("spec_draft_model", DEFAULTS["spec_draft_model"])
-    if spec_draft_model:
-        draft_path = resolve_model_path(spec_draft_model)
-        cmd += ["--spec-draft-model", convert_path_for_binary(draft_path)]
-    
-    spec_draft_hf_repo = meta.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])
-    if spec_draft_hf_repo:
-        cmd += ["--spec-draft-hf", spec_draft_hf_repo]
-    
-    spec_draft_n_max = meta.get("spec_draft_n_max", DEFAULTS["spec_draft_n_max"])
-    if spec_draft_n_max > 0:
-        cmd += ["--spec-draft-n-max", str(spec_draft_n_max)]
-    
-    spec_draft_n_min = meta.get("spec_draft_n_min", DEFAULTS["spec_draft_n_min"])
-    if spec_draft_n_min > 0:
-        cmd += ["--spec-draft-n-min", str(spec_draft_n_min)]
-    
-    spec_draft_p_split = meta.get("spec_draft_p_split", DEFAULTS["spec_draft_p_split"])
-    if spec_draft_p_split > 0:
-        cmd += ["--spec-draft-p-split", str(spec_draft_p_split)]
-    
-    spec_draft_p_min = meta.get("spec_draft_p_min", DEFAULTS["spec_draft_p_min"])
-    if spec_draft_p_min > 0:
-        cmd += ["--spec-draft-p-min", str(spec_draft_p_min)]
-    
-    spec_draft_ngl = meta.get("spec_draft_ngl", DEFAULTS["spec_draft_ngl"])
-    if spec_draft_ngl and spec_draft_ngl != "auto":
-        cmd += ["--spec-draft-ngl", str(spec_draft_ngl)]
-    
-    spec_ngram_size_n = meta.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])
-    if spec_ngram_size_n > 0:
-        # Correct argument names for ngram-simple spec type in newer llama.cpp
-        cmd += ["--spec-ngram-simple-size-n", str(spec_ngram_size_n)]
-    
-    spec_ngram_size_m = meta.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])
-    if spec_ngram_size_m > 0:
-        # Correct argument names for ngram-simple spec type in newer llama.cpp
-        cmd += ["--spec-ngram-simple-size-m", str(spec_ngram_size_m)]
-    
-    spec_ngram_min_hits = meta.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])
-    if spec_ngram_min_hits > 1:
-        cmd += ["--spec-ngram-simple-min-hits", str(spec_ngram_min_hits)]
+        
+        # Parse spec types (comma-separated)
+        spec_types = [t.strip() for t in spec_type.split(",") if t.strip()]
+        
+        # Determine which parameter groups are needed
+        has_draft_type = any(t.startswith("draft-") for t in spec_types)
+        has_ngram_type = any(t.startswith("ngram-") for t in spec_types)
+        
+        # Draft model parameters (used by draft-* types)
+        if has_draft_type:
+            spec_draft_model = meta.get("spec_draft_model", DEFAULTS["spec_draft_model"])
+            if spec_draft_model:
+                draft_path = resolve_model_path(spec_draft_model)
+                cmd += ["--spec-draft-model", convert_path_for_binary(draft_path)]
+            
+            spec_draft_hf_repo = meta.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])
+            if spec_draft_hf_repo:
+                cmd += ["--spec-draft-hf", spec_draft_hf_repo]
+            
+            spec_draft_n_max = meta.get("spec_draft_n_max", DEFAULTS["spec_draft_n_max"])
+            if spec_draft_n_max > 0:
+                cmd += ["--spec-draft-n-max", str(spec_draft_n_max)]
+            
+            spec_draft_n_min = meta.get("spec_draft_n_min", DEFAULTS["spec_draft_n_min"])
+            if spec_draft_n_min > 0:
+                cmd += ["--spec-draft-n-min", str(spec_draft_n_min)]
+            
+            spec_draft_p_split = meta.get("spec_draft_p_split", DEFAULTS["spec_draft_p_split"])
+            if spec_draft_p_split > 0:
+                cmd += ["--spec-draft-p-split", str(spec_draft_p_split)]
+            
+            spec_draft_p_min = meta.get("spec_draft_p_min", DEFAULTS["spec_draft_p_min"])
+            if spec_draft_p_min > 0:
+                cmd += ["--spec-draft-p-min", str(spec_draft_p_min)]
+            
+            spec_draft_ngl = meta.get("spec_draft_ngl", DEFAULTS["spec_draft_ngl"])
+            if spec_draft_ngl and spec_draft_ngl != "auto":
+                cmd += ["--spec-draft-ngl", str(spec_draft_ngl)]
+            
+            # Draft model sampling parameters
+            spec_draft_temp = meta.get("spec_draft_temp", DEFAULTS["spec_draft_temp"])
+            if spec_draft_temp > 0:
+                cmd += ["--spec-draft-temp", str(spec_draft_temp)]
+            
+            spec_draft_top_p = meta.get("spec_draft_top_p", DEFAULTS["spec_draft_top_p"])
+            if spec_draft_top_p < 1.0:
+                cmd += ["--spec-draft-top-p", str(spec_draft_top_p)]
+            
+            spec_draft_min_p = meta.get("spec_draft_min_p", DEFAULTS["spec_draft_min_p"])
+            if spec_draft_min_p > 0:
+                cmd += ["--spec-draft-min-p", str(spec_draft_min_p)]
+            
+            spec_draft_typical = meta.get("spec_draft_typical", DEFAULTS["spec_draft_typical"])
+            if spec_draft_typical < 1.0:
+                cmd += ["--spec-draft-typical", str(spec_draft_typical)]
+        
+        # Ngram parameters (used by ngram-* types)
+        if has_ngram_type:
+            spec_ngram_size_n = meta.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])
+            if spec_ngram_size_n > 0:
+                # Correct argument names for ngram-simple spec type in newer llama.cpp
+                cmd += ["--spec-ngram-simple-size-n", str(spec_ngram_size_n)]
+            
+            spec_ngram_size_m = meta.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])
+            if spec_ngram_size_m > 0:
+                # Correct argument names for ngram-simple spec type in newer llama.cpp
+                cmd += ["--spec-ngram-simple-size-m", str(spec_ngram_size_m)]
+            
+            spec_ngram_min_hits = meta.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])
+            if spec_ngram_min_hits > 1:
+                cmd += ["--spec-ngram-simple-min-hits", str(spec_ngram_min_hits)]
 
     log.info(f"Build command for {model}: {cmd}")
     return cmd
