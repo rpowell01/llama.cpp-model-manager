@@ -1,5 +1,5 @@
 """System operations: logs, shutdown, and hardware detection."""
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, render_template, current_app
 import threading
 import time
 import os
@@ -9,12 +9,23 @@ import re
 from logging import getLogger
 from gpu_detector import detect, GPUInfo
 
-from config import LOG_FILE
+from config import LOG_FILE, FLASK_PORT
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
 from state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
 
 system_bp = Blueprint("system", __name__)
 log = getLogger("llamaweb")
+
+
+@system_bp.route("/static/js/state.js")
+def serve_state_js():
+    """Serve state.js as a template to inject configuration variables."""
+    return render_template(
+        "state.js",
+        host=current_app.config.get("SERVER_HOST", "127.0.0.1"),
+        flask_port=current_app.config.get("FLASK_PORT", FLASK_PORT),
+        cache_version=current_app.config.get("CACHE_VERSION", "1"),
+    ), 200, {"Content-Type": "application/javascript"}
 
 
 def _detect_windows_gpu() -> list[dict]:
