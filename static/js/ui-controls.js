@@ -237,9 +237,15 @@ async function renderPanelProperties(data, modelName) {
 
   let html = "";
 
-  // Optimize Settings button at the top
+  // Action buttons (Start/Stop/Optimize) at the top
   html += `<div class="panel-section">
-    <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem;">
+    <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+      <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running ? "disabled" : ""}>
+        ▶ Start
+      </button>
+      <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
+        ■ Stop
+      </button>
       <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
         🔧 Optimize Settings for Hardware
       </button>
@@ -725,6 +731,68 @@ async function renderPanelProperties(data, modelName) {
       } finally {
         optimizeBtn.disabled = false;
         optimizeBtn.textContent = "🔧 Optimize Settings for Hardware";
+      }
+    });
+  }
+
+  // Attach start model button listener
+  const startBtn = document.getElementById(`start-model-${modelSafeId}`);
+  if (startBtn) {
+    startBtn.addEventListener("click", async () => {
+      startBtn.disabled = true;
+      startBtn.textContent = "▶ Starting…";
+      
+      try {
+        const resp = await fetch("/api/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelName }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+          throw new Error(result.error || "Failed to start model");
+        }
+        
+        // Refresh the panel after starting
+        selectModel(modelName);
+      } catch (err) {
+        console.error("Start failed", err);
+        alert(`Start failed: ${err.message}`);
+      } finally {
+        startBtn.disabled = false;
+        startBtn.textContent = "▶ Start";
+      }
+    });
+  }
+
+  // Attach stop model button listener
+  const stopBtn = document.getElementById(`stop-model-${modelSafeId}`);
+  if (stopBtn) {
+    stopBtn.addEventListener("click", async () => {
+      if (!confirm(`Stop model "${modelName}"?`)) return;
+      
+      stopBtn.disabled = true;
+      stopBtn.textContent = "■ Stopping…";
+      
+      try {
+        const resp = await fetch("/api/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelName }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+          throw new Error(result.error || "Failed to stop model");
+        }
+        
+        // Refresh the panel after stopping
+        selectModel(modelName);
+      } catch (err) {
+        console.error("Stop failed", err);
+        alert(`Stop failed: ${err.message}`);
+      } finally {
+        stopBtn.disabled = false;
+        stopBtn.textContent = "■ Stop";
       }
     });
   }
