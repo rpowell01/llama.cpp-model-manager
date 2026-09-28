@@ -347,7 +347,7 @@
     "grp_attn": true,
     "grp_attn_n": 256,
     "cache_quant": "q4_0",
-    "warmup_enabled": false,
+    "warmup_enabled": true,
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10
   },
