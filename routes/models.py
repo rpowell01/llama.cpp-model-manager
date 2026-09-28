@@ -23,7 +23,7 @@ def api_add_model():
     except ValueError:
         return jsonify({"error": "port and expected_size must be integers"}), 400
     success = add_model_entry(
-        name=data["name"].strip(),
+        name=data["name"].strip().lower(),
         repo=data["repo"].strip(),
         filename=data["filename"].strip(),
         expected_size=expected_size,
