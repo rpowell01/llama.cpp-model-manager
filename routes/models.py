@@ -179,9 +179,17 @@ def api_update_model_meta():
         "spec_draft_p_split": float,
         "spec_draft_p_min": float,
         "spec_draft_ngl": str,
+        "spec_draft_temp": float,
+        "spec_draft_top_p": float,
+        "spec_draft_min_p": float,
+        "spec_draft_typical": float,
         "spec_ngram_size_n": int,
         "spec_ngram_size_m": int,
         "spec_ngram_min_hits": int,
+        # Warmup parameters
+        "warmup_enabled": bool,
+        "warmup_message": str,
+        "warmup_max_tokens": int,
         # Intel/AMD GPU Options
         "sycl": bool,
         "grp_attn": bool,

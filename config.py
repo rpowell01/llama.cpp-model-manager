@@ -162,7 +162,7 @@ DEFAULTS: dict[str, Any] = {
     # Feature flags
     # Model warmup
     "warmup_enabled": False,
-    "warmup_message": "// TODO: add two numbers\ndef add(a, b):",
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
 }
 

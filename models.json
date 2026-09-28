@@ -53,7 +53,10 @@
     "spec_draft_temp": 0.0,
     "spec_draft_top_p": 1.0,
     "spec_draft_min_p": 0.0,
-    "spec_draft_typical": 1.0
+    "spec_draft_typical": 1.0,
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "sharp-spark-x2.5-4b-q6-k-xl": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/sharp-spark-x2.5-4b-q6-k-xl/Sharp-Spark-X2.5-4B-Q6_K_XL.gguf",
@@ -109,7 +112,10 @@
     "spec_draft_temp": 0.0,
     "spec_draft_top_p": 1.0,
     "spec_draft_min_p": 0.0,
-    "spec_draft_typical": 1.0
+    "spec_draft_typical": 1.0,
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "qwen3.5-9B-glm5.1-distill-v1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-glm5.1-distill-v1-q4-k-m/Qwen3.5-9B-GLM5.1-Distill-v1-Q4_K_M.gguf",
@@ -165,7 +171,10 @@
     "spec_draft_temp": 0.0,
     "spec_draft_top_p": 1.0,
     "spec_draft_min_p": 0.0,
-    "spec_draft_typical": 1.0
+    "spec_draft_typical": 1.0,
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "qwen3.6-14b-a3b-fablevibes-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.6-14b-a3b-fablevibes-q4-k-m/Qwen3.6-14B-A3B-FableVibes-Q4_K_M.gguf",
@@ -221,7 +230,10 @@
     "spec_draft_temp": 0.0,
     "spec_draft_top_p": 1.0,
     "spec_draft_min_p": 0.0,
-    "spec_draft_typical": 1.0
+    "spec_draft_typical": 1.0,
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "models": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-4B-DFlash.gguf",
@@ -277,7 +289,10 @@
     "spec_draft_temp": 0.0,
     "spec_draft_top_p": 1.0,
     "spec_draft_min_p": 0.0,
-    "spec_draft_typical": 1.0
+    "spec_draft_typical": 1.0,
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k/Qwen3.5-9B-Claude-4.6-HighIQ-THINKING-HERETIC-UNCENSORED.i1-Q6_K.gguf",
@@ -331,7 +346,10 @@
     "sycl": true,
     "grp_attn": true,
     "grp_attn_n": 256,
-    "cache_quant": "q4_0"
+    "cache_quant": "q4_0",
+    "warmup_enabled": false,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   },
   "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k/Qwen3.5-9B-Claude-4.6-HighIQ-THINKING-HERETIC-UNCENSORED.i1-Q6_K.gguf",
@@ -387,6 +405,9 @@
     "yarn_ext_factor": -1.0,
     "yarn_attn_factor": 1.0,
     "yarn_beta_slow": 1.0,
-    "yarn_beta_fast": 32.0
+    "yarn_beta_fast": 32.0,
+    "warmup_enabled": true,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10
   }
 }
