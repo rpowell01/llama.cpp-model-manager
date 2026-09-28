@@ -397,19 +397,6 @@ async function renderPanelProperties(data, modelName) {
     addEditable("Group Attention", "grp_attn", data.grp_attn, "checkbox");
     addEditable("Group Attention N", "grp_attn_n", data.grp_attn_n, "number", 1, 1);
     
-    // Cache Quantization dropdown
-    const cacheQuantVal = data.cache_quant || "";
-    let cacheQuantSelect = `<select class="meta-input" data-field="cache_quant">`;
-    ["", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "fp16", "fp8"].forEach((val) => {
-      const displayVal = val === "" ? "Default (auto)" : val;
-      cacheQuantSelect += `<option value="${val}" ${cacheQuantVal === val ? "selected" : ""}>${displayVal}</option>`;
-    });
-    cacheQuantSelect += `</select>`;
-    html += `<div class="panel-item">
-      <span class="label">Cache Quantization</span>
-      <span class="value">${cacheQuantSelect}</span>
-    </div>`;
-    
     html += `</div></div>`;
 
   // Context & RoPE/YaRN

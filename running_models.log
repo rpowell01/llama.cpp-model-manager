@@ -256,3 +256,16 @@
 {"time": "2026-09-28T01:49:26Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 29316, "status": "running"}
 {"time": "2026-09-28T02:38:39Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 21528, "status": "running"}
 {"time": "2026-09-28T02:43:58Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 29320, "status": "running"}
+{"time": "2026-09-28T02:51:04Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 34244, "status": "running"}
+{"time": "2026-09-28T02:57:55Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 33784, "status": "running"}
+{"time": "2026-09-28T13:18:28Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 38548, "status": "running"}
+{"time": "2026-09-28T13:35:56Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 46984, "status": "running"}
+{"time": "2026-09-28T13:59:26Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 2206, "status": "exited_early"}
+{"time": "2026-09-28T14:05:17Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 27260, "status": "running"}
+{"time": "2026-09-28T14:19:09Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 31856, "status": "running"}
+{"time": "2026-09-28T14:22:24Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 6312, "status": "running"}
+{"time": "2026-09-28T14:39:33Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 26352, "status": "running"}
+{"time": "2026-09-28T14:57:03Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 29088, "status": "running"}
+{"time": "2026-09-28T15:16:01Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 32432, "status": "running"}
+{"time": "2026-09-28T15:50:30Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 25983, "status": "exited_early"}
+{"time": "2026-09-28T16:00:48Z", "action": "start", "model": "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k", "port": 11000, "pid": 212, "status": "running"}

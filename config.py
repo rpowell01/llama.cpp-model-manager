@@ -158,7 +158,6 @@ DEFAULTS: dict[str, Any] = {
     "sycl": False,
     "grp_attn": False,
     "grp_attn_n": 8,
-    "cache_quant": "",
     # Feature flags
     # Model warmup
     "warmup_enabled": False,

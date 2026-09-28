@@ -220,7 +220,6 @@ def add_model_entry(
     sycl: bool = False,
     grp_attn: bool = False,
     grp_attn_n: int = 8,
-    cache_quant: str = "",
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
@@ -298,7 +297,6 @@ def add_model_entry(
             "sycl": sycl,
             "grp_attn": grp_attn,
             "grp_attn_n": grp_attn_n,
-            "cache_quant": cache_quant,
         }
         save_models(models)
         return True
@@ -456,7 +454,6 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "sycl": DEFAULTS["sycl"],
         "grp_attn": DEFAULTS["grp_attn"],
         "grp_attn_n": DEFAULTS["grp_attn_n"],
-        "cache_quant": DEFAULTS["cache_quant"],
     }
     for model in models.values():
         for field, default_value in default_fields.items():
@@ -528,7 +525,6 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],
                 "grp_attn_n": DEFAULTS["grp_attn_n"],
-                "cache_quant": DEFAULTS["cache_quant"],
                 "file_size_gb": file_size_gb,
                 "file_exists": True,
             }

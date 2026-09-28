@@ -74,7 +74,6 @@ def api_add_model():
         sycl=bool(data.get("sycl", DEFAULTS["sycl"])),
         grp_attn=bool(data.get("grp_attn", DEFAULTS["grp_attn"])),
         grp_attn_n=int(data.get("grp_attn_n", DEFAULTS["grp_attn_n"])),
-        cache_quant=str(data.get("cache_quant", DEFAULTS["cache_quant"])),
     )
     if not success:
         return jsonify({"error": f"Model '{data['name']}' already exists or failed to add"}), 409
@@ -194,7 +193,6 @@ def api_update_model_meta():
         "sycl": bool,
         "grp_attn": bool,
         "grp_attn_n": int,
-        "cache_quant": str,
     }
     changes = {}
     for field, typ in allowed_fields.items():
