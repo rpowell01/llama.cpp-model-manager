@@ -501,7 +501,8 @@ def warmup_model(port: int, message: str = "Hello", max_tokens: int = 10) -> boo
     for host in hosts_to_try:
         url = f"http://{host}:{port}/v1/chat/completions"
         try:
-            resp = requests.post(url, json=payload, timeout=10.0)
+            # Increased timeout to 30 seconds for slow model warmup (prompt processing + generation)
+            resp = requests.post(url, json=payload, timeout=30.0)
             if resp.status_code == 200:
                 log.info(f"Warmup successful for port {port} on {host}")
                 return True
