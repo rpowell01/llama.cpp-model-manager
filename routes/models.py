@@ -22,8 +22,10 @@ def api_add_model():
         expected_size = int(data["expected_size"])
     except ValueError:
         return jsonify({"error": "port and expected_size must be integers"}), 400
+    # Normalize name: lowercase and replace spaces with hyphens for consistency with filesystem
+    normalized_name = data["name"].strip().lower().replace(" ", "-")
     success = add_model_entry(
-        name=data["name"].strip().lower(),
+        name=normalized_name,
         repo=data["repo"].strip(),
         filename=data["filename"].strip(),
         expected_size=expected_size,
@@ -76,8 +78,8 @@ def api_add_model():
         grp_attn_n=int(data.get("grp_attn_n", DEFAULTS["grp_attn_n"])),
     )
     if not success:
-        return jsonify({"error": f"Model '{data['name']}' already exists or failed to add"}), 409
-    return jsonify({"status": "model added", "name": data["name"]})
+        return jsonify({"error": f"Model '{normalized_name}' already exists or failed to add"}), 409
+    return jsonify({"status": "model added", "name": normalized_name})
 
 
 @models_bp.route("/api/delete-model", methods=["POST"])

@@ -309,10 +309,11 @@ def delete_model_entry(name: str, delete_files: bool = False) -> bool:
     """Remove model from models.json and optionally delete its files."""
     try:
         models = get_models()
-        # Case-insensitive lookup
+        # Normalize name for lookup (lowercase + spaces to hyphens)
+        normalized_name = name.lower().replace(" ", "-")
         model_key = None
         for k in models:
-            if k.lower() == name.lower():
+            if k.lower().replace(" ", "-") == normalized_name:
                 model_key = k
                 break
         if model_key is None:
@@ -363,10 +364,11 @@ def load_models_cache() -> None:
     # Merge with filesystem scan
     filesystem_models = scan_models_directory()
     for model_name, fs_meta in filesystem_models.items():
-        # Case-insensitive lookup for existing model
+        # Normalize names for comparison (lowercase + spaces to hyphens)
+        normalized_fs_name = model_name.lower().replace(" ", "-")
         existing_key = None
         for key in models:
-            if key.lower() == model_name.lower():
+            if key.lower().replace(" ", "-") == normalized_fs_name:
                 existing_key = key
                 break
 
