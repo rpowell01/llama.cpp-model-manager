@@ -160,6 +160,10 @@ DEFAULTS: dict[str, Any] = {
     "grp_attn_n": 8,
     "cache_quant": "",
     # Feature flags
+    # Model warmup
+    "warmup_enabled": False,
+    "warmup_message": "// TODO: add two numbers\ndef add(a, b):",
+    "warmup_max_tokens": 10,
 }
 
 # Flask server port (set by main.py at runtime)

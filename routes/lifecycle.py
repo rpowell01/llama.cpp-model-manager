@@ -15,6 +15,7 @@ from processes import (
     _kill_tree,
     check_port_active,
     _check_model_ready,
+    warmup_model,
     build_cmd,
     pids_of_llama,
 )
@@ -252,6 +253,10 @@ def api_start():
             "spec_ngram_size_n": getattr(model_dict, 'spec_ngram_size_n', 12),
             "spec_ngram_size_m": getattr(model_dict, 'spec_ngram_size_m', 48),
             "spec_ngram_min_hits": getattr(model_dict, 'spec_ngram_min_hits', 1),
+            # Warmup parameters
+            "warmup_enabled": getattr(model_dict, 'warmup_enabled', False),
+            "warmup_message": getattr(model_dict, 'warmup_message', 'Hello'),
+            "warmup_max_tokens": getattr(model_dict, 'warmup_max_tokens', 10),
         }
 
         # Check if already running
@@ -354,6 +359,19 @@ def api_start():
                     with _wsl_pids_lock:
                         _wsl_pids[model] = windows_pid
                     pid = windows_pid
+
+            # Run warmup if enabled
+            if meta.get("warmup_enabled", False):
+                warmup_message = meta.get("warmup_message", "Hello")
+                warmup_max_tokens = meta.get("warmup_max_tokens", 10)
+                log.info(f"Running warmup for {model} on port {port}")
+                add_log_entry(f"🔥 Warmup: {model} on port {port}", "yellow")
+                warmup_success = warmup_model(port, warmup_message, warmup_max_tokens)
+                if warmup_success:
+                    add_log_entry(f"✓ Warmup successful: {model}", "green")
+                else:
+                    add_log_entry(f"⚠ Warmup failed: {model}", "orange")
+
             log.info(f"Start successful: model={model}, pid={pid}, port={port}, is_running={is_running}")
             log_event("start", model, port, pid, "running")
             return jsonify({"status": "running", "pid": pid, "port": port})

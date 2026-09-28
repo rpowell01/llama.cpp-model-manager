@@ -107,6 +107,10 @@ class Model:
     spec_ngram_size_n: int = 12
     spec_ngram_size_m: int = 48
     spec_ngram_min_hits: int = 1
+    # Warmup parameters
+    warmup_enabled: bool = False
+    warmup_message: str = "Hello"
+    warmup_max_tokens: int = 10
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -167,6 +171,10 @@ class Model:
             spec_ngram_size_n=data.get("spec_ngram_size_n", 12),
             spec_ngram_size_m=data.get("spec_ngram_size_m", 48),
             spec_ngram_min_hits=data.get("spec_ngram_min_hits", 1),
+            # Warmup
+            warmup_enabled=data.get("warmup_enabled", False),
+            warmup_message=data.get("warmup_message", "Hello"),
+            warmup_max_tokens=data.get("warmup_max_tokens", 10),
         )
 
 

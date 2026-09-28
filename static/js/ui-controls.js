@@ -512,6 +512,11 @@ async function renderPanelProperties(data, modelName) {
     addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);
     addEditable("Ngram Min Hits", "spec_ngram_min_hits", data.spec_ngram_min_hits, "number", 1, 1);
     
+    // Warmup settings
+    addEditable("Enable Warmup", "warmup_enabled", data.warmup_enabled, "checkbox");
+    addEditable("Warmup Message", "warmup_message", data.warmup_message, "text");
+    addEditable("Warmup Max Tokens", "warmup_max_tokens", data.warmup_max_tokens, "number", 1, 1);
+    
     html += `</div></div>`;
 
   // Agent/Tool Parameters
@@ -608,7 +613,8 @@ async function renderPanelProperties(data, modelName) {
           "spec_draft_n_max", "spec_draft_n_min", "spec_draft_p_split",
           "spec_draft_p_min", "spec_ngram_size_n", "spec_ngram_size_m",
           "spec_ngram_min_hits",
-          "grp_attn_n"
+          "grp_attn_n",
+          "warmup_max_tokens"
         ];
         if (numericFields.includes(field)) {
           value = Number(value);

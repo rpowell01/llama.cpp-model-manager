@@ -468,6 +468,55 @@ def _check_model_ready(port: int) -> bool:
 
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
+def warmup_model(port: int, message: str = "Hello", max_tokens: int = 10) -> bool:
+    """Send a warmup request to the model to verify it's responsive and prime KV cache.
+    
+    Args:
+        port: The port the model is running on
+        message: The message to send for warmup
+        max_tokens: Maximum tokens to generate in response
+        
+    Returns:
+        True if warmup succeeded, False otherwise
+    """
+    _validate_local_mode()
+    
+    # Determine hosts to try - in WSL+Windows mode, try multiple options
+    hosts_to_try = []
+    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        wsl_host = get_server_host()
+        if wsl_host and wsl_host != "127.0.0.1":
+            hosts_to_try.append(wsl_host)
+        hosts_to_try.append("127.0.0.1")
+    else:
+        hosts_to_try.append(get_server_host())
+
+    payload = {
+        "model": "default",
+        "messages": [{"role": "user", "content": message}],
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+
+    for host in hosts_to_try:
+        url = f"http://{host}:{port}/v1/chat/completions"
+        try:
+            resp = requests.post(url, json=payload, timeout=10.0)
+            if resp.status_code == 200:
+                log.info(f"Warmup successful for port {port} on {host}")
+                return True
+            else:
+                log.warning(f"Warmup returned {resp.status_code} for {url}: {resp.text[:200]}")
+        except Exception as e:
+            log.debug(f"Warmup failed for {url}: {e}")
+            continue
+
+    log.warning(f"Warmup failed for port {port} on all hosts")
+    return False
+
+
+# REMOTE_MODE: This function is for LOCAL mode only.
+# In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()

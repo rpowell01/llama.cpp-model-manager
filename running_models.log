@@ -240,3 +240,17 @@
 {"time": "2026-09-27T19:21:38Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 42012, "status": "running"}
 {"time": "2026-09-27T19:41:43Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 29180, "status": "running"}
 {"time": "2026-09-27T20:04:07Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 24340, "status": "running"}
+{"time": "2026-09-27T20:52:13Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 558989, "status": "exited_early"}
+{"time": "2026-09-27T20:53:41Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 37040, "status": "running"}
+{"time": "2026-09-27T20:56:25Z", "action": "start", "model": "qwen3.6-14b-a3b-fablevibes-q4-k-m", "port": 11070, "pid": 560648, "status": "exited_early"}
+{"time": "2026-09-27T21:17:58Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 22356, "status": "running"}
+{"time": "2026-09-27T23:29:16Z", "action": "download", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 0, "pid": null, "status": "completed (7359260992 bytes)"}
+{"time": "2026-09-27T23:35:21Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 597649, "status": "exited_early"}
+{"time": "2026-09-27T23:47:25Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 2536, "status": "exited_early"}
+{"time": "2026-09-28T00:07:28Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 8173, "status": "exited_early"}
+{"time": "2026-09-28T01:15:32Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 32648, "status": "running"}
+{"time": "2026-09-28T01:17:17Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 27303, "status": "exited_early"}
+{"time": "2026-09-28T01:20:05Z", "action": "start", "model": "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k", "port": 11040, "pid": 31692, "status": "running"}
+{"time": "2026-09-28T01:21:48Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 29815, "status": "exited_early"}
+{"time": "2026-09-28T01:23:58Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 25244, "status": "running"}
+{"time": "2026-09-28T01:49:26Z", "action": "start", "model": "Qwen3.5 9B Claude 4.6 HighIQ THINKING HERETIC UNCENSORED.i1 Q6 K", "port": 11000, "pid": 29316, "status": "running"}

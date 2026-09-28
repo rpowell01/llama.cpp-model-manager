@@ -212,6 +212,10 @@ def add_model_entry(
     spec_ngram_size_n: int = 12,
     spec_ngram_size_m: int = 48,
     spec_ngram_min_hits: int = 1,
+    # Warmup parameters
+    warmup_enabled: bool = False,
+    warmup_message: str = "Hello",
+    warmup_max_tokens: int = 10,
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -286,6 +290,10 @@ def add_model_entry(
             "spec_ngram_size_n": spec_ngram_size_n,
             "spec_ngram_size_m": spec_ngram_size_m,
             "spec_ngram_min_hits": spec_ngram_min_hits,
+            # Warmup parameters
+            "warmup_enabled": warmup_enabled,
+            "warmup_message": warmup_message,
+            "warmup_max_tokens": warmup_max_tokens,
             # Intel/AMD GPU Options
             "sycl": sycl,
             "grp_attn": grp_attn,
@@ -440,6 +448,10 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "spec_ngram_size_n": DEFAULTS["spec_ngram_size_n"],
         "spec_ngram_size_m": DEFAULTS["spec_ngram_size_m"],
         "spec_ngram_min_hits": DEFAULTS["spec_ngram_min_hits"],
+        # Warmup parameters
+        "warmup_enabled": DEFAULTS["warmup_enabled"],
+        "warmup_message": DEFAULTS["warmup_message"],
+        "warmup_max_tokens": DEFAULTS["warmup_max_tokens"],
         # Intel/AMD GPU Options
         "sycl": DEFAULTS["sycl"],
         "grp_attn": DEFAULTS["grp_attn"],
@@ -508,6 +520,10 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "spec_ngram_size_n": DEFAULTS["spec_ngram_size_n"],
                 "spec_ngram_size_m": DEFAULTS["spec_ngram_size_m"],
                 "spec_ngram_min_hits": DEFAULTS["spec_ngram_min_hits"],
+                # Warmup defaults
+                "warmup_enabled": DEFAULTS["warmup_enabled"],
+                "warmup_message": DEFAULTS["warmup_message"],
+                "warmup_max_tokens": DEFAULTS["warmup_max_tokens"],
                 # Intel/AMD GPU Options
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],
