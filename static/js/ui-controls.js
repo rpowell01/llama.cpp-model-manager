@@ -187,6 +187,19 @@ function renderTiles(rows, dlMap, query) {
         portCell +
         "</div>" +
         "</div>" +
+        (r.comment ? `<div class="tile-rating" title="${he(r.comment)}" data-model="${he(r.model)}">
+          <span class="rating-stars">
+            <span class="star ${r.rating_speed >= 1 ? 'filled' : ''}">★</span>
+            <span class="star ${r.rating_speed >= 2 ? 'filled' : ''}">★</span>
+            <span class="star ${r.rating_speed >= 3 ? 'filled' : ''}">★</span>
+            <span class="star ${r.rating_speed >= 4 ? 'filled' : ''}">★</span>
+            <span class="star ${r.rating_speed >= 5 ? 'filled' : ''}">★</span>
+          </span>
+          <div class="rating-labels">
+            <span class="rating-value speed">Speed: ${r.rating_speed || '-'}</span>
+            <span class="rating-value coding">Coding: ${r.rating_coding || '-'}</span>
+          </div>
+        </div>` : "") +
         '<div class="tile-actions actions">' +
         dlHtml +
         ' <button class="run" onclick="act(\'' +
@@ -538,6 +551,67 @@ async function renderPanelProperties(data, modelName) {
   // Hugging Face Metadata section
   html += `<div class="panel-section">
     <h3>Model Information</h3>`;
+
+  if (!data.repo) {
+    html += `<div id="hf-metadata-missing" style="text-align: center; padding: 1rem 0;">
+       <p style="margin-bottom: 0.75rem; color: var(--muted);">Hugging Face repository not configured.</p>
+       <button id="hf-find-btn-${modelSafeId}" class="btn-primary" data-model="${modelName}">Find on Hugging Face</button>
+       <div id="hf-search-status-${modelSafeId}" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted);"></div>
+     </div>`;
+  }
+
+  html += `
+    <div id="hf-metadata-loading" class="loading" style="display: none;">Loading Hugging Face data...</div>
+    <div id="hf-metadata-content" style="display: none;"></div>
+    <div id="hf-metadata-error" class="error" style="display: none;"></div>
+  </div>`;
+
+  // User Ratings & Comments section
+  html += `<div class="panel-section">
+    <h3>User Ratings & Comments</h3>
+    <div class="panel-grid">`;
+  
+  // Speed rating (1-5 stars) with editable input
+  const speedVal = data.rating_speed;
+  let speedStars = '';
+  for (let i = 1; i <= 5; i++) {
+    speedStars += `<span class="${i <= speedVal ? 'filled' : ''}">★</span>`;
+  }
+  html += `<div class="rating-row">
+    <span class="label">Speed Rating:</span>
+    <div class="rating-input">
+      ${speedStars}
+    </div>
+    <input type="number" min="1" max="5" value="${speedVal || 0}" 
+      class="meta-input" data-field="rating_speed" 
+      style="width: 50px; text-align: center;" title="Speed rating">
+  </div>`;
+  
+  // Coding rating (1-5 stars) with editable input
+  const codingVal = data.rating_coding;
+  let codingStars = '';
+  for (let i = 1; i <= 5; i++) {
+    codingStars += `<span class="${i <= codingVal ? 'filled' : ''}">★</span>`;
+  }
+  html += `<div class="rating-row">
+    <span class="label">Coding Skills Rating:</span>
+    <div class="rating-input">
+      ${codingStars}
+    </div>
+    <input type="number" min="1" max="5" value="${codingVal || 0}" 
+      class="meta-input" data-field="rating_coding" 
+      style="width: 50px; text-align: center;" title="Coding rating">
+  </div>`;
+  
+    // Comment text area
+    html += `<div class="rating-row full-width">
+      <label for="model-comment-${modelSafeId}" class="label">Your Comments:</label>
+      <textarea id="model-comment-${modelSafeId}" 
+        class="meta-input text" 
+        data-field="comment" 
+        rows="3" 
+        placeholder="Share your thoughts about this model...">${he(data.comment || "")}</textarea>
+    </div>`;
 
   if (!data.repo) {
     html += `<div id="hf-metadata-missing" style="text-align: center; padding: 1rem 0;">

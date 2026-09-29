@@ -293,6 +293,10 @@ def add_model_entry(
             "warmup_enabled": warmup_enabled,
             "warmup_message": warmup_message,
             "warmup_max_tokens": warmup_max_tokens,
+            # User rating fields
+            "comment": "",
+            "rating_speed": 0,
+            "rating_coding": 0,
             # Intel/AMD GPU Options
             "sycl": sycl,
             "grp_attn": grp_attn,

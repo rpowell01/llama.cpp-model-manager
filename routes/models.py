@@ -191,6 +191,10 @@ def api_update_model_meta():
         "warmup_enabled": bool,
         "warmup_message": str,
         "warmup_max_tokens": int,
+        # User rating fields
+        "comment": str,
+        "rating_speed": int,
+        "rating_coding": int,
         # Intel/AMD GPU Options
         "sycl": bool,
         "grp_attn": bool,
@@ -213,6 +217,30 @@ def api_update_model_meta():
                 changes[field] = value
             except Exception as e:
                 return jsonify({"error": f"Invalid value for {field}: {value}"}), 400
+
+    # Validate rating fields are within 1-5 range
+    for field in ("rating_speed", "rating_coding"):
+        if field in data:
+            val = data[field]
+            try:
+                val_int = int(val)
+            except (TypeError, ValueError):
+                return jsonify({"error": f"Invalid rating value for {field}: must be an integer 1-5"}), 400
+            if val_int < 1 or val_int > 5:
+                return jsonify({"error": f"Rating {field} must be between 1 and 5"}), 400
+            meta[field] = val_int
+
+    # Validate comment length (max 500 chars)
+    if "comment" in data:
+        comment = data["comment"]
+        if not isinstance(comment, str):
+            try:
+                comment = str(comment)
+            except:
+                return jsonify({"error": "Comment must be a string"}), 400
+        if len(comment) > 500:
+            return jsonify({"error": "Comment too long (max 500 characters)"}), 400
+        meta["comment"] = comment
 
     save_models(models)
     log.info(f"Updated model {model} meta: {changes}")

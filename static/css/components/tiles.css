@@ -55,3 +55,68 @@
   flex-wrap: wrap;
   margin-top: 0.1rem;
 }
+
+/* Tile rating display */
+.tile-rating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--surface2);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.rating-stars {
+  color: #ffc107;
+  font-size: 1.1rem;
+  letter-spacing: 2px;
+}
+
+.rating-stars .star {
+  color: var(--surface2);
+}
+
+.rating-stars .star.filled {
+  color: #ffc107;
+}
+
+.rating-labels {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--text2);
+}
+
+.rating-value {
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-primary);
+  border-radius: 4px;
+}
+
+/* Rating input in properties panel */
+.rating-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rating-row .label {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.rating-row input[type="number"] {
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--surface2);
+  background: var(--bg-primary);
+  color: var(--text);
+}
+
+.rating-row input[type="number"]:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}

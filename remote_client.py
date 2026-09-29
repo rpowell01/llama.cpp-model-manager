@@ -111,6 +111,10 @@ class Model:
     warmup_enabled: bool = False
     warmup_message: str = "Hello"
     warmup_max_tokens: int = 10
+    # User ratings and comments
+    comment: str = ""
+    rating_speed: int = 0  # 1-5 stars
+    rating_coding: int = 0  # 1-5 stars
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -175,6 +179,10 @@ class Model:
             warmup_enabled=data.get("warmup_enabled", False),
             warmup_message=data.get("warmup_message", "Hello"),
             warmup_max_tokens=data.get("warmup_max_tokens", 10),
+            # User ratings and comments
+            comment=data.get("comment", ""),
+            rating_speed=data.get("rating_speed", 0),
+            rating_coding=data.get("rating_coding", 0),
         )
 
 
