@@ -285,6 +285,24 @@ def api_start():
         cmd = build_cmd(model, port, meta)
         env = os.environ.copy()
 
+        # Purge Windows standby list before starting model to free up RAM
+        # Only on Windows (not WSL) when running Windows binary
+        if WINDOWS and not WSL:
+            try:
+                from utils import purge_windows_standby_list, set_process_working_set_size
+                success, msg = purge_windows_standby_list()
+                if success:
+                    log.info(f"Memory purge: {msg}")
+                    add_log_entry(f"🧹 Memory purge: {msg}", "green")
+                else:
+                    log.warning(f"Memory purge skipped: {msg}")
+                    # Fallback: trim current process working set
+                    success2, msg2 = set_process_working_set_size()
+                    if success2:
+                        log.info(f"Working set trim: {msg2}")
+            except Exception as e:
+                log.warning(f"Memory purge error: {e}")
+
         # Launch process
         cmd_str = ' '.join(cmd)
         log.info(f"Starting model {model}: {cmd_str}")

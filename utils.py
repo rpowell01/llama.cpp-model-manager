@@ -57,3 +57,138 @@ def estimate_gguf_size(model_id: str, filename: str) -> int:
     total_params = param_count * 1_000_000_000
     estimated_size = int(total_params * bpc)
     return estimated_size
+
+
+def purge_windows_standby_list() -> tuple[bool, str]:
+    """
+    Purge the Windows standby list (cached memory) to free up physical RAM.
+    
+    This uses the undocumented NtSetSystemInformation API which requires
+    Administrator privileges and the SeProfileSingleProcessPrivilege.
+    
+    Returns:
+        (success, message): success is True if purge succeeded, message contains details
+    """
+    import sys
+    if sys.platform != "win32":
+        return False, "Not running on Windows"
+    
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        ntdll = ctypes.WinDLL("ntdll")
+        
+        # SystemMemoryListInformation = 80 (undocumented)
+        SystemMemoryListInformation = 80
+        # MemoryPurgeStandbyList = 4
+        MemoryPurgeStandbyList = 4
+        
+        class SYSTEM_MEMORY_LIST_COMMAND(ctypes.Structure):
+            _fields_ = [("command", ctypes.c_int)]
+        
+        cmd = SYSTEM_MEMORY_LIST_COMMAND(MemoryPurgeStandbyList)
+        
+        # NtSetSystemInformation prototype:
+        # NTSTATUS NtSetSystemInformation(
+        #   SYSTEM_INFORMATION_CLASS SystemInformationClass,
+        #   PVOID SystemInformation,
+        #   ULONG SystemInformationLength
+        # )
+        NtSetSystemInformation = ntdll.NtSetSystemInformation
+        NtSetSystemInformation.argtypes = [
+            wintypes.ULONG,  # SystemInformationClass
+            ctypes.c_void_p,  # SystemInformation
+            wintypes.ULONG    # SystemInformationLength
+        ]
+        NtSetSystemInformation.restype = wintypes.LONG  # NTSTATUS
+        
+        status = NtSetSystemInformation(
+            SystemMemoryListInformation,
+            ctypes.byref(cmd),
+            ctypes.sizeof(cmd)
+        )
+        
+        # NTSTATUS success codes are >= 0
+        if status >= 0:
+            return True, f"Standby list purged successfully (status=0x{status:X})"
+        else:
+            # Common error codes:
+            # 0xC0000022 = STATUS_ACCESS_DENIED (needs admin)
+            # 0xC000000D = STATUS_INVALID_PARAMETER
+            return False, f"NtSetSystemInformation failed with status 0x{status:X}"
+            
+    except PermissionError:
+        return False, "Permission denied - requires Administrator privileges"
+    except AttributeError as e:
+        return False, f"API not available: {e}"
+    except Exception as e:
+        return False, f"Error purging standby list: {e}"
+
+
+def set_process_working_set_size() -> tuple[bool, str]:
+    """
+    Alternative: Trim the current process working set.
+    This is a documented API that doesn't require admin but only affects
+    the current process, not system-wide memory.
+    """
+    import sys
+    if sys.platform != "win32":
+        return False, "Not running on Windows"
+    
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        kernel32 = ctypes.WinDLL("kernel32")
+        
+        # GetCurrentProcess pseudo-handle
+        GetCurrentProcess = kernel32.GetCurrentProcess
+        GetCurrentProcess.restype = wintypes.HANDLE
+        
+        # SetProcessWorkingSetSizeEx (Windows 8.1+) or SetProcessWorkingSetSize
+        # Flags for SetProcessWorkingSetSizeEx:
+        # QUOTA_LIMITS_HARDWS_MIN_ENABLE = 0x00000001
+        # QUOTA_LIMITS_HARDWS_MAX_ENABLE = 0x00000004
+        
+        if hasattr(kernel32, 'SetProcessWorkingSetSizeEx'):
+            SetProcessWorkingSetSizeEx = kernel32.SetProcessWorkingSetSizeEx
+            SetProcessWorkingSetSizeEx.argtypes = [
+                wintypes.HANDLE,
+                ctypes.c_size_t,
+                ctypes.c_size_t,
+                wintypes.DWORD
+            ]
+            SetProcessWorkingSetSizeEx.restype = wintypes.BOOL
+            
+            # Use -1 for both min/max to trim to minimum
+            result = SetProcessWorkingSetSizeEx(
+                GetCurrentProcess(),
+                ctypes.c_size_t(-1),
+                ctypes.c_size_t(-1),
+                0
+            )
+        else:
+            # Older API
+            SetProcessWorkingSetSize = kernel32.SetProcessWorkingSetSize
+            SetProcessWorkingSetSize.argtypes = [
+                wintypes.HANDLE,
+                ctypes.c_size_t,
+                ctypes.c_size_t
+            ]
+            SetProcessWorkingSetSize.restype = wintypes.BOOL
+            
+            result = SetProcessWorkingSetSize(
+                GetCurrentProcess(),
+                ctypes.c_size_t(-1),
+                ctypes.c_size_t(-1)
+            )
+        
+        if result:
+            return True, "Process working set trimmed"
+        else:
+            error = ctypes.GetLastError()
+            return False, f"SetProcessWorkingSetSize failed with error {error}"
+            
+    except Exception as e:
+        return False, f"Error trimming working set: {e}"
