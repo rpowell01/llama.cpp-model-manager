@@ -108,6 +108,23 @@ function calculateDerivedMetrics(metrics) {
     result.tokens_per_sec = metrics['llamacpp:predicted_tokens_seconds'].toFixed(1);
   }
   
+  // Speculative decoding metrics
+  const draftTokens = metrics['llamacpp:spec_decode_num_draft_tokens_total'] || 0;
+  const acceptedTokens = metrics['llamacpp:spec_decode_num_accepted_tokens_total'] || 0;
+  const drafts = metrics['llamacpp:spec_decode_num_drafts_total'] || 0;
+  
+  if (draftTokens > 0) {
+    result.spec_draft_tokens_total = draftTokens;
+    result.spec_accepted_tokens_total = acceptedTokens;
+    result.spec_drafts_total = drafts;
+    result.spec_acceptance_rate = (acceptedTokens / draftTokens * 100).toFixed(1);
+    result.spec_avg_draft_len = (draftTokens / drafts).toFixed(1);
+    // Speedup = 1 / (1 - acceptance_rate) approximately
+    // More accurately: tokens generated per decode step = 1 + accepted_per_step
+    const acceptedPerStep = acceptedTokens / drafts;
+    result.spec_speedup = (1 + acceptedPerStep).toFixed(2);
+  }
+  
   // Also include raw totals for reference
   result.prompt_tokens_total = metrics['llamacpp:prompt_tokens_total'] || 0;
   result.prompt_seconds_total = metrics['llamacpp:prompt_seconds_total'] || 0;
@@ -151,6 +168,24 @@ function formatMetricsTooltip(metrics) {
     }
     if (metrics.tokens_predicted_total) {
       lines.push(`<div>Generated Tokens (total): ${metrics.tokens_predicted_total}</div>`);
+    }
+  }
+  
+  // Speculative decoding metrics
+  if (metrics.spec_draft_tokens_total && metrics.spec_draft_tokens_total > 0) {
+    lines.push('<div class="metric-separator"></div>');
+    lines.push(`<div><span class="metric-label">Speculative Decoding:</span></div>`);
+    if (metrics.spec_acceptance_rate !== undefined) {
+      lines.push(`<div><span class="metric-label">Acceptance Rate:</span> <span class="metric-value">${metrics.spec_acceptance_rate}%</span></div>`);
+    }
+    if (metrics.spec_avg_draft_len !== undefined) {
+      lines.push(`<div><span class="metric-label">Avg Draft Length:</span> <span class="metric-value">${metrics.spec_avg_draft_len} tokens</span></div>`);
+    }
+    if (metrics.spec_speedup !== undefined) {
+      lines.push(`<div><span class="metric-label">Est. Speedup:</span> <span class="metric-value">${metrics.spec_speedup}x</span></div>`);
+    }
+    if (metrics.spec_draft_tokens_total) {
+      lines.push(`<div>Draft Tokens: ${metrics.spec_draft_tokens_total} | Accepted: ${metrics.spec_accepted_tokens_total}</div>`);
     }
   }
   
