@@ -135,7 +135,7 @@
 }
 
 .metrics-tooltip-popup .metrics-tooltip {
-  background: var(--surface);
+  background: var(--bg-primary);
   border: 1px solid var(--surface2);
   border-radius: 6px;
   padding: 0.75rem 1rem;
@@ -165,4 +165,18 @@
   border-top: 1px solid var(--surface2);
   margin: 0.4rem 0;
   padding: 0;
+}
+
+/* Highlight average/current labels */
+.metrics-tooltip .metric-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.metrics-tooltip .metric-value {
+  color: var(--blue);
+  font-family: monospace;
+}
+.metrics-tooltip .metric-separator {
+  border-top: 1px solid var(--surface2);
+  margin: 0.4rem 0;
 }

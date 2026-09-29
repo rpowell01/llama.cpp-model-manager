@@ -127,27 +127,30 @@ function formatMetricsTooltip(metrics) {
   
   const lines = [];
   
+  // Prompt processing metrics
   if (metrics.prompt_eval_time_ms) {
-    lines.push(`Prompt Eval Time: ${metrics.prompt_eval_time_ms} ms/token`);
+    lines.push(`<div><span class="metric-label">Avg Prompt Eval Time:</span> <span class="metric-value">${metrics.prompt_eval_time_ms} ms/token</span></div>`);
   }
   if (metrics.prompt_eval_rate) {
-    lines.push(`Prompt Eval Rate: ${metrics.prompt_eval_rate} tokens/s`);
+    lines.push(`<div><span class="metric-label">Avg Prompt Eval Rate:</span> <span class="metric-value">${metrics.prompt_eval_rate} tokens/s</span></div>`);
   }
+  
+  // Generation metrics
   if (metrics.eval_time_ms) {
-    lines.push(`Eval Time: ${metrics.eval_time_ms} ms/token`);
+    lines.push(`<div><span class="metric-label">Avg Gen Eval Time:</span> <span class="metric-value">${metrics.eval_time_ms} ms/token</span></div>`);
   }
   if (metrics.tokens_per_sec) {
-    lines.push(`Generation Rate: ${metrics.tokens_per_sec} tokens/s`);
+    lines.push(`<div><span class="metric-label">Avg Gen Rate:</span> <span class="metric-value">${metrics.tokens_per_sec} tokens/s</span></div>`);
   }
   
   // Add totals
   if (metrics.prompt_tokens_total || metrics.tokens_predicted_total) {
-    lines.push('---');
+    lines.push('<div class="metric-separator"></div>');
     if (metrics.prompt_tokens_total) {
-      lines.push(`Prompt Tokens: ${metrics.prompt_tokens_total}`);
+      lines.push(`<div>Prompt Tokens (total): ${metrics.prompt_tokens_total}</div>`);
     }
     if (metrics.tokens_predicted_total) {
-      lines.push(`Generated Tokens: ${metrics.tokens_predicted_total}`);
+      lines.push(`<div>Generated Tokens (total): ${metrics.tokens_predicted_total}</div>`);
     }
   }
   
@@ -155,7 +158,7 @@ function formatMetricsTooltip(metrics) {
     return '<div class="metrics-tooltip">No metrics available</div>';
   }
   
-  return '<div class="metrics-tooltip">' + lines.map(l => `<div>${l}</div>`).join('') + '</div>';
+  return '<div class="metrics-tooltip">' + lines.join('') + '</div>';
 }
 
 /**
