@@ -1,5 +1,10 @@
 import subprocess
 import platform
+import os
+
+# Path to the EmptyStandbyList.exe utility
+EMPTY_STANDBY_LIST_EXE = os.path.join(os.path.dirname(__file__), "util", "EmptyStandbyList.exe")
+
 
 def estimate_gguf_size(model_id: str, filename: str) -> int:
     """
@@ -62,18 +67,15 @@ def estimate_gguf_size(model_id: str, filename: str) -> int:
     return estimated_size
 
 
-def purge_windows_standby_list() -> tuple[bool, str]:
+def _purge_with_utility(list_type: str = "standbylist") -> tuple[bool, str]:
     """
-    Purge the Windows standby list (cached memory) to free up physical RAM.
+    Purge Windows memory using the EmptyStandbyList.exe utility.
     
-    This uses the undocumented NtSetSystemInformation API which requires
-    Administrator privileges and the SeProfileSingleProcessPrivilege.
-    
-    On native Windows: calls NtSetSystemInformation directly via ctypes
-    On WSL: executes a PowerShell command that calls the Windows API
+    Args:
+        list_type: One of 'standbylist', 'modifiedpagelist', 'priority0standbylist', 'workingsets'
     
     Returns:
-        (success, message): success is True if purge succeeded, message contains details
+        (success, message)
     """
     import sys
     import platform
@@ -92,12 +94,76 @@ def purge_windows_standby_list() -> tuple[bool, str]:
     if not is_windows and not is_wsl:
         return False, "Not running on Windows or WSL"
     
-    if is_windows:
-        # Native Windows: direct ctypes call
-        return _purge_standby_native()
-    else:
-        # WSL: execute PowerShell command
-        return _purge_standby_wsl()
+    # Check if utility exists
+    if not os.path.exists(EMPTY_STANDBY_LIST_EXE):
+        return False, f"Utility not found: {EMPTY_STANDBY_LIST_EXE}"
+    
+    try:
+        # On WSL, need to run via Windows subsystem
+        if is_wsl:
+            cmd = [EMPTY_STANDBY_LIST_EXE, list_type]
+        else:
+            cmd = [EMPTY_STANDBY_LIST_EXE, list_type]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode == 0:
+            return True, f"Memory purge ({list_type}) succeeded: {result.stdout.strip()}"
+        else:
+            # Check for privilege error
+            stderr_lower = result.stderr.lower()
+            if "privilege" in stderr_lower or "admin" in stderr_lower:
+                return False, f"Privilege error: {result.stderr.strip()} (run as Administrator)"
+            return False, f"Utility failed (exit {result.returncode}): {result.stderr.strip()}"
+            
+    except subprocess.TimeoutExpired:
+        return False, "Utility timed out"
+    except Exception as e:
+        return False, f"Error running utility: {e}"
+
+
+def purge_windows_standby_list(list_type: str = "standbylist") -> tuple[bool, str]:
+    """
+    Purge the Windows standby list (cached memory) to free up physical RAM.
+    
+    First tries the EmptyStandbyList.exe utility, then falls back to API calls.
+    
+    Args:
+        list_type: One of 'standbylist', 'modifiedpagelist', 'priority0standbylist', 'workingsets'
+    
+    Returns:
+        (success, message): success is True if purge succeeded, message contains details
+    """
+    # Try utility first (simpler, handles privilege errors better)
+    success, msg = _purge_with_utility(list_type)
+    if success:
+        return True, msg
+    
+    # If utility failed due to missing file, fall back to API
+    if "not found" in msg.lower():
+        import platform
+        is_windows = platform.system() == "Windows"
+        is_wsl = False
+        if not is_windows:
+            try:
+                with open("/proc/version", "r") as f:
+                    if "microsoft" in f.read().lower():
+                        is_wsl = True
+            except Exception:
+                pass
+        
+        if is_windows:
+            return _purge_standby_native()
+        else:
+            return _purge_standby_wsl()
+    
+    # Utility ran but failed (likely privilege issue)
+    return False, msg
 
 
 def _purge_standby_native() -> tuple[bool, str]:
