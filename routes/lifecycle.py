@@ -286,8 +286,8 @@ def api_start():
         env = os.environ.copy()
 
         # Purge Windows standby list before starting model to free up RAM
-        # Only on Windows (not WSL) when running Windows binary
-        if WINDOWS and not WSL:
+        # Run on native Windows or WSL when using Windows binary
+        if (WINDOWS or WSL) and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
             try:
                 from utils import purge_windows_standby_list, set_process_working_set_size
                 success, msg = purge_windows_standby_list()

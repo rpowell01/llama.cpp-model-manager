@@ -66,18 +66,37 @@ def purge_windows_standby_list() -> tuple[bool, str]:
     This uses the undocumented NtSetSystemInformation API which requires
     Administrator privileges and the SeProfileSingleProcessPrivilege.
     
+    Works from both native Windows and WSL (via /mnt/c/Windows/System32/ntdll.dll).
+    
     Returns:
         (success, message): success is True if purge succeeded, message contains details
     """
     import sys
-    if sys.platform != "win32":
-        return False, "Not running on Windows"
+    import platform
+    
+    is_windows = platform.system() == "Windows"
+    is_wsl = False
+    if not is_windows:
+        try:
+            with open("/proc/version", "r") as f:
+                if "microsoft" in f.read().lower():
+                    is_wsl = True
+        except Exception:
+            pass
+    
+    if not is_windows and not is_wsl:
+        return False, "Not running on Windows or WSL"
     
     try:
         import ctypes
         from ctypes import wintypes
         
-        ntdll = ctypes.WinDLL("ntdll")
+        # Load ntdll.dll - on WSL use the Windows mount, on native Windows use WinDLL
+        if is_wsl:
+            ntdll_path = "/mnt/c/Windows/System32/ntdll.dll"
+            ntdll = ctypes.CDLL(ntdll_path)
+        else:
+            ntdll = ctypes.WinDLL("ntdll")
         
         # SystemMemoryListInformation = 80 (undocumented)
         SystemMemoryListInformation = 80
@@ -131,16 +150,35 @@ def set_process_working_set_size() -> tuple[bool, str]:
     Alternative: Trim the current process working set.
     This is a documented API that doesn't require admin but only affects
     the current process, not system-wide memory.
+    
+    Works from both native Windows and WSL (via /mnt/c/Windows/System32/kernel32.dll).
     """
     import sys
-    if sys.platform != "win32":
-        return False, "Not running on Windows"
+    import platform
+    
+    is_windows = platform.system() == "Windows"
+    is_wsl = False
+    if not is_windows:
+        try:
+            with open("/proc/version", "r") as f:
+                if "microsoft" in f.read().lower():
+                    is_wsl = True
+        except Exception:
+            pass
+    
+    if not is_windows and not is_wsl:
+        return False, "Not running on Windows or WSL"
     
     try:
         import ctypes
         from ctypes import wintypes
         
-        kernel32 = ctypes.WinDLL("kernel32")
+        # Load kernel32.dll - on WSL use the Windows mount, on native Windows use WinDLL
+        if is_wsl:
+            kernel32_path = "/mnt/c/Windows/System32/kernel32.dll"
+            kernel32 = ctypes.CDLL(kernel32_path)
+        else:
+            kernel32 = ctypes.WinDLL("kernel32")
         
         # GetCurrentProcess pseudo-handle
         GetCurrentProcess = kernel32.GetCurrentProcess
