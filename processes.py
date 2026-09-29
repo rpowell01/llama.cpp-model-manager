@@ -607,6 +607,16 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if meta.get("cpu_strict", DEFAULTS["cpu_strict"]):
         cmd += ["--cpu-strict"]
     
+    # Intel/AMD GPU Options
+    if meta.get("sycl", DEFAULTS["sycl"]):
+        cmd += ["--sycl"]
+    
+    if meta.get("grp_attn", DEFAULTS["grp_attn"]):
+        cmd += ["--grp-attn"]
+        grp_attn_n = meta.get("grp_attn_n", DEFAULTS["grp_attn_n"])
+        if grp_attn_n:
+            cmd += ["--grp-attn-n", str(grp_attn_n)]
+    
     batch_size = meta.get("batch_size", DEFAULTS["batch_size"])
     if batch_size:
         cmd += ["-b", str(batch_size)]
