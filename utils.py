@@ -1,3 +1,6 @@
+import subprocess
+import platform
+
 def estimate_gguf_size(model_id: str, filename: str) -> int:
     """
     Estimate GGUF file size based on model parameters and quantization.
