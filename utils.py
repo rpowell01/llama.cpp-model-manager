@@ -133,7 +133,17 @@ def _purge_standby_native() -> tuple[bool, str]:
         if status >= 0:
             return True, f"Standby list purged successfully (status=0x{status:X})"
         else:
-            return False, f"NtSetSystemInformation failed with status 0x{status:X}"
+            # Convert to unsigned for error code lookup
+            status_unsigned = status & 0xFFFFFFFF
+            # Common error codes:
+            error_messages = {
+                0xC0000022: "STATUS_ACCESS_DENIED - requires Administrator",
+                0xC000000D: "STATUS_INVALID_PARAMETER",
+                0xC0000061: "STATUS_PRIVILEGE_NOT_HELD - needs SeProfileSingleProcessPrivilege (run: secpol.msc -> Local Policies -> User Rights Assignment -> Profile system performance)",
+                0xC0000005: "STATUS_ACCESS_VIOLATION",
+            }
+            msg = error_messages.get(status_unsigned, f"NtSetSystemInformation failed with status 0x{status_unsigned:X}")
+            return False, msg
             
     except PermissionError:
         return False, "Permission denied - requires Administrator privileges"
@@ -192,7 +202,15 @@ def _purge_standby_wsl() -> tuple[bool, str]:
                 if status >= 0:
                     return True, f"Standby list purged successfully (status=0x{status:X})"
                 else:
-                    return False, f"NtSetSystemInformation failed with status 0x{status:X}"
+                    status_unsigned = status & 0xFFFFFFFF
+                    error_messages = {
+                        0xC0000022: "STATUS_ACCESS_DENIED - requires Administrator",
+                        0xC000000D: "STATUS_INVALID_PARAMETER",
+                        0xC0000061: "STATUS_PRIVILEGE_NOT_HELD - needs SeProfileSingleProcessPrivilege (run: secpol.msc -> Local Policies -> User Rights Assignment -> Profile system performance)",
+                        0xC0000005: "STATUS_ACCESS_VIOLATION",
+                    }
+                    msg = error_messages.get(status_unsigned, f"NtSetSystemInformation failed with status 0x{status_unsigned:X}")
+                    return False, msg
         
         if result.returncode != 0:
             return False, f"PowerShell failed: {result.stderr}"
