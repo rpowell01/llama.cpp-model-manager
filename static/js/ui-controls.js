@@ -1002,22 +1002,21 @@ async function showMetricsTooltip(tile, modelName, port) {
   document.body.appendChild(tooltip);
   metricsTooltip = tooltip;
   
-  // Position tooltip near the tile
+  // Position tooltip near the tile - getBoundingClientRect is viewport-relative
+  // For position: fixed, use viewport coordinates directly (no scrollY)
   const rect = tile.getBoundingClientRect();
-  tooltip.style.left = rect.left + window.scrollX + 'px';
-  tooltip.style.top = (rect.bottom + window.scrollY + 8) + 'px';
+  tooltip.style.left = rect.left + 'px';
+  tooltip.style.top = (rect.bottom + 8) + 'px';
   
   // Fetch metrics from model-manager.js function
   if (window.fetchModelMetrics) {
     const metrics = await window.fetchModelMetrics(modelName, port);
     console.log('Metrics fetched:', metrics);
     if (metricsTooltip === tooltip) {
-      console.log('Updating tooltip content, metrics:', metrics);
       tooltip.innerHTML = window.formatMetricsTooltip ? 
         window.formatMetricsTooltip(metrics) : 
         '<div class="metrics-tooltip">No metrics available</div>';
       console.log('Tooltip innerHTML:', tooltip.innerHTML);
-      console.log('Tooltip computed style:', window.getComputedStyle(tooltip));
       
       // Reposition if needed (in case content changed size)
       const tooltipRect = tooltip.getBoundingClientRect();
@@ -1026,7 +1025,8 @@ async function showMetricsTooltip(tile, modelName, port) {
         tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
       }
       if (tooltipRect.bottom > window.innerHeight - 10) {
-        tooltip.style.top = (rect.top + window.scrollY - tooltipRect.height - 8) + 'px';
+        // Move above the tile
+        tooltip.style.top = (rect.top - tooltipRect.height - 8) + 'px';
       }
       console.log('Final tooltip position:', tooltip.style.left, tooltip.style.top);
     }
