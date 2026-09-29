@@ -135,6 +135,21 @@ function calculateDerivedMetrics(metrics) {
 }
 
 /**
+ * Format duration in seconds to mm:ss.SSS format
+ * @param {number} seconds - Duration in seconds
+ * @returns {string} Formatted duration
+ */
+function formatDuration(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  if (mins > 0) {
+    return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  }
+  return `${secs}.${ms.toString().padStart(3, '0')}s`;
+}
+
+/**
  * Format metrics for tooltip display
  * @param {Object} metrics - Derived metrics
  * @returns {string} HTML for tooltip
@@ -145,6 +160,9 @@ function formatMetricsTooltip(metrics) {
   const lines = [];
   
   // Prompt processing metrics
+  if (metrics.prompt_seconds_total !== undefined && metrics.prompt_seconds_total > 0) {
+    lines.push(`<div><span class="metric-label">Total Prompt Time:</span> <span class="metric-value">${formatDuration(metrics.prompt_seconds_total)}</span></div>`);
+  }
   if (metrics.prompt_eval_time_ms) {
     lines.push(`<div><span class="metric-label">Avg Prompt Eval Time:</span> <span class="metric-value">${metrics.prompt_eval_time_ms} ms/token</span></div>`);
   }
