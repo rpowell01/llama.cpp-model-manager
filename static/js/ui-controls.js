@@ -166,7 +166,7 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         '" onclick="selectModel(\'' +
         jsEscape(r.model) +
-        "\')">" +
+        "\')\">" +
         '<div class="tile-header"><b>' +
         jsEscape(r.model) +
         "</b>" +
