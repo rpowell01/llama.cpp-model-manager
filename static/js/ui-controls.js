@@ -1012,18 +1012,23 @@ async function showMetricsTooltip(tile, modelName, port) {
     const metrics = await window.fetchModelMetrics(modelName, port);
     console.log('Metrics fetched:', metrics);
     if (metricsTooltip === tooltip) {
+      console.log('Updating tooltip content, metrics:', metrics);
       tooltip.innerHTML = window.formatMetricsTooltip ? 
         window.formatMetricsTooltip(metrics) : 
         '<div class="metrics-tooltip">No metrics available</div>';
+      console.log('Tooltip innerHTML:', tooltip.innerHTML);
+      console.log('Tooltip computed style:', window.getComputedStyle(tooltip));
       
       // Reposition if needed (in case content changed size)
       const tooltipRect = tooltip.getBoundingClientRect();
+      console.log('Tooltip rect:', tooltipRect);
       if (tooltipRect.right > window.innerWidth - 10) {
         tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
       }
       if (tooltipRect.bottom > window.innerHeight - 10) {
         tooltip.style.top = (rect.top + window.scrollY - tooltipRect.height - 8) + 'px';
       }
+      console.log('Final tooltip position:', tooltip.style.left, tooltip.style.top);
     }
   } else {
     console.error('fetchModelMetrics not available!');
