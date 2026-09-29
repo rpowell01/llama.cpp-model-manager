@@ -257,6 +257,10 @@ def api_start():
             "warmup_enabled": getattr(model_dict, 'warmup_enabled', False),
             "warmup_message": getattr(model_dict, 'warmup_message', 'Hello'),
             "warmup_max_tokens": getattr(model_dict, 'warmup_max_tokens', 10),
+            # Intel/AMD GPU Options
+            "sycl": getattr(model_dict, 'sycl', False),
+            "grp_attn": getattr(model_dict, 'grp_attn', False),
+            "grp_attn_n": getattr(model_dict, 'grp_attn_n', 8),
         }
 
         # Check if already running
