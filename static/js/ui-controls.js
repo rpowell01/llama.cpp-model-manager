@@ -988,6 +988,10 @@ let metricsTooltip = null;
  * @param {number} port - Model port
  */
 async function showMetricsTooltip(tile, modelName, port) {
+  console.log('showMetricsTooltip called for', modelName, 'port', port);
+  console.log('window.fetchModelMetrics:', typeof window.fetchModelMetrics);
+  console.log('window.formatMetricsTooltip:', typeof window.formatMetricsTooltip);
+  
   // Remove any existing tooltip
   hideMetricsTooltip();
   
@@ -1006,6 +1010,7 @@ async function showMetricsTooltip(tile, modelName, port) {
   // Fetch metrics from model-manager.js function
   if (window.fetchModelMetrics) {
     const metrics = await window.fetchModelMetrics(modelName, port);
+    console.log('Metrics fetched:', metrics);
     if (metricsTooltip === tooltip) {
       tooltip.innerHTML = window.formatMetricsTooltip ? 
         window.formatMetricsTooltip(metrics) : 
@@ -1020,6 +1025,9 @@ async function showMetricsTooltip(tile, modelName, port) {
         tooltip.style.top = (rect.top + window.scrollY - tooltipRect.height - 8) + 'px';
       }
     }
+  } else {
+    console.error('fetchModelMetrics not available!');
+    tooltip.innerHTML = '<div class="metrics-tooltip">Metrics function not loaded</div>';
   }
 }
 
