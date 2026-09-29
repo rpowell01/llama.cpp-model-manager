@@ -269,3 +269,15 @@
 {"time": "2026-09-28T15:16:01Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 32432, "status": "running"}
 {"time": "2026-09-28T15:50:30Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 25983, "status": "exited_early"}
 {"time": "2026-09-28T16:00:48Z", "action": "start", "model": "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k", "port": 11000, "pid": 212, "status": "running"}
+{"time": "2026-09-29T13:22:26Z", "action": "start", "model": "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf", "port": 11080, "pid": 5024, "status": "running"}
+{"time": "2026-09-29T13:24:39Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 127840, "status": "exited_early"}
+{"time": "2026-09-29T13:25:58Z", "action": "start", "model": "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf", "port": 11080, "pid": 27784, "status": "running"}
+{"time": "2026-09-29T14:07:35Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 36512, "status": "running"}
+{"time": "2026-09-29T14:33:00Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 31980, "status": "running"}
+{"time": "2026-09-29T14:56:12Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 33184, "status": "running"}
+{"time": "2026-09-29T15:38:59Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 8568, "status": "running"}
+{"time": "2026-09-29T15:44:49Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 3976, "status": "running"}
+{"time": "2026-09-29T15:58:17Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 38264, "status": "running"}
+{"time": "2026-09-29T16:02:43Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 11912, "status": "running"}
+{"time": "2026-09-29T16:37:08Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 2255, "status": "exited_early"}
+{"time": "2026-09-29T16:57:19Z", "action": "start", "model": "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf", "port": 11080, "pid": 8164, "status": "running"}

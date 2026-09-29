@@ -166,7 +166,7 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         '" onclick="selectModel(\'' +
         jsEscape(r.model) +
-        "')\">" +
+        "\')">" +
         '<div class="tile-header"><b>' +
         jsEscape(r.model) +
         "</b>" +
@@ -187,17 +187,26 @@ function renderTiles(rows, dlMap, query) {
         portCell +
         "</div>" +
         "</div>" +
-        (r.comment ? `<div class="tile-rating" title="${he(r.comment)}" data-model="${he(r.model)}">
-          <span class="rating-stars">
-            <span class="star ${r.rating_speed >= 1 ? 'filled' : ''}">★</span>
-            <span class="star ${r.rating_speed >= 2 ? 'filled' : ''}">★</span>
-            <span class="star ${r.rating_speed >= 3 ? 'filled' : ''}">★</span>
-            <span class="star ${r.rating_speed >= 4 ? 'filled' : ''}">★</span>
-            <span class="star ${r.rating_speed >= 5 ? 'filled' : ''}">★</span>
-          </span>
-          <div class="rating-labels">
-            <span class="rating-value speed">Speed: ${r.rating_speed || '-'}</span>
-            <span class="rating-value coding">Coding: ${r.rating_coding || '-'}</span>
+        (r.comment ? `<div class="tile-rating">
+          <div class="rating-row speed">
+            <span class="rating-label">Speed</span>
+            <span class="rating-stars">
+              <span class="star ${r.rating_speed >= 1 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_speed >= 2 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_speed >= 3 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_speed >= 4 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_speed >= 5 ? 'filled' : ''}">★</span>
+            </span>
+          </div>
+          <div class="rating-row coding">
+            <span class="rating-label">Coding</span>
+            <span class="rating-stars">
+              <span class="star ${r.rating_coding >= 1 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_coding >= 2 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_coding >= 3 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_coding >= 4 ? 'filled' : ''}">★</span>
+              <span class="star ${r.rating_coding >= 5 ? 'filled' : ''}">★</span>
+            </span>
           </div>
         </div>` : "") +
         '<div class="tile-actions actions">' +
