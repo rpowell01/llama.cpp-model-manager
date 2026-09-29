@@ -66,13 +66,15 @@ def purge_windows_standby_list() -> tuple[bool, str]:
     This uses the undocumented NtSetSystemInformation API which requires
     Administrator privileges and the SeProfileSingleProcessPrivilege.
     
-    Works from both native Windows and WSL (via /mnt/c/Windows/System32/ntdll.dll).
+    On native Windows: calls NtSetSystemInformation directly via ctypes
+    On WSL: executes a PowerShell command that calls the Windows API
     
     Returns:
         (success, message): success is True if purge succeeded, message contains details
     """
     import sys
     import platform
+    import subprocess
     
     is_windows = platform.system() == "Windows"
     is_wsl = False
@@ -87,20 +89,23 @@ def purge_windows_standby_list() -> tuple[bool, str]:
     if not is_windows and not is_wsl:
         return False, "Not running on Windows or WSL"
     
+    if is_windows:
+        # Native Windows: direct ctypes call
+        return _purge_standby_native()
+    else:
+        # WSL: execute PowerShell command
+        return _purge_standby_wsl()
+
+
+def _purge_standby_native() -> tuple[bool, str]:
+    """Native Windows implementation using ctypes."""
     try:
         import ctypes
         from ctypes import wintypes
         
-        # Load ntdll.dll - on WSL use the Windows mount, on native Windows use WinDLL
-        if is_wsl:
-            ntdll_path = "/mnt/c/Windows/System32/ntdll.dll"
-            ntdll = ctypes.CDLL(ntdll_path)
-        else:
-            ntdll = ctypes.WinDLL("ntdll")
+        ntdll = ctypes.WinDLL("ntdll")
         
-        # SystemMemoryListInformation = 80 (undocumented)
         SystemMemoryListInformation = 80
-        # MemoryPurgeStandbyList = 4
         MemoryPurgeStandbyList = 4
         
         class SYSTEM_MEMORY_LIST_COMMAND(ctypes.Structure):
@@ -108,19 +113,13 @@ def purge_windows_standby_list() -> tuple[bool, str]:
         
         cmd = SYSTEM_MEMORY_LIST_COMMAND(MemoryPurgeStandbyList)
         
-        # NtSetSystemInformation prototype:
-        # NTSTATUS NtSetSystemInformation(
-        #   SYSTEM_INFORMATION_CLASS SystemInformationClass,
-        #   PVOID SystemInformation,
-        #   ULONG SystemInformationLength
-        # )
         NtSetSystemInformation = ntdll.NtSetSystemInformation
         NtSetSystemInformation.argtypes = [
-            wintypes.ULONG,  # SystemInformationClass
-            ctypes.c_void_p,  # SystemInformation
-            wintypes.ULONG    # SystemInformationLength
+            wintypes.ULONG,
+            ctypes.c_void_p,
+            wintypes.ULONG
         ]
-        NtSetSystemInformation.restype = wintypes.LONG  # NTSTATUS
+        NtSetSystemInformation.restype = wintypes.LONG
         
         status = NtSetSystemInformation(
             SystemMemoryListInformation,
@@ -128,13 +127,9 @@ def purge_windows_standby_list() -> tuple[bool, str]:
             ctypes.sizeof(cmd)
         )
         
-        # NTSTATUS success codes are >= 0
         if status >= 0:
             return True, f"Standby list purged successfully (status=0x{status:X})"
         else:
-            # Common error codes:
-            # 0xC0000022 = STATUS_ACCESS_DENIED (needs admin)
-            # 0xC000000D = STATUS_INVALID_PARAMETER
             return False, f"NtSetSystemInformation failed with status 0x{status:X}"
             
     except PermissionError:
@@ -145,16 +140,80 @@ def purge_windows_standby_list() -> tuple[bool, str]:
         return False, f"Error purging standby list: {e}"
 
 
+def _purge_standby_wsl() -> tuple[bool, str]:
+    """WSL implementation using PowerShell to call Windows API."""
+    try:
+        # PowerShell script to call NtSetSystemInformation via P/Invoke
+        ps_script = r'''
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class MemoryPurge {
+            [DllImport("ntdll.dll")]
+            public static extern int NtSetSystemInformation(
+                int SystemInformationClass,
+                ref SYSTEM_MEMORY_LIST_COMMAND SystemInformation,
+                int SystemInformationLength
+            );
+            
+            [StructLayout(LayoutKind.Sequential)]
+            public struct SYSTEM_MEMORY_LIST_COMMAND {
+                public int Command;
+            }
+            
+            public const int SystemMemoryListInformation = 80;
+            public const int MemoryPurgeStandbyList = 4;
+            
+            public static int PurgeStandbyList() {
+                SYSTEM_MEMORY_LIST_COMMAND cmd = new SYSTEM_MEMORY_LIST_COMMAND();
+                cmd.Command = MemoryPurgeStandbyList;
+                return NtSetSystemInformation(SystemMemoryListInformation, ref cmd, Marshal.SizeOf(cmd));
+            }
+        }
+"@
+        $result = [MemoryPurge]::PurgeStandbyList()
+        Write-Host "STATUS:$result"
+        '''
+        
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        # Parse output for STATUS
+        for line in result.stdout.splitlines():
+            if line.startswith("STATUS:"):
+                status = int(line.split(":")[1])
+                if status >= 0:
+                    return True, f"Standby list purged successfully (status=0x{status:X})"
+                else:
+                    return False, f"NtSetSystemInformation failed with status 0x{status:X}"
+        
+        if result.returncode != 0:
+            return False, f"PowerShell failed: {result.stderr}"
+        
+        return False, "Could not parse PowerShell output"
+        
+    except subprocess.TimeoutExpired:
+        return False, "PowerShell command timed out"
+    except Exception as e:
+        return False, f"Error running PowerShell: {e}"
+
+
 def set_process_working_set_size() -> tuple[bool, str]:
     """
     Alternative: Trim the current process working set.
     This is a documented API that doesn't require admin but only affects
     the current process, not system-wide memory.
     
-    Works from both native Windows and WSL (via /mnt/c/Windows/System32/kernel32.dll).
+    On native Windows: calls SetProcessWorkingSetSizeEx directly via ctypes
+    On WSL: executes a PowerShell command that calls the Windows API
     """
     import sys
     import platform
+    import subprocess
     
     is_windows = platform.system() == "Windows"
     is_wsl = False
@@ -169,25 +228,22 @@ def set_process_working_set_size() -> tuple[bool, str]:
     if not is_windows and not is_wsl:
         return False, "Not running on Windows or WSL"
     
+    if is_windows:
+        return _trim_working_set_native()
+    else:
+        return _trim_working_set_wsl()
+
+
+def _trim_working_set_native() -> tuple[bool, str]:
+    """Native Windows implementation using ctypes."""
     try:
         import ctypes
         from ctypes import wintypes
         
-        # Load kernel32.dll - on WSL use the Windows mount, on native Windows use WinDLL
-        if is_wsl:
-            kernel32_path = "/mnt/c/Windows/System32/kernel32.dll"
-            kernel32 = ctypes.CDLL(kernel32_path)
-        else:
-            kernel32 = ctypes.WinDLL("kernel32")
+        kernel32 = ctypes.WinDLL("kernel32")
         
-        # GetCurrentProcess pseudo-handle
         GetCurrentProcess = kernel32.GetCurrentProcess
         GetCurrentProcess.restype = wintypes.HANDLE
-        
-        # SetProcessWorkingSetSizeEx (Windows 8.1+) or SetProcessWorkingSetSize
-        # Flags for SetProcessWorkingSetSizeEx:
-        # QUOTA_LIMITS_HARDWS_MIN_ENABLE = 0x00000001
-        # QUOTA_LIMITS_HARDWS_MAX_ENABLE = 0x00000004
         
         if hasattr(kernel32, 'SetProcessWorkingSetSizeEx'):
             SetProcessWorkingSetSizeEx = kernel32.SetProcessWorkingSetSizeEx
@@ -199,7 +255,6 @@ def set_process_working_set_size() -> tuple[bool, str]:
             ]
             SetProcessWorkingSetSizeEx.restype = wintypes.BOOL
             
-            # Use -1 for both min/max to trim to minimum
             result = SetProcessWorkingSetSizeEx(
                 GetCurrentProcess(),
                 ctypes.c_size_t(-1),
@@ -207,7 +262,6 @@ def set_process_working_set_size() -> tuple[bool, str]:
                 0
             )
         else:
-            # Older API
             SetProcessWorkingSetSize = kernel32.SetProcessWorkingSetSize
             SetProcessWorkingSetSize.argtypes = [
                 wintypes.HANDLE,
@@ -230,3 +284,78 @@ def set_process_working_set_size() -> tuple[bool, str]:
             
     except Exception as e:
         return False, f"Error trimming working set: {e}"
+
+
+def _trim_working_set_wsl() -> tuple[bool, str]:
+    """WSL implementation using PowerShell to call Windows API."""
+    try:
+        ps_script = r'''
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class WorkingSetTrim {
+            [DllImport("kernel32.dll")]
+            public static extern IntPtr GetCurrentProcess();
+            
+            [DllImport("kernel32.dll")]
+            public static extern bool SetProcessWorkingSetSizeEx(
+                IntPtr hProcess,
+                IntPtr dwMinimumWorkingSetSize,
+                IntPtr dwMaximumWorkingSetSize,
+                uint dwFlags
+            );
+            
+            [DllImport("kernel32.dll")]
+            public static extern bool SetProcessWorkingSetSize(
+                IntPtr hProcess,
+                IntPtr dwMinimumWorkingSetSize,
+                IntPtr dwMaximumWorkingSetSize
+            );
+            
+            public static bool Trim() {
+                IntPtr hProcess = GetCurrentProcess();
+                IntPtr minMax = (IntPtr)(-1);
+                
+                // Try SetProcessWorkingSetSizeEx first (Windows 8.1+)
+                try {
+                    return SetProcessWorkingSetSizeEx(hProcess, minMax, minMax, 0);
+                } catch {
+                    // Fallback to older API
+                    return SetProcessWorkingSetSize(hProcess, minMax, minMax);
+                }
+            }
+        }
+"@
+        $result = [WorkingSetTrim]::Trim()
+        Write-Host "RESULT:$result"
+        if (-not $result) {
+            $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Write-Host "ERROR:$err"
+        }
+        '''
+        
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        for line in result.stdout.splitlines():
+            if line.startswith("RESULT:"):
+                success = line.split(":")[1].strip().lower() == "true"
+                if success:
+                    return True, "Process working set trimmed"
+            elif line.startswith("ERROR:"):
+                error = line.split(":")[1].strip()
+                return False, f"SetProcessWorkingSetSize failed with error {error}"
+        
+        if result.returncode != 0:
+            return False, f"PowerShell failed: {result.stderr}"
+        
+        return False, "Could not parse PowerShell output"
+        
+    except subprocess.TimeoutExpired:
+        return False, "PowerShell command timed out"
+    except Exception as e:
+        return False, f"Error running PowerShell: {e}"
