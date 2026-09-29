@@ -120,3 +120,49 @@
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
+
+/* Metrics tooltip popup */
+.metrics-tooltip-popup {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  animation: tooltip-fade-in 0.15s ease-out;
+}
+
+@keyframes tooltip-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.metrics-tooltip-popup .metrics-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.metrics-tooltip-popup .metrics-tooltip div {
+  margin: 0.2rem 0;
+  padding: 0.1rem 0;
+}
+
+.metrics-tooltip-popup .metrics-tooltip div:first-child {
+  margin-top: 0;
+}
+
+.metrics-tooltip-popup .metrics-tooltip div:last-child {
+  margin-bottom: 0;
+}
+
+/* Separator in tooltip */
+.metrics-tooltip-popup .metrics-tooltip hr,
+.metrics-tooltip-popup .metrics-tooltip div:has(---) {
+  border-top: 1px solid var(--surface2);
+  margin: 0.4rem 0;
+  padding: 0;
+}

@@ -2,6 +2,162 @@
  * Model management and UI refresh logic
  */
 
+// Cache for model metrics to avoid excessive polling
+const modelMetricsCache = new Map();
+const METRICS_CACHE_TTL = 5000; // 5 seconds
+
+/**
+ * Fetch and parse llama.cpp metrics from the model's port
+ * @param {string} modelName - Model name
+ * @param {number} port - Model port
+ * @returns {Promise<Object>} Parsed metrics
+ */
+async function fetchModelMetrics(modelName, port) {
+  const cacheKey = `${modelName}:${port}`;
+  const now = Date.now();
+  
+  // Check cache
+  if (modelMetricsCache.has(cacheKey)) {
+    const cached = modelMetricsCache.get(cacheKey);
+    if (now - cached.timestamp < METRICS_CACHE_TTL) {
+      return cached.data;
+    }
+  }
+  
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/metrics`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!res.ok) return null;
+    
+    const text = await res.text();
+    const metrics = parsePrometheusMetrics(text);
+    
+    // Calculate derived metrics
+    const result = calculateDerivedMetrics(metrics);
+    
+    // Cache result
+    modelMetricsCache.set(cacheKey, { data: result, timestamp: now });
+    return result;
+  } catch (e) {
+    // Silently fail - metrics are optional
+    return null;
+  }
+}
+
+/**
+ * Parse Prometheus format metrics text
+ * @param {string} text - Raw metrics text
+ * @returns {Object} Parsed metrics keyed by name
+ */
+function parsePrometheusMetrics(text) {
+  const metrics = {};
+  const lines = text.split('\n');
+  
+  for (const line of lines) {
+    // Skip comments and empty lines
+    if (line.startsWith('#') || !line.trim()) continue;
+    
+    // Parse metric line: name{labels} value
+    const match = line.match(/^([^{}\s]+)(?:\{([^}]*)\})?\s+(.+)$/);
+    if (match) {
+      const name = match[1];
+      const value = parseFloat(match[3]);
+      if (!isNaN(value)) {
+        metrics[name] = value;
+      }
+    }
+  }
+  return metrics;
+}
+
+/**
+ * Calculate derived metrics from raw counters
+ * @param {Object} metrics - Raw metrics
+ * @returns {Object} Derived metrics
+ */
+function calculateDerivedMetrics(metrics) {
+  const result = { ...metrics };
+  
+  // Prompt eval time (average) = prompt_seconds_total / prompt_tokens_total
+  if (metrics['llamacpp:prompt_seconds_total'] && metrics['llamacpp:prompt_tokens_total']) {
+    const promptSec = metrics['llamacpp:prompt_seconds_total'];
+    const promptTokens = metrics['llamacpp:prompt_tokens_total'];
+    if (promptTokens > 0) {
+      result.prompt_eval_time_ms = (promptSec / promptTokens * 1000).toFixed(1);
+    }
+  }
+  
+  // Prompt eval rate = prompt_tokens_seconds (gauge, already tokens/sec)
+  if (metrics['llamacpp:prompt_tokens_seconds']) {
+    result.prompt_eval_rate = metrics['llamacpp:prompt_tokens_seconds'].toFixed(1);
+  }
+  
+  // Eval time (average) = tokens_predicted_seconds_total / tokens_predicted_total
+  if (metrics['llamacpp:tokens_predicted_seconds_total'] && metrics['llamacpp:tokens_predicted_total']) {
+    const genSec = metrics['llamacpp:tokens_predicted_seconds_total'];
+    const genTokens = metrics['llamacpp:tokens_predicted_total'];
+    if (genTokens > 0) {
+      result.eval_time_ms = (genSec / genTokens * 1000).toFixed(1);
+    }
+  }
+  
+  // Tokens/sec = predicted_tokens_seconds (gauge, already tokens/sec)
+  if (metrics['llamacpp:predicted_tokens_seconds']) {
+    result.tokens_per_sec = metrics['llamacpp:predicted_tokens_seconds'].toFixed(1);
+  }
+  
+  // Also include raw totals for reference
+  result.prompt_tokens_total = metrics['llamacpp:prompt_tokens_total'] || 0;
+  result.prompt_seconds_total = metrics['llamacpp:prompt_seconds_total'] || 0;
+  result.tokens_predicted_total = metrics['llamacpp:tokens_predicted_total'] || 0;
+  result.tokens_predicted_seconds_total = metrics['llamacpp:tokens_predicted_seconds_total'] || 0;
+  
+  return result;
+}
+
+/**
+ * Format metrics for tooltip display
+ * @param {Object} metrics - Derived metrics
+ * @returns {string} HTML for tooltip
+ */
+function formatMetricsTooltip(metrics) {
+  if (!metrics) return '<div class="metrics-tooltip">No metrics available</div>';
+  
+  const lines = [];
+  
+  if (metrics.prompt_eval_time_ms) {
+    lines.push(`Prompt Eval Time: ${metrics.prompt_eval_time_ms} ms/token`);
+  }
+  if (metrics.prompt_eval_rate) {
+    lines.push(`Prompt Eval Rate: ${metrics.prompt_eval_rate} tokens/s`);
+  }
+  if (metrics.eval_time_ms) {
+    lines.push(`Eval Time: ${metrics.eval_time_ms} ms/token`);
+  }
+  if (metrics.tokens_per_sec) {
+    lines.push(`Generation Rate: ${metrics.tokens_per_sec} tokens/s`);
+  }
+  
+  // Add totals
+  if (metrics.prompt_tokens_total || metrics.tokens_predicted_total) {
+    lines.push('---');
+    if (metrics.prompt_tokens_total) {
+      lines.push(`Prompt Tokens: ${metrics.prompt_tokens_total}`);
+    }
+    if (metrics.tokens_predicted_total) {
+      lines.push(`Generated Tokens: ${metrics.tokens_predicted_total}`);
+    }
+  }
+  
+  if (lines.length === 0) {
+    return '<div class="metrics-tooltip">No metrics available</div>';
+  }
+  
+  return '<div class="metrics-tooltip">' + lines.map(l => `<div>${l}</div>`).join('') + '</div>';
+}
+
 /**
  * Select a model to show its properties panel
  * @param {string} modelName
@@ -218,4 +374,8 @@ async function act(model, verb) {
     }, 800);
   }
 }
+
+// Expose metrics functions globally for tooltip use
+window.fetchModelMetrics = fetchModelMetrics;
+window.formatMetricsTooltip = formatMetricsTooltip;
 

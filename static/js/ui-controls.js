@@ -166,7 +166,11 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         '" onclick="selectModel(\'' +
         jsEscape(r.model) +
-        "\')\">" +
+        "\')\"" +
+        (running && r.port ? 
+          ' onmouseenter="showMetricsTooltip(this, \'' + jsEscape(r.model) + '\', ' + r.port + ')"' +
+          ' onmouseleave="hideMetricsTooltip(this)"' : '') +
+        '>' +
         '<div class="tile-header"><b>' +
         jsEscape(r.model) +
         "</b>" +
@@ -973,3 +977,62 @@ async function renderPanelProperties(data, modelName) {
     document.getElementById("hf-metadata-error").style.display = "block";
   }
 }
+
+// Tooltip element for metrics
+let metricsTooltip = null;
+
+/**
+ * Show metrics tooltip for a running model tile
+ * @param {HTMLElement} tile - The tile element
+ * @param {string} modelName - Model name
+ * @param {number} port - Model port
+ */
+async function showMetricsTooltip(tile, modelName, port) {
+  // Remove any existing tooltip
+  hideMetricsTooltip();
+  
+  // Show loading state
+  const tooltip = document.createElement('div');
+  tooltip.className = 'metrics-tooltip-popup';
+  tooltip.innerHTML = '<div class="metrics-tooltip">Loading metrics...</div>';
+  document.body.appendChild(tooltip);
+  metricsTooltip = tooltip;
+  
+  // Position tooltip near the tile
+  const rect = tile.getBoundingClientRect();
+  tooltip.style.left = rect.left + window.scrollX + 'px';
+  tooltip.style.top = (rect.bottom + window.scrollY + 8) + 'px';
+  
+  // Fetch metrics from model-manager.js function
+  if (window.fetchModelMetrics) {
+    const metrics = await window.fetchModelMetrics(modelName, port);
+    if (metricsTooltip === tooltip) {
+      tooltip.innerHTML = window.formatMetricsTooltip ? 
+        window.formatMetricsTooltip(metrics) : 
+        '<div class="metrics-tooltip">No metrics available</div>';
+      
+      // Reposition if needed (in case content changed size)
+      const tooltipRect = tooltip.getBoundingClientRect();
+      if (tooltipRect.right > window.innerWidth - 10) {
+        tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
+      }
+      if (tooltipRect.bottom > window.innerHeight - 10) {
+        tooltip.style.top = (rect.top + window.scrollY - tooltipRect.height - 8) + 'px';
+      }
+    }
+  }
+}
+
+/**
+ * Hide metrics tooltip
+ */
+function hideMetricsTooltip(tile = null) {
+  if (metricsTooltip) {
+    metricsTooltip.remove();
+    metricsTooltip = null;
+  }
+}
+
+// Expose functions globally for use in model-manager.js
+window.showMetricsTooltip = showMetricsTooltip;
+window.hideMetricsTooltip = hideMetricsTooltip;
