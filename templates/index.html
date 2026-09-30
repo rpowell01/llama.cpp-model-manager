@@ -173,21 +173,14 @@
             <option value="on">on</option>
           </select>
         </label>
-        <label>SYCL (Intel GPU): <input type="checkbox" name="sycl"></label>
-        <label>Group Attention: <input type="checkbox" name="grp_attn"></label>
-        <label>Group Attention N: <input type="number" name="grp_attn_n" value="8" min="1"></label>
-        <label>Cache Quantization:
-          <select name="cache_quant">
-            <option value="">Default (auto)</option>
-            <option value="q4_0">q4_0</option>
-            <option value="q4_1">q4_1</option>
-            <option value="q5_0">q5_0</option>
-            <option value="q5_1">q5_1</option>
-            <option value="q8_0">q8_0</option>
-            <option value="fp16">fp16</option>
-            <option value="fp8">fp8</option>
-          </select>
-        </label>
+      </fieldset>
+
+      <!-- Slot KV Cache Persistence -->
+      <fieldset style="margin-bottom: 1rem;">
+        <legend style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Slot KV Cache Persistence</legend>
+        <label>Slot Save Path: <input type="text" name="slot_save_path" placeholder="llama.cpp.cache"></label>
+        <label>Cache Reuse (tokens): <input type="number" name="cache_reuse" value="4096" min="1"></label>
+        <label>SWA Full (for SWA models): <input type="checkbox" name="swa_full"></label>
       </fieldset>
 
       <!-- Context & RoPE/YaRN -->
