@@ -97,6 +97,14 @@
   background: var(--blue);
 }
 
+.actions .export {
+  background: var(--btn-export);
+}
+
+.actions .export:hover:not(:disabled) {
+  background: #5a5a5a;
+}
+
 /* Chat send button (modal and tile contexts) */
 .btn-chat-send {
   background: var(--btn-run);
