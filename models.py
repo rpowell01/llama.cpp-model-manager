@@ -456,10 +456,9 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "warmup_enabled": DEFAULTS["warmup_enabled"],
         "warmup_message": DEFAULTS["warmup_message"],
         "warmup_max_tokens": DEFAULTS["warmup_max_tokens"],
-        # Intel/AMD GPU Options
-        "sycl": DEFAULTS["sycl"],
-        "grp_attn": DEFAULTS["grp_attn"],
-        "grp_attn_n": DEFAULTS["grp_attn_n"],
+        # Slot KV Cache Persistence
+        "slot_save_path": DEFAULTS["slot_save_path"],
+        "cache_reuse": DEFAULTS["cache_reuse"],
     }
     for model in models.values():
         for field, default_value in default_fields.items():
