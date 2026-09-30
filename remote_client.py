@@ -118,6 +118,7 @@ class Model:
     # Slot KV Cache Persistence
     slot_save_path: str = ""
     cache_reuse: int = 4096
+    swa_full: bool = False
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -189,6 +190,7 @@ class Model:
             # Slot KV Cache Persistence
             slot_save_path=data.get("slot_save_path", ""),
             cache_reuse=data.get("cache_reuse", 4096),
+            swa_full=data.get("swa_full", False),
         )
 
 

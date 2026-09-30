@@ -424,6 +424,7 @@ async function renderPanelProperties(data, modelName) {
     
 addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
     addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1);
+    addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox");
     
     html += `</div></div>`;
 

@@ -459,6 +459,7 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         # Slot KV Cache Persistence
         "slot_save_path": DEFAULTS["slot_save_path"],
         "cache_reuse": DEFAULTS["cache_reuse"],
+        "swa_full": DEFAULTS["swa_full"],
     }
     for model in models.values():
         for field, default_value in default_fields.items():

@@ -75,6 +75,7 @@ def api_add_model():
         # Slot KV Cache Persistence
         slot_save_path=str(data.get("slot_save_path", DEFAULTS["slot_save_path"])),
         cache_reuse=int(data.get("cache_reuse", DEFAULTS["cache_reuse"])),
+        swa_full=bool(data.get("swa_full", DEFAULTS["swa_full"])),
     )
     if not success:
         return jsonify({"error": f"Model '{normalized_name}' already exists or failed to add"}), 409
@@ -197,6 +198,7 @@ def api_update_model_meta():
         # Slot KV Cache Persistence
         "slot_save_path": str,
         "cache_reuse": int,
+        "swa_full": bool,
     }
     changes = {}
     for field, typ in allowed_fields.items():

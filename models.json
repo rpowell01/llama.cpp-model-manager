@@ -58,7 +58,9 @@
     "warmup_max_tokens": 10,
     "comment": "",
     "rating_speed": 0,
-    "rating_coding": 0
+    "rating_coding": 0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "sharp-spark-x2.5-4b-q6-k-xl": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/sharp-spark-x2.5-4b-q6-k-xl/Sharp-Spark-X2.5-4B-Q6_K_XL.gguf",
@@ -119,7 +121,9 @@
     "warmup_max_tokens": 10,
     "comment": "",
     "rating_speed": 0,
-    "rating_coding": 0
+    "rating_coding": 0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "qwen3.5-9B-glm5.1-distill-v1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-glm5.1-distill-v1-q4-k-m/Qwen3.5-9B-GLM5.1-Distill-v1-Q4_K_M.gguf",
@@ -137,7 +141,7 @@
     "ubatch_size": 4096,
     "jinja": true,
     "reasoning_preserve": true,
-    "gpu_layers": 999,
+    "gpu_layers": 99,
     "cache_type_k": "fp16",
     "cache_type_v": "fp16",
     "numa": true,
@@ -178,9 +182,11 @@
     "warmup_enabled": true,
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
-    "comment": "",
-    "rating_speed": 0,
-    "rating_coding": 0
+    "comment": "pretty decent model so far.  roughly 10 - 12 min ctx load",
+    "rating_speed": 4,
+    "rating_coding": 4,
+    "slot_save_path": "c:\\llama.cpp-sycl\\cache",
+    "cache_reuse": 4096
   },
   "qwen3.6-14b-a3b-fablevibes-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.6-14b-a3b-fablevibes-q4-k-m/Qwen3.6-14B-A3B-FableVibes-Q4_K_M.gguf",
@@ -241,7 +247,9 @@
     "warmup_max_tokens": 10,
     "comment": "",
     "rating_speed": 0,
-    "rating_coding": 0
+    "rating_coding": 0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "models": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/ggml-vocab-qwen2.gguf",
@@ -302,7 +310,9 @@
     "yarn_beta_fast": 32.0,
     "comment": "",
     "rating_speed": 0,
-    "rating_coding": 0
+    "rating_coding": 0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k/Qwen3.5-9B-Claude-4.6-HighIQ-THINKING-HERETIC-UNCENSORED.i1-Q6_K.gguf",
@@ -363,7 +373,9 @@
     "rating_speed": 0,
     "rating_coding": 0,
     "file_exists": true,
-    "file_size_gb": 6.85
+    "file_size_gb": 6.85,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "Phi-3-mini-4k-instruct-q4": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Phi-3-mini-4k-instruct-q4/Phi-3-mini-4k-instruct-q4.gguf",
@@ -421,7 +433,9 @@
     "yarn_ext_factor": -1.0,
     "yarn_attn_factor": 1.0,
     "yarn_beta_slow": 1.0,
-    "yarn_beta_fast": 32.0
+    "yarn_beta_fast": 32.0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "Qwen3.5-2B-Q4_K_M": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-2B-Q4_K_M/Qwen3.5-2B-Q4_K_M.gguf",
@@ -479,7 +493,9 @@
     "yarn_ext_factor": -1.0,
     "yarn_attn_factor": 1.0,
     "yarn_beta_slow": 1.0,
-    "yarn_beta_fast": 32.0
+    "yarn_beta_fast": 32.0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "Qwen3.5-4B-DFlash": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-4B-DFlash/Qwen3.5-4B-DFlash.gguf",
@@ -537,7 +553,9 @@
     "yarn_ext_factor": -1.0,
     "yarn_attn_factor": 1.0,
     "yarn_beta_slow": 1.0,
-    "yarn_beta_fast": 32.0
+    "yarn_beta_fast": 32.0,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf/Qwen3.5-9B.Q4_K_M.gguf",
@@ -578,15 +596,15 @@
     "file_exists": true,
     "jinja": true,
     "reasoning_preserve": true,
-    "gpu_layers": 75,
+    "gpu_layers": 99,
     "cache_type_k": "fp16",
     "cache_type_v": "fp16",
     "numa": true,
     "numa_value": "isolate",
     "cpu_affinity": "auto",
     "cpu_strict": false,
-    "batch_size": 65536,
-    "ctx_size": 200000,
+    "batch_size": 32768,
+    "ctx_size": 262000,
     "rope_freq_base": 10000.0,
     "rope_freq_scale": 1.0,
     "rope_scaling_type": "none",
@@ -598,7 +616,9 @@
     "yarn_beta_fast": 32.0,
     "comment": "code it wrote caused client side errors",
     "rating_speed": 4,
-    "rating_coding": 3
+    "rating_coding": 3,
+    "slot_save_path": "",
+    "cache_reuse": 4096
   },
   "qwythos-9b-v2-mtp-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwythos-9b-v2-mtp-q4-k-m/Qwythos-9B-v2-MTP-Q4_K_M.gguf",
@@ -659,6 +679,8 @@
     "yarn_beta_fast": 32.0,
     "comment": "initial context load in 8 min!",
     "rating_speed": 5,
-    "rating_coding": 4
+    "rating_coding": 4,
+    "slot_save_path": "c:\\llama.cpp-sycl\\cache",
+    "cache_reuse": 4096
   }
 }

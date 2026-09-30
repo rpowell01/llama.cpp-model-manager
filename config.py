@@ -166,6 +166,7 @@ DEFAULTS: dict[str, Any] = {
     # Slot KV Cache Persistence
     "slot_save_path": "",
     "cache_reuse": 4096,
+    "swa_full": False,
 }
 
 # Flask server port (set by main.py at runtime)
