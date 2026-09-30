@@ -980,6 +980,8 @@ async function renderPanelProperties(data, modelName) {
 
 // Tooltip element for metrics
 let metricsTooltip = null;
+let metricsTooltipInterval = null;
+let metricsTooltipContext = null; // { modelName, port, tile }
 
 /**
  * Show metrics tooltip for a running model tile
@@ -995,6 +997,9 @@ async function showMetricsTooltip(tile, modelName, port) {
   // Remove any existing tooltip
   hideMetricsTooltip();
   
+  // Store context for auto-refresh
+  metricsTooltipContext = { modelName, port, tile };
+  
   // Show loading state
   const tooltip = document.createElement('div');
   tooltip.className = 'metrics-tooltip-popup';
@@ -1008,27 +1013,43 @@ async function showMetricsTooltip(tile, modelName, port) {
   tooltip.style.left = rect.left + 'px';
   tooltip.style.top = (rect.bottom + 8) + 'px';
   
-  // Fetch metrics from model-manager.js function
+  // Fetch and update metrics
+  await updateTooltipContent(tooltip, modelName, port);
+  
+  // Start auto-refresh interval (every 3 seconds)
+  if (metricsTooltipInterval) {
+    clearInterval(metricsTooltipInterval);
+  }
+  metricsTooltipInterval = setInterval(async () => {
+    if (metricsTooltip && metricsTooltipContext) {
+      await updateTooltipContent(metricsTooltip, metricsTooltipContext.modelName, metricsTooltipContext.port);
+    }
+  }, 3000);
+}
+
+/**
+ * Update tooltip content with fresh metrics
+ */
+async function updateTooltipContent(tooltip, modelName, port) {
   if (window.fetchModelMetrics) {
     const metrics = await window.fetchModelMetrics(modelName, port);
-    console.log('Metrics fetched:', metrics);
     if (metricsTooltip === tooltip) {
       tooltip.innerHTML = window.formatMetricsTooltip ? 
         window.formatMetricsTooltip(metrics) : 
         '<div class="metrics-tooltip">No metrics available</div>';
-      console.log('Tooltip innerHTML:', tooltip.innerHTML);
       
       // Reposition if needed (in case content changed size)
       const tooltipRect = tooltip.getBoundingClientRect();
-      console.log('Tooltip rect:', tooltipRect);
       if (tooltipRect.right > window.innerWidth - 10) {
         tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
       }
       if (tooltipRect.bottom > window.innerHeight - 10) {
         // Move above the tile
-        tooltip.style.top = (rect.top - tooltipRect.height - 8) + 'px';
+        const rect = metricsTooltipContext?.tile?.getBoundingClientRect();
+        if (rect) {
+          tooltip.style.top = (rect.top - tooltipRect.height - 8) + 'px';
+        }
       }
-      console.log('Final tooltip position:', tooltip.style.left, tooltip.style.top);
     }
   } else {
     console.error('fetchModelMetrics not available!');
@@ -1044,6 +1065,11 @@ function hideMetricsTooltip(tile = null) {
     metricsTooltip.remove();
     metricsTooltip = null;
   }
+  if (metricsTooltipInterval) {
+    clearInterval(metricsTooltipInterval);
+    metricsTooltipInterval = null;
+  }
+  metricsTooltipContext = null;
 }
 
 // Expose functions globally for use in model-manager.js
