@@ -163,6 +163,9 @@ DEFAULTS: dict[str, Any] = {
     "warmup_enabled": False,
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
+    # Slot KV Cache Persistence
+    "slot_save_path": "",
+    "cache_reuse": 4096,
 }
 
 # Flask server port (set by main.py at runtime)

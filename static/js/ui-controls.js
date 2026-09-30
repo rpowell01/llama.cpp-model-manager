@@ -422,9 +422,8 @@ async function renderPanelProperties(data, modelName) {
       <span class="value">${flashSelect}</span>
     </div>`;
     
-    addEditable("SYCL (Intel GPU)", "sycl", data.sycl, "checkbox");
-    addEditable("Group Attention", "grp_attn", data.grp_attn, "checkbox");
-    addEditable("Group Attention N", "grp_attn_n", data.grp_attn_n, "number", 1, 1);
+addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
+    addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1);
     
     html += `</div></div>`;
 

@@ -620,15 +620,14 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if meta.get("cpu_strict", DEFAULTS["cpu_strict"]):
         cmd += ["--cpu-strict"]
     
-    # Intel/AMD GPU Options
-    if meta.get("sycl", DEFAULTS["sycl"]):
-        cmd += ["--sycl"]
+    # Slot KV Cache Persistence
+    slot_save_path = meta.get("slot_save_path", DEFAULTS["slot_save_path"])
+    if slot_save_path:
+        cmd += ["--slot-save-path", slot_save_path]
     
-    if meta.get("grp_attn", DEFAULTS["grp_attn"]):
-        cmd += ["--grp-attn"]
-        grp_attn_n = meta.get("grp_attn_n", DEFAULTS["grp_attn_n"])
-        if grp_attn_n:
-            cmd += ["--grp-attn-n", str(grp_attn_n)]
+    cache_reuse = meta.get("cache_reuse", DEFAULTS["cache_reuse"])
+    if cache_reuse:
+        cmd += ["--cache-reuse", str(cache_reuse)]
     
     batch_size = meta.get("batch_size", DEFAULTS["batch_size"])
     if batch_size:

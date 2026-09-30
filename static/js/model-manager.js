@@ -86,12 +86,9 @@ function calculateDerivedMetrics(metrics) {
     const promptTokens = metrics['llamacpp:prompt_tokens_total'];
     if (promptTokens > 0) {
       result.prompt_eval_time_ms = (promptSec / promptTokens * 1000).toFixed(1);
+      // Calculate prompt eval rate from counters (tokens/sec)
+      result.prompt_eval_rate = (promptTokens / promptSec).toFixed(1);
     }
-  }
-  
-  // Prompt eval rate = prompt_tokens_seconds (gauge, already tokens/sec)
-  if (metrics['llamacpp:prompt_tokens_seconds']) {
-    result.prompt_eval_rate = metrics['llamacpp:prompt_tokens_seconds'].toFixed(1);
   }
   
   // Eval time (average) = tokens_predicted_seconds_total / tokens_predicted_total
@@ -100,12 +97,9 @@ function calculateDerivedMetrics(metrics) {
     const genTokens = metrics['llamacpp:tokens_predicted_total'];
     if (genTokens > 0) {
       result.eval_time_ms = (genSec / genTokens * 1000).toFixed(1);
+      // Calculate gen rate from counters (tokens/sec)
+      result.tokens_per_sec = (genTokens / genSec).toFixed(1);
     }
-  }
-  
-  // Tokens/sec = predicted_tokens_seconds (gauge, already tokens/sec)
-  if (metrics['llamacpp:predicted_tokens_seconds']) {
-    result.tokens_per_sec = metrics['llamacpp:predicted_tokens_seconds'].toFixed(1);
   }
   
   // Speculative decoding metrics
