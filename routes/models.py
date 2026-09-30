@@ -343,8 +343,9 @@ def api_export_metrics():
     prompt_tokens = metrics.get('llamacpp:prompt_tokens_total', 0)
     gen_sec = metrics.get('llamacpp:tokens_predicted_seconds_total', 0)
     gen_tokens = metrics.get('llamacpp:tokens_predicted_total', 0)
-    prompt_rate = metrics.get('llamacpp:prompt_tokens_seconds', 0)
-    gen_rate = metrics.get('llamacpp:predicted_tokens_seconds', 0)
+    # Calculate rates from counters (more reliable than gauge metrics)
+    prompt_rate = (prompt_tokens / prompt_sec) if prompt_sec > 0 else 0
+    gen_rate = (gen_tokens / gen_sec) if gen_sec > 0 else 0
     
     prompt_eval_ms = (prompt_sec / prompt_tokens * 1000) if prompt_tokens > 0 else 0
     eval_ms = (gen_sec / gen_tokens * 1000) if gen_tokens > 0 else 0
