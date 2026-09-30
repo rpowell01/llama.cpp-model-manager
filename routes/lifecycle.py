@@ -290,17 +290,13 @@ def api_start():
         if (WINDOWS or WSL) and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
             try:
                 from utils import purge_windows_standby_list, set_process_working_set_size
-                # Try multiple memory list types for more aggressive cleanup
-                for list_type in ["standbylist", "modifiedpagelist", "priority0standbylist"]:
-                    success, msg = purge_windows_standby_list(list_type)
-                    if success:
-                        log.info(f"Memory purge: {msg}")
-                        add_log_entry(f"🧹 Memory purge: {msg}", "green")
-                        break
-                    else:
-                        log.warning(f"Memory purge ({list_type}) skipped: {msg}")
+                success, msg = purge_windows_standby_list()
+                if success:
+                    log.info(f"Memory purge: {msg}")
+                    add_log_entry(f"🧹 Memory purge: {msg}", "green")
                 else:
-                    # All purges failed, try working set trim
+                    log.warning(f"Memory purge skipped: {msg}")
+                    # Fallback: trim current process working set
                     success2, msg2 = set_process_working_set_size()
                     if success2:
                         log.info(f"Working set trim: {msg2}")
