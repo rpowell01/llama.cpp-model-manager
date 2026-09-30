@@ -347,17 +347,30 @@ def _kill_tree(pid: int, model: str = "") -> bool:
                     timeout=15,
                 )
                 log.info(f"Kill result for {pid}: stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
-                if "successful" in result.stdout.lower() or result.returncode == 0:
-                    return True
-            # Fallback: kill all llama-server processes
-            log.info(f"Fallback: killing all llama-server processes")
+                # Check if taskkill succeeded
+                taskkill_succeeded = "successful" in result.stdout.lower() or result.returncode == 0
+                
+                # ALWAYS run fallback to ensure no orphaned llama-server processes
+                log.info(f"Running fallback cleanup: killing all llama-server.exe processes")
+                fallback_result = subprocess.run(
+                    [cmd_path, "/c", "taskkill /F /IM llama-server.exe 2>&1"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                log.info(f"Fallback kill all result: stdout={fallback_result.stdout.strip()}")
+                fallback_succeeded = "successful" in fallback_result.stdout.lower() or fallback_result.returncode == 0
+                
+                return taskkill_succeeded or fallback_succeeded
+            # Fallback if cmd.exe not found
+            log.info(f"cmd.exe not found, running fallback cleanup")
             result = subprocess.run(
-                [cmd_path, "/c", "taskkill /F /IM llama-server.exe 2>&1"],
+                ["/mnt/c/Windows/System32/cmd.exe", "/c", "taskkill /F /IM llama-server.exe 2>&1"],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
-            log.info(f"Kill all result: stdout={result.stdout.strip()}")
+            log.info(f"Fallback kill all result: stdout={result.stdout.strip()}")
             return "successful" in result.stdout.lower() or result.returncode == 0
         elif WINDOWS:
             # Use taskkill to kill process tree on Windows
