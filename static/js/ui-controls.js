@@ -234,7 +234,10 @@ function renderTiles(rows, dlMap, query) {
         (running
           ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' +
             jsEscape(r.model) +
-            "')\">💬 Chat</button>"
+            "')\">💬 Chat</button>" +
+            ' <button class="export" onclick="event.stopPropagation(); exportMetrics(\'' +
+            jsEscape(r.model) +
+            '\', ' + r.port + ')\" title="Export metrics to CSV">📊 Export</button>'
           : "") +
         "</div>" +
         progressHtml +
@@ -1075,3 +1078,45 @@ function hideMetricsTooltip(tile = null) {
 // Expose functions globally for use in model-manager.js
 window.showMetricsTooltip = showMetricsTooltip;
 window.hideMetricsTooltip = hideMetricsTooltip;
+
+/**
+ * Export model metrics to CSV
+ * @param {string} modelName - Model name
+ * @param {number} port - Model port
+ */
+async function exportMetrics(modelName, port) {
+  try {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Exporting...';
+    
+    const res = await fetch('/api/export-metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelName })
+    });
+    
+    const data = await res.json();
+    if (data.error) {
+      log('<b>Export error:</b> ' + data.error, 'red');
+    } else {
+      log(`<b>Export:</b> ${modelName} → ${data.csv_path}`, 'green');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = originalText;
+  } catch (e) {
+    log('<b>Export error:</b> ' + e, 'red');
+    const btn = event.target;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '📊 Export';
+    }
+  }
+}
+
+// Expose functions globally for use in model-manager.js
+window.showMetricsTooltip = showMetricsTooltip;
+window.hideMetricsTooltip = hideMetricsTooltip;
+window.exportMetrics = exportMetrics;

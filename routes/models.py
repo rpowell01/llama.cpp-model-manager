@@ -278,3 +278,156 @@ def api_model_file():
             return jsonify({"error": str(e)}), 500
 
     return jsonify({"error": "Model has no repo/filename configured"}), 400
+
+
+@models_bp.route("/api/export-metrics", methods=["POST"])
+def api_export_metrics():
+    """Export current model metrics and configuration to CSV."""
+    import csv
+    from datetime import datetime
+    import os
+    from config import BASE_DIR
+    
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    models = get_models()
+    # Case-insensitive lookup
+    model_key = None
+    for k in models:
+        if k.lower() == model.lower():
+            model_key = k
+            break
+    if model_key is None:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    meta = models[model_key]
+    port = meta.get("port", 0)
+    if not port:
+        return jsonify({"error": "Model has no port assigned"}), 400
+    
+    # Check if model is running
+    if not check_port_active(port):
+        return jsonify({"error": "Model is not running"}), 400
+    
+    # Fetch metrics from the model's port
+    try:
+        import requests
+        resp = requests.get(f"http://127.0.0.1:{port}/metrics", timeout=5)
+        if not resp.ok:
+            return jsonify({"error": "Failed to fetch metrics from model"}), 500
+        metrics_text = resp.text
+    except Exception as e:
+        return jsonify({"error": f"Error fetching metrics: {e}"}), 500
+    
+    # Parse metrics
+    metrics = {}
+    for line in metrics_text.split('\n'):
+        if line.startswith('#') or not line.strip():
+            continue
+        match = line.match(r'^([^{}\s]+)(?:\{([^}]*)\})?\s+(.+)$') if False else None
+        # Simple parsing for Prometheus format
+        parts = line.split()
+        if len(parts) >= 2:
+            name = parts[0]
+            try:
+                value = float(parts[-1])
+                metrics[name] = value
+            except ValueError:
+                pass
+    
+    # Calculate derived metrics
+    prompt_sec = metrics.get('llamacpp:prompt_seconds_total', 0)
+    prompt_tokens = metrics.get('llamacpp:prompt_tokens_total', 0)
+    gen_sec = metrics.get('llamacpp:tokens_predicted_seconds_total', 0)
+    gen_tokens = metrics.get('llamacpp:tokens_predicted_total', 0)
+    prompt_rate = metrics.get('llamacpp:prompt_tokens_seconds', 0)
+    gen_rate = metrics.get('llamacpp:predicted_tokens_seconds', 0)
+    
+    prompt_eval_ms = (prompt_sec / prompt_tokens * 1000) if prompt_tokens > 0 else 0
+    eval_ms = (gen_sec / gen_tokens * 1000) if gen_tokens > 0 else 0
+    
+    # Speculative decoding
+    draft_tokens = metrics.get('llamacpp:spec_decode_num_draft_tokens_total', 0)
+    accepted_tokens = metrics.get('llamacpp:spec_decode_num_accepted_tokens_total', 0)
+    drafts = metrics.get('llamacpp:spec_decode_num_drafts_total', 0)
+    acceptance_rate = (accepted_tokens / draft_tokens * 100) if draft_tokens > 0 else 0
+    avg_draft_len = (draft_tokens / drafts) if drafts > 0 else 0
+    accepted_per_step = (accepted_tokens / drafts) if drafts > 0 else 0
+    speedup = (1 + accepted_per_step) if drafts > 0 else 1
+    
+    # CSV file path - one per model
+    csv_dir = BASE_DIR / "metrics_exports"
+    csv_dir.mkdir(exist_ok=True)
+    safe_name = model.replace('/', '_').replace(' ', '_')
+    csv_path = csv_dir / f"{safe_name}_metrics.csv"
+    
+    # Prepare row data
+    now = datetime.now()
+    row = {
+        "timestamp": now.isoformat(),
+        "model": model,
+        "port": port,
+        # Prompt metrics
+        "prompt_seconds_total": prompt_sec,
+        "prompt_tokens_total": prompt_tokens,
+        "prompt_eval_ms_per_token": round(prompt_eval_ms, 1),
+        "prompt_eval_rate_tokens_per_sec": round(prompt_rate, 1),
+        # Generation metrics
+        "gen_seconds_total": gen_sec,
+        "gen_tokens_total": gen_tokens,
+        "gen_eval_ms_per_token": round(eval_ms, 1),
+        "gen_rate_tokens_per_sec": round(gen_rate, 1),
+        # Speculative decoding
+        "spec_draft_tokens_total": draft_tokens,
+        "spec_accepted_tokens_total": accepted_tokens,
+        "spec_drafts_total": drafts,
+        "spec_acceptance_rate_pct": round(acceptance_rate, 1),
+        "spec_avg_draft_len": round(avg_draft_len, 1),
+        "spec_est_speedup": round(speedup, 2),
+        # Configuration
+        "threads": meta.get("threads"),
+        "threads_batch": meta.get("threads_batch"),
+        "gpu_layers": meta.get("gpu_layers"),
+        "ctx_size": meta.get("ctx_size"),
+        "batch_size": meta.get("batch_size"),
+        "ubatch_size": meta.get("ubatch_size"),
+        "flash_attn": meta.get("flash_attn"),
+        "numa": meta.get("numa"),
+        "numa_value": meta.get("numa_value"),
+        "parallel": meta.get("parallel"),
+        "rope_scaling_type": meta.get("rope_scaling_type"),
+        "cache_type_k": meta.get("cache_type_k"),
+        "cache_type_v": meta.get("cache_type_v"),
+        "spec_type": meta.get("spec_type"),
+        "spec_draft_n_max": meta.get("spec_draft_n_max"),
+        "spec_draft_n_min": meta.get("spec_draft_n_min"),
+    }
+    
+    # Write/append to CSV
+    file_exists = csv_path.exists()
+    fieldnames = list(row.keys())
+    
+    with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
+    
+    return jsonify({
+        "status": "exported",
+        "csv_path": str(csv_path),
+        "row": row
+    })
+
+
+def check_port_active(port):
+    """Check if a port is active."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            return True
+    except Exception:
+        return False
