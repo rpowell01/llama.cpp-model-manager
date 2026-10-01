@@ -618,7 +618,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["--cpu-affinity", cpu_affinity]
     
     if meta.get("cpu_strict", DEFAULTS["cpu_strict"]):
-        cmd += ["--cpu-strict"]
+        cmd += ["--cpu-strict", "1"]
     
     # Slot KV Cache Persistence
     slot_save_path = meta.get("slot_save_path", DEFAULTS["slot_save_path"])
