@@ -4,7 +4,7 @@
     "repo": "deadbydawn101/gemma-4-E4B-Agentic-Opus-Reasoning-GeminiCLI-GGUF",
     "filename": "gemma4-e4b-opus-f16.gguf",
     "expected_size": 15053090336,
-    "port": 11030,
+    "port": 11040,
     "threads": 10,
     "threads_batch": 22,
     "timeout": 3600,
@@ -60,7 +60,8 @@
     "rating_speed": 0,
     "rating_coding": 0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "sharp-spark-x2.5-4b-q6-k-xl": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/sharp-spark-x2.5-4b-q6-k-xl/Sharp-Spark-X2.5-4B-Q6_K_XL.gguf",
@@ -97,7 +98,7 @@
     "numa": true,
     "numa_value": "distribute",
     "cpu_affinity": "auto",
-    "cpu_strict": false,
+    "cpu_strict": true,
     "batch_size": 4096,
     "ctx_size": 128000,
     "rope_freq_base": 10000.0,
@@ -123,7 +124,8 @@
     "rating_speed": 0,
     "rating_coding": 0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "qwen3.5-9B-glm5.1-distill-v1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-glm5.1-distill-v1-q4-k-m/Qwen3.5-9B-GLM5.1-Distill-v1-Q4_K_M.gguf",
@@ -147,7 +149,7 @@
     "numa": true,
     "numa_value": "isolate",
     "cpu_affinity": "auto",
-    "cpu_strict": false,
+    "cpu_strict": true,
     "batch_size": 65536,
     "ctx_size": 262000,
     "rope_freq_base": 10000.0,
@@ -186,7 +188,8 @@
     "rating_speed": 4,
     "rating_coding": 4,
     "slot_save_path": "c:\\llama.cpp-sycl\\cache",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "qwen3.6-14b-a3b-fablevibes-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.6-14b-a3b-fablevibes-q4-k-m/Qwen3.6-14B-A3B-FableVibes-Q4_K_M.gguf",
@@ -226,7 +229,7 @@
     "numa": true,
     "numa_value": "isolate",
     "cpu_affinity": "auto",
-    "cpu_strict": false,
+    "cpu_strict": true,
     "batch_size": 16384,
     "ctx_size": 200000,
     "rope_freq_base": 10000.0,
@@ -249,14 +252,15 @@
     "rating_speed": 0,
     "rating_coding": 0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "models": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/ggml-vocab-qwen2.gguf",
     "repo": "meta-models/Muse-Glimmer-30B-GGUF",
     "filename": "ggml-vocab-qwen2.gguf",
     "expected_size": 5928681,
-    "port": 11040,
+    "port": 11050,
     "threads": 4,
     "threads_batch": 4,
     "timeout": 3600,
@@ -312,7 +316,8 @@
     "rating_speed": 0,
     "rating_coding": 0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwen3.5-9b-claude-4.6-highiq-thinking-heretic-uncensored.i1-q6-k/Qwen3.5-9B-Claude-4.6-HighIQ-THINKING-HERETIC-UNCENSORED.i1-Q6_K.gguf",
@@ -375,7 +380,8 @@
     "file_exists": true,
     "file_size_gb": 6.85,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "Phi-3-mini-4k-instruct-q4": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Phi-3-mini-4k-instruct-q4/Phi-3-mini-4k-instruct-q4.gguf",
@@ -435,7 +441,8 @@
     "yarn_beta_slow": 1.0,
     "yarn_beta_fast": 32.0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "Qwen3.5-2B-Q4_K_M": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-2B-Q4_K_M/Qwen3.5-2B-Q4_K_M.gguf",
@@ -495,7 +502,8 @@
     "yarn_beta_slow": 1.0,
     "yarn_beta_fast": 32.0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "Qwen3.5-4B-DFlash": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-4B-DFlash/Qwen3.5-4B-DFlash.gguf",
@@ -555,7 +563,8 @@
     "yarn_beta_slow": 1.0,
     "yarn_beta_fast": 32.0,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf/Qwen3.5-9B.Q4_K_M.gguf",
@@ -597,12 +606,12 @@
     "jinja": true,
     "reasoning_preserve": true,
     "gpu_layers": 99,
-    "cache_type_k": "fp16",
-    "cache_type_v": "fp16",
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0",
     "numa": true,
     "numa_value": "isolate",
     "cpu_affinity": "auto",
-    "cpu_strict": false,
+    "cpu_strict": true,
     "batch_size": 32768,
     "ctx_size": 262000,
     "rope_freq_base": 10000.0,
@@ -614,11 +623,12 @@
     "yarn_attn_factor": 1.0,
     "yarn_beta_slow": 1.0,
     "yarn_beta_fast": 32.0,
-    "comment": "code it wrote caused client side errors",
-    "rating_speed": 4,
+    "comment": "code it wrote caused client side errors. memory heavy!",
+    "rating_speed": 3,
     "rating_coding": 3,
     "slot_save_path": "",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
   },
   "qwythos-9b-v2-mtp-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/qwythos-9b-v2-mtp-q4-k-m/Qwythos-9B-v2-MTP-Q4_K_M.gguf",
@@ -665,7 +675,7 @@
     "numa": true,
     "numa_value": "isolate",
     "cpu_affinity": "auto",
-    "cpu_strict": false,
+    "cpu_strict": true,
     "batch_size": 32768,
     "ctx_size": 262000,
     "rope_freq_base": 10000.0,
@@ -681,6 +691,71 @@
     "rating_speed": 5,
     "rating_coding": 4,
     "slot_save_path": "c:\\llama.cpp-sycl\\cache",
-    "cache_reuse": 4096
+    "cache_reuse": 4096,
+    "swa_full": false
+  },
+  "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M": {
+    "model_path": "/mnt/c/llama.cpp-sycl/models/Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M/Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M.gguf",
+    "repo": "",
+    "filename": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M.gguf",
+    "expected_size": 5780087552,
+    "port": 11030,
+    "threads": 16,
+    "threads_batch": 16,
+    "timeout": 7200,
+    "mlock": true,
+    "flash_attn": "on",
+    "no_mmap": false,
+    "parallel": "auto",
+    "ubatch_size": 4096,
+    "spec_type": "draft-mtp",
+    "spec_draft_model": "",
+    "spec_draft_hf_repo": "",
+    "spec_draft_n_max": 8,
+    "spec_draft_n_min": 3,
+    "spec_draft_p_split": 0.1,
+    "spec_draft_p_min": 0.0,
+    "spec_draft_ngl": "auto",
+    "spec_draft_temp": 0.0,
+    "spec_draft_top_p": 1.0,
+    "spec_draft_min_p": 0.0,
+    "spec_draft_typical": 1.0,
+    "spec_ngram_size_n": 12,
+    "spec_ngram_size_m": 48,
+    "spec_ngram_min_hits": 1,
+    "warmup_enabled": true,
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
+    "warmup_max_tokens": 10,
+    "sycl": false,
+    "grp_attn": false,
+    "grp_attn_n": 8,
+    "file_size_gb": 5.38,
+    "file_exists": true,
+    "jinja": true,
+    "reasoning_preserve": true,
+    "gpu_layers": 99,
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0",
+    "numa": true,
+    "numa_value": "isolate",
+    "cpu_affinity": "auto",
+    "cpu_strict": true,
+    "batch_size": 32768,
+    "ctx_size": 262000,
+    "rope_freq_base": 10000.0,
+    "rope_freq_scale": 1.0,
+    "rope_scaling_type": "none",
+    "rope_scale": 1.0,
+    "yarn_orig_ctx": 0,
+    "yarn_ext_factor": -1.0,
+    "yarn_attn_factor": 1.0,
+    "yarn_beta_slow": 1.0,
+    "yarn_beta_fast": 32.0,
+    "slot_save_path": "",
+    "cache_reuse": 4096,
+    "swa_full": false,
+    "comment": "untested",
+    "rating_speed": 4,
+    "rating_coding": 1
   }
 }
