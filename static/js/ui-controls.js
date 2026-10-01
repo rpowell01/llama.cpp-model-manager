@@ -1012,17 +1012,21 @@ async function showMetricsTooltip(tile, modelName, port) {
   }
   metricsTooltipInterval = setInterval(async () => {
     if (metricsTooltip && metricsTooltipContext) {
-      await updateTooltipContent(metricsTooltip, metricsTooltipContext.modelName, metricsTooltipContext.port);
+      await updateTooltipContent(metricsTooltip, metricsTooltipContext.modelName, metricsTooltipContext.port, true);
     }
   }, 3000);
 }
 
 /**
  * Update tooltip content with fresh metrics
+ * @param {HTMLElement} tooltip - Tooltip element
+ * @param {string} modelName - Model name
+ * @param {number} port - Model port
+ * @param {boolean} bypassCache - If true, fetch fresh data bypassing cache
  */
-async function updateTooltipContent(tooltip, modelName, port) {
+async function updateTooltipContent(tooltip, modelName, port, bypassCache = false) {
   if (window.fetchModelMetrics) {
-    const metrics = await window.fetchModelMetrics(modelName, port);
+    const metrics = await window.fetchModelMetrics(modelName, port, bypassCache);
     if (metricsTooltip === tooltip) {
       tooltip.innerHTML = window.formatMetricsTooltip ? 
         window.formatMetricsTooltip(metrics) : 

@@ -10,14 +10,15 @@ const METRICS_CACHE_TTL = 5000; // 5 seconds
  * Fetch and parse llama.cpp metrics from the model's port
  * @param {string} modelName - Model name
  * @param {number} port - Model port
+ * @param {boolean} bypassCache - If true, skip cache and fetch fresh data
  * @returns {Promise<Object>} Parsed metrics
  */
-async function fetchModelMetrics(modelName, port) {
+async function fetchModelMetrics(modelName, port, bypassCache = false) {
   const cacheKey = `${modelName}:${port}`;
   const now = Date.now();
   
-  // Check cache
-  if (modelMetricsCache.has(cacheKey)) {
+  // Check cache (unless bypassing)
+  if (!bypassCache && modelMetricsCache.has(cacheKey)) {
     const cached = modelMetricsCache.get(cacheKey);
     if (now - cached.timestamp < METRICS_CACHE_TTL) {
       return cached.data;
