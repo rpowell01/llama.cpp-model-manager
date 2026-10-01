@@ -216,6 +216,10 @@ def add_model_entry(
     warmup_enabled: bool = False,
     warmup_message: str = "Hello",
     warmup_max_tokens: int = 10,
+    # Slot KV Cache Persistence
+    slot_save_path: str = "",
+    cache_reuse: int = 4096,
+    swa_full: bool = False,
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -293,6 +297,10 @@ def add_model_entry(
             "warmup_enabled": warmup_enabled,
             "warmup_message": warmup_message,
             "warmup_max_tokens": warmup_max_tokens,
+            # Slot KV Cache Persistence
+            "slot_save_path": slot_save_path,
+            "cache_reuse": cache_reuse,
+            "swa_full": swa_full,
             # User rating fields
             "comment": "",
             "rating_speed": 0,
