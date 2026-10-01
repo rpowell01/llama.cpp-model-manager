@@ -629,20 +629,6 @@ addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
         placeholder="Share your thoughts about this model...">${he(data.comment || "")}</textarea>
     </div>`;
 
-  if (!data.repo) {
-    html += `<div id="hf-metadata-missing" style="text-align: center; padding: 1rem 0;">
-       <p style="margin-bottom: 0.75rem; color: var(--muted);">Hugging Face repository not configured.</p>
-       <button id="hf-find-btn-${modelSafeId}" class="btn-primary" data-model="${modelName}">Find on Hugging Face</button>
-       <div id="hf-search-status-${modelSafeId}" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted);"></div>
-     </div>`;
-  }
-
-  html += `
-    <div id="hf-metadata-loading" class="loading" style="display: none;">Loading Hugging Face data...</div>
-    <div id="hf-metadata-content" style="display: none;"></div>
-    <div id="hf-metadata-error" class="error" style="display: none;"></div>
-  </div>`;
-
   // Kilo Code Configuration section
   html += `<div class="panel-section">
      <h3>Kilo Code Integration</h3>
