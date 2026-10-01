@@ -1,0 +1,86 @@
+# AI Model Coding Performance Test
+
+## Instructions for the Model
+
+You are required to solve the following coding problem completely. When you finish, you must provide three pieces of information:
+
+1. **The solution code** - complete, working, and well-documented
+2. **Time taken** - how long (in minutes and seconds) the solution required
+3. **Turn count** - how many conversational turns (exchanges with the user) it took to solve the problem
+
+---
+
+## Coding Problem: Event Booking System
+
+Design and implement an event booking system in Python. The system must support the following features:
+
+### Core Requirements
+
+1. **Event Class**
+   - Attributes: `event_id` (unique string), `title`, `description`, `capacity` (int), `booked_seats` (int, starts at 0)
+   - Method: `available_seats()` returns `capacity - booked_seats`
+   - Method: `is_full()` returns `True` if `booked_seats >= capacity`
+
+2. **Booking Class**
+   - Attributes: `booking_id` (unique string), `event` (reference to Event), `customer_name`, `seats_requested` (int)
+   - Method: `can_book()` returns `True` if `seats_requested <= available_seats()` of the associated event
+   - Method: `book()` if `can_book()` is True, increments `event.booked_seats` by `seats_requested` and returns `True`; otherwise returns `False`
+
+3. **BookingSystem Class**
+   - Attributes: `events` (dict mapping event_id -> Event), `bookings` (dict mapping booking_id -> Booking)
+   - Method: `create_event(event_id, title, description, capacity)` creates a new Event and stores it
+   - Method: `get_event(event_id)` returns the Event or `None` if not found
+   - Method: `make_booking(booking_id, event_id, customer_name, seats_requested)` creates a Booking and attempts to book; returns `True` if booking successful, `False` otherwise
+   - Method: `list_events()` returns a list of all events with their available seat counts
+
+### Additional Requirements
+
+4. **Input Validation**
+   - `event_id` and `booking_id` must be non-empty strings
+   - `capacity` and `seats_requested` must be positive integers
+   - `seats_requested` must not exceed `capacity`
+   - Invalid inputs should raise `ValueError` with descriptive messages
+
+5. **Edge Cases**
+   - Booking more seats than available should fail gracefully (return `False`)
+   - Booking the exact remaining seats should succeed and mark the event as full
+   - Creating an event with duplicate `event_id` should raise `ValueError`
+   - Seats requested of 0 or negative should raise `ValueError`
+
+6. **String Representations**
+   - `Event.__str__()` returns `f"Event: {title} ({available_seats()}/{capacity} seats available)"`
+   - `Booking.__str__()` returns `f"Booking: {booking_id} for {customer_name} - {seats_requested} seats"`
+
+### Deliverable
+
+Provide a complete Python script that implements the above classes and includes a `main()` block that:
+1. Creates a booking system
+2. Creates 3 events with different capacities
+3. Attempts various bookings (some successful, some failing)
+4. Lists all events with their seat availability
+5. Prints the final state of the system
+
+---
+
+## Performance Recording
+
+After completing the solution, provide this information in the format below:
+
+```
+SOLUTION TIME: X minutes Y seconds
+TURN COUNT: N
+```
+
+Where X and Y are integers representing total execution time, and N is the number of turns (conversational exchanges) required to produce the complete solution.
+
+---
+
+## Evaluation Criteria
+
+Your solution will be judged on:
+- Correctness: all requirements met, edge cases handled
+- Code quality: clear naming, documentation, reasonable structure
+- Efficiency: O(1) operations where possible, no unnecessary complexity
+- Completeness: all specified methods implemented and working
+
+This test should take approximately 30 minutes for a capable 9B parameter model to complete successfully.

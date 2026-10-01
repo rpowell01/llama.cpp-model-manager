@@ -320,3 +320,7 @@
 {"time": "2026-10-01T00:35:34Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 105524, "status": "exited_early"}
 {"time": "2026-10-01T00:47:25Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 13688, "status": "running"}
 {"time": "2026-10-01T01:09:06Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 34140, "status": "running"}
+{"time": "2026-10-01T15:11:20Z", "action": "start", "model": "Qwen3.5-4B-DFlash", "port": 11020, "pid": 33214, "status": "exited_early"}
+{"time": "2026-10-01T15:12:24Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 24412, "status": "running"}
+{"time": "2026-10-01T16:38:52Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 13672, "status": "running"}
+{"time": "2026-10-01T18:12:02Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 24216, "status": "running"}
