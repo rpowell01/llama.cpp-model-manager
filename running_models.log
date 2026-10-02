@@ -338,3 +338,4 @@
 {"time": "2026-10-02T01:40:09Z", "action": "start", "model": "ornith-1.5-9b-mtp-iq4-xs", "port": 11003, "pid": 9160, "status": "running"}
 {"time": "2026-10-02T02:05:14Z", "action": "start", "model": "ornith-1.5-9b-mtp-iq4-xs", "port": 11003, "pid": 41156, "status": "running"}
 {"time": "2026-10-02T13:07:15Z", "action": "start", "model": "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf", "port": 11080, "pid": 42808, "status": "running"}
+{"time": "2026-10-02T14:13:56Z", "action": "download", "model": "yi-coder-9b-chat-q4-k-m", "port": 0, "pid": null, "status": "completed (5328958272 bytes)"}
