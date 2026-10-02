@@ -72,6 +72,13 @@ def api_add_model():
         spec_ngram_size_n=int(data.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])),
         spec_ngram_size_m=int(data.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])),
         spec_ngram_min_hits=int(data.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])),
+        # Ngram-mod parameters
+        spec_ngram_mod_n_match=int(data.get("spec_ngram_mod_n_match", DEFAULTS["spec_ngram_mod_n_match"])),
+        spec_ngram_mod_n_min=int(data.get("spec_ngram_mod_n_min", DEFAULTS["spec_ngram_mod_n_min"])),
+        spec_ngram_mod_n_max=int(data.get("spec_ngram_mod_n_max", DEFAULTS["spec_ngram_mod_n_max"])),
+        # Draft model KV cache type
+        spec_draft_type_k=str(data.get("spec_draft_type_k", DEFAULTS["spec_draft_type_k"])),
+        spec_draft_type_v=str(data.get("spec_draft_type_v", DEFAULTS["spec_draft_type_v"])),
         # Slot KV Cache Persistence
         slot_save_path=str(data.get("slot_save_path", DEFAULTS["slot_save_path"])),
         cache_reuse=int(data.get("cache_reuse", DEFAULTS["cache_reuse"])),
@@ -187,6 +194,13 @@ def api_update_model_meta():
         "spec_ngram_size_n": int,
         "spec_ngram_size_m": int,
         "spec_ngram_min_hits": int,
+        # Ngram-mod parameters
+        "spec_ngram_mod_n_match": int,
+        "spec_ngram_mod_n_min": int,
+        "spec_ngram_mod_n_max": int,
+        # Draft model KV cache type
+        "spec_draft_type_k": str,
+        "spec_draft_type_v": str,
         # Warmup parameters
         "warmup_enabled": bool,
         "warmup_message": str,

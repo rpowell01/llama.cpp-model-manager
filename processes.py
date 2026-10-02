@@ -746,21 +746,51 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             if spec_draft_typical < 1.0:
                 cmd += ["--spec-draft-typical", str(spec_draft_typical)]
         
-        # Ngram parameters (used by ngram-* types)
-        if has_ngram_type:
+        # Ngram parameters - handle different ngram types separately
+        # Check for specific ngram types
+        has_ngram_simple = "ngram-simple" in spec_types
+        has_ngram_mod = "ngram-mod" in spec_types
+        has_ngram_map_k = "ngram-map-k" in spec_types
+        has_ngram_map_k4v = "ngram-map-k4v" in spec_types
+        has_ngram_cache = "ngram-cache" in spec_types
+        
+        # Ngram-simple parameters
+        if has_ngram_simple:
             spec_ngram_size_n = meta.get("spec_ngram_size_n", DEFAULTS["spec_ngram_size_n"])
             if spec_ngram_size_n > 0:
-                # Correct argument names for ngram-simple spec type in newer llama.cpp
                 cmd += ["--spec-ngram-simple-size-n", str(spec_ngram_size_n)]
             
             spec_ngram_size_m = meta.get("spec_ngram_size_m", DEFAULTS["spec_ngram_size_m"])
             if spec_ngram_size_m > 0:
-                # Correct argument names for ngram-simple spec type in newer llama.cpp
                 cmd += ["--spec-ngram-simple-size-m", str(spec_ngram_size_m)]
             
             spec_ngram_min_hits = meta.get("spec_ngram_min_hits", DEFAULTS["spec_ngram_min_hits"])
             if spec_ngram_min_hits > 1:
                 cmd += ["--spec-ngram-simple-min-hits", str(spec_ngram_min_hits)]
+        
+        # Ngram-mod parameters
+        if has_ngram_mod:
+            spec_ngram_mod_n_match = meta.get("spec_ngram_mod_n_match", DEFAULTS["spec_ngram_mod_n_match"])
+            if spec_ngram_mod_n_match > 0:
+                cmd += ["--spec-ngram-mod-n-match", str(spec_ngram_mod_n_match)]
+            
+            spec_ngram_mod_n_min = meta.get("spec_ngram_mod_n_min", DEFAULTS["spec_ngram_mod_n_min"])
+            if spec_ngram_mod_n_min > 0:
+                cmd += ["--spec-ngram-mod-n-min", str(spec_ngram_mod_n_min)]
+            
+            spec_ngram_mod_n_max = meta.get("spec_ngram_mod_n_max", DEFAULTS["spec_ngram_mod_n_max"])
+            if spec_ngram_mod_n_max > 0:
+                cmd += ["--spec-ngram-mod-n-max", str(spec_ngram_mod_n_max)]
+        
+        # Draft model KV cache type parameters (for draft-* types)
+        if has_draft_type:
+            spec_draft_type_k = meta.get("spec_draft_type_k", DEFAULTS["spec_draft_type_k"])
+            if spec_draft_type_k and spec_draft_type_k != "fp16":
+                cmd += ["--spec-draft-type-k", spec_draft_type_k]
+            
+            spec_draft_type_v = meta.get("spec_draft_type_v", DEFAULTS["spec_draft_type_v"])
+            if spec_draft_type_v and spec_draft_type_v != "fp16":
+                cmd += ["--spec-draft-type-v", spec_draft_type_v]
 
     log.info(f"Build command for {model}: {cmd}")
     return cmd

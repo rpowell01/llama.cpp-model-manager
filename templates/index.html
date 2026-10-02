@@ -252,6 +252,23 @@
         <label>Ngram Size N (lookup): <input type="number" name="spec_ngram_size_n" value="12" min="0"></label>
         <label>Ngram Size M (draft): <input type="number" name="spec_ngram_size_m" value="48" min="0"></label>
         <label>Ngram Min Hits: <input type="number" name="spec_ngram_min_hits" value="1" min="1"></label>
+        <label>Ngram-mod N Match: <input type="number" name="spec_ngram_mod_n_match" value="24" min="0"></label>
+        <label>Ngram-mod N Min: <input type="number" name="spec_ngram_mod_n_min" value="48" min="0"></label>
+        <label>Ngram-mod N Max: <input type="number" name="spec_ngram_mod_n_max" value="64" min="0"></label>
+        <label>Draft KV Cache Type K:
+          <select name="spec_draft_type_k">
+            <option value="fp16">fp16 (default)</option>
+            <option value="q4_0">q4_0</option>
+            <option value="q8_0">q8_0</option>
+          </select>
+        </label>
+        <label>Draft KV Cache Type V:
+          <select name="spec_draft_type_v">
+            <option value="fp16">fp16 (default)</option>
+            <option value="q4_0">q4_0</option>
+            <option value="q8_0">q8_0</option>
+          </select>
+        </label>
       </fieldset>
 
       <!-- Agent/Tool Parameters -->

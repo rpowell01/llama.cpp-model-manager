@@ -144,7 +144,7 @@ const formData = new FormData(e.target);
         formData.forEach((value, key) => {
           if (key === 'mlock' || key === 'no_mmap' || key === 'auto_download' || key === 'numa' || key === 'cpu_strict' || key === 'swa_full') {
             data[key] = formData.get(key) === 'on';
-          } else if (['expected_size', 'port', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size', 'gpu_layers', 'batch_size', 'ctx_size', 'cache_reuse'].includes(key)) {
+          } else if (['expected_size', 'port', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size', 'gpu_layers', 'batch_size', 'ctx_size', 'cache_reuse', 'spec_ngram_mod_n_match', 'spec_ngram_mod_n_min', 'spec_ngram_mod_n_max'].includes(key)) {
             data[key] = parseInt(value, 10);
           } else if (['rope_freq_base', 'rope_freq_scale'].includes(key)) {
             data[key] = parseFloat(value);
