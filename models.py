@@ -212,6 +212,13 @@ def add_model_entry(
     spec_ngram_size_n: int = 12,
     spec_ngram_size_m: int = 48,
     spec_ngram_min_hits: int = 1,
+    # Ngram-mod parameters
+    spec_ngram_mod_n_match: int = 24,
+    spec_ngram_mod_n_min: int = 48,
+    spec_ngram_mod_n_max: int = 64,
+    # Draft model KV cache type
+    spec_draft_type_k: str = "fp16",
+    spec_draft_type_v: str = "fp16",
     # Warmup parameters
     warmup_enabled: bool = False,
     warmup_message: str = "Hello",
@@ -293,6 +300,13 @@ def add_model_entry(
             "spec_ngram_size_n": spec_ngram_size_n,
             "spec_ngram_size_m": spec_ngram_size_m,
             "spec_ngram_min_hits": spec_ngram_min_hits,
+            # Ngram-mod parameters
+            "spec_ngram_mod_n_match": spec_ngram_mod_n_match,
+            "spec_ngram_mod_n_min": spec_ngram_mod_n_min,
+            "spec_ngram_mod_n_max": spec_ngram_mod_n_max,
+            # Draft model KV cache type
+            "spec_draft_type_k": spec_draft_type_k,
+            "spec_draft_type_v": spec_draft_type_v,
             # Warmup parameters
             "warmup_enabled": warmup_enabled,
             "warmup_message": warmup_message,
