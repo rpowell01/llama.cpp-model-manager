@@ -529,6 +529,34 @@ addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
     addEditable("Ngram Size M (draft)", "spec_ngram_size_m", data.spec_ngram_size_m, "number", 1, 0);
     addEditable("Ngram Min Hits", "spec_ngram_min_hits", data.spec_ngram_min_hits, "number", 1, 1);
     
+    // Ngram-mod settings
+    addEditable("Ngram-mod N Match", "spec_ngram_mod_n_match", data.spec_ngram_mod_n_match, "number", 1, 0);
+    addEditable("Ngram-mod N Min", "spec_ngram_mod_n_min", data.spec_ngram_mod_n_min, "number", 1, 0);
+    addEditable("Ngram-mod N Max", "spec_ngram_mod_n_max", data.spec_ngram_mod_n_max, "number", 1, 0);
+    
+    // Draft model KV cache types
+    const draftKCacheVal = data.spec_draft_type_k == null ? "fp16" : data.spec_draft_type_k;
+    let draftKCacheSelect = `<select class="meta-input" data-field="spec_draft_type_k">`;
+    ["fp16", "q4_0", "q8_0"].forEach((val) => {
+      draftKCacheSelect += `<option value="${val}" ${draftKCacheVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    draftKCacheSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Draft KV Cache Type K</span>
+      <span class="value">${draftKCacheSelect}</span>
+    </div>`;
+    
+    const draftVCacheVal = data.spec_draft_type_v == null ? "fp16" : data.spec_draft_type_v;
+    let draftVCacheSelect = `<select class="meta-input" data-field="spec_draft_type_v">`;
+    ["fp16", "q4_0", "q8_0"].forEach((val) => {
+      draftVCacheSelect += `<option value="${val}" ${draftVCacheVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    draftVCacheSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Draft KV Cache Type V</span>
+      <span class="value">${draftVCacheSelect}</span>
+    </div>`;
+    
     // Warmup settings
     addEditable("Enable Warmup", "warmup_enabled", data.warmup_enabled, "checkbox");
     addEditable("Warmup Message", "warmup_message", data.warmup_message, "text");
