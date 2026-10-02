@@ -253,6 +253,13 @@ def api_start():
             "spec_ngram_size_n": getattr(model_dict, 'spec_ngram_size_n', 12),
             "spec_ngram_size_m": getattr(model_dict, 'spec_ngram_size_m', 48),
             "spec_ngram_min_hits": getattr(model_dict, 'spec_ngram_min_hits', 1),
+            # Ngram-mod parameters
+            "spec_ngram_mod_n_match": getattr(model_dict, 'spec_ngram_mod_n_match', 24),
+            "spec_ngram_mod_n_min": getattr(model_dict, 'spec_ngram_mod_n_min', 48),
+            "spec_ngram_mod_n_max": getattr(model_dict, 'spec_ngram_mod_n_max', 64),
+            # Draft model KV cache type
+            "spec_draft_type_k": getattr(model_dict, 'spec_draft_type_k', 'fp16'),
+            "spec_draft_type_v": getattr(model_dict, 'spec_draft_type_v', 'fp16'),
             # Warmup parameters
             "warmup_enabled": getattr(model_dict, 'warmup_enabled', False),
             "warmup_message": getattr(model_dict, 'warmup_message', 'Hello'),
