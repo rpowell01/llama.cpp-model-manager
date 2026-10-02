@@ -324,3 +324,17 @@
 {"time": "2026-10-01T15:12:24Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 24412, "status": "running"}
 {"time": "2026-10-01T16:38:52Z", "action": "start", "model": "Qwen3.5-9B-DeepSeek-V4-Flash-MTP-Q4_K_M", "port": 11030, "pid": 13672, "status": "running"}
 {"time": "2026-10-01T18:12:02Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 24216, "status": "running"}
+{"time": "2026-10-01T18:16:38Z", "action": "start", "model": "qwen3.5-9B-glm5.1-distill-v1-q4-k-m", "port": 11001, "pid": 28120, "status": "running"}
+{"time": "2026-10-01T20:01:40Z", "action": "start", "model": "Qwopus3.5-9B-Coder-MTP-Q4_K_M", "port": 11040, "pid": 3488, "status": "running"}
+{"time": "2026-10-01T20:05:11Z", "action": "start", "model": "Qwopus3.5-9B-Coder-MTP-Q4_K_M", "port": 11040, "pid": 23208, "status": "running"}
+{"time": "2026-10-01T20:06:16Z", "action": "start", "model": "Qwopus3.5-9B-Coder-MTP-Q4_K_M", "port": 11040, "pid": 27624, "status": "running"}
+{"time": "2026-10-01T20:14:03Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 19140, "status": "running"}
+{"time": "2026-10-01T20:17:04Z", "action": "download", "model": "qwopus3.5-9b-coder-mtp", "port": 0, "pid": null, "status": "completed (5780092832 bytes)"}
+{"time": "2026-10-01T21:34:08Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 23040, "status": "running"}
+{"time": "2026-10-01T23:10:58Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 2224, "status": "exited_early"}
+{"time": "2026-10-01T23:12:42Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 2797, "status": "exited_early"}
+{"time": "2026-10-02T00:15:22Z", "action": "start", "model": "qwythos-9b-v2-mtp-q4-k-m", "port": 11090, "pid": 20664, "status": "running"}
+{"time": "2026-10-02T01:25:23Z", "action": "start", "model": "ornith-1.5-9b-mtp-iq4-xs", "port": 11003, "pid": 36916, "status": "running"}
+{"time": "2026-10-02T01:40:09Z", "action": "start", "model": "ornith-1.5-9b-mtp-iq4-xs", "port": 11003, "pid": 9160, "status": "running"}
+{"time": "2026-10-02T02:05:14Z", "action": "start", "model": "ornith-1.5-9b-mtp-iq4-xs", "port": 11003, "pid": 41156, "status": "running"}
+{"time": "2026-10-02T13:07:15Z", "action": "start", "model": "qwimi3.5-9b-kimik2.6-opus-distill-mtp-gguf", "port": 11080, "pid": 42808, "status": "running"}
