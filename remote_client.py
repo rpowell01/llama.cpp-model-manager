@@ -107,6 +107,13 @@ class Model:
     spec_ngram_size_n: int = 12
     spec_ngram_size_m: int = 48
     spec_ngram_min_hits: int = 1
+    # Ngram-mod parameters
+    spec_ngram_mod_n_match: int = 24
+    spec_ngram_mod_n_min: int = 48
+    spec_ngram_mod_n_max: int = 64
+    # Draft model KV cache type
+    spec_draft_type_k: str = "fp16"
+    spec_draft_type_v: str = "fp16"
     # Warmup parameters
     warmup_enabled: bool = False
     warmup_message: str = "Hello"
@@ -179,6 +186,13 @@ class Model:
             spec_ngram_size_n=data.get("spec_ngram_size_n", 12),
             spec_ngram_size_m=data.get("spec_ngram_size_m", 48),
             spec_ngram_min_hits=data.get("spec_ngram_min_hits", 1),
+            # Ngram-mod parameters
+            spec_ngram_mod_n_match=data.get("spec_ngram_mod_n_match", 24),
+            spec_ngram_mod_n_min=data.get("spec_ngram_mod_n_min", 48),
+            spec_ngram_mod_n_max=data.get("spec_ngram_mod_n_max", 64),
+            # Draft model KV cache type
+            spec_draft_type_k=data.get("spec_draft_type_k", "fp16"),
+            spec_draft_type_v=data.get("spec_draft_type_v", "fp16"),
             # Warmup
             warmup_enabled=data.get("warmup_enabled", False),
             warmup_message=data.get("warmup_message", "Hello"),
