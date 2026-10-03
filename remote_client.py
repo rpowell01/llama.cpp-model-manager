@@ -126,6 +126,8 @@ class Model:
     slot_save_path: str = ""
     cache_reuse: int = 4096
     swa_full: bool = False
+    # Chat template
+    chat_template_file: str = ""
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -205,6 +207,8 @@ class Model:
             slot_save_path=data.get("slot_save_path", ""),
             cache_reuse=data.get("cache_reuse", 4096),
             swa_full=data.get("swa_full", False),
+            # Chat template
+            chat_template_file=data.get("chat_template_file", ""),
         )
 
 

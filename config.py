@@ -174,6 +174,8 @@ DEFAULTS: dict[str, Any] = {
     "slot_save_path": "",
     "cache_reuse": 4096,
     "swa_full": False,
+    # Chat template
+    "chat_template_file": "",
 }
 
 # Flask server port (set by main.py at runtime)

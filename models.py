@@ -227,6 +227,8 @@ def add_model_entry(
     slot_save_path: str = "",
     cache_reuse: int = 4096,
     swa_full: bool = False,
+    # Chat template
+    chat_template_file: str = "",
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -315,6 +317,8 @@ def add_model_entry(
             "slot_save_path": slot_save_path,
             "cache_reuse": cache_reuse,
             "swa_full": swa_full,
+            # Chat template
+            "chat_template_file": chat_template_file,
             # User rating fields
             "comment": "",
             "rating_speed": 0,
@@ -482,6 +486,8 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "slot_save_path": DEFAULTS["slot_save_path"],
         "cache_reuse": DEFAULTS["cache_reuse"],
         "swa_full": DEFAULTS["swa_full"],
+        # Chat template
+        "chat_template_file": DEFAULTS["chat_template_file"],
     }
     for model in models.values():
         for field, default_value in default_fields.items():

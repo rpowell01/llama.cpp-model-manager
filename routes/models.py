@@ -83,6 +83,8 @@ def api_add_model():
         slot_save_path=str(data.get("slot_save_path", DEFAULTS["slot_save_path"])),
         cache_reuse=int(data.get("cache_reuse", DEFAULTS["cache_reuse"])),
         swa_full=bool(data.get("swa_full", DEFAULTS["swa_full"])),
+        # Chat template
+        chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
     )
     if not success:
         return jsonify({"error": f"Model '{normalized_name}' already exists or failed to add"}), 409
@@ -213,6 +215,8 @@ def api_update_model_meta():
         "slot_save_path": str,
         "cache_reuse": int,
         "swa_full": bool,
+        # Chat template
+        "chat_template_file": str,
     }
     changes = {}
     for field, typ in allowed_fields.items():

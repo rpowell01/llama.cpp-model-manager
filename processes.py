@@ -625,6 +625,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if slot_save_path:
         cmd += ["--slot-save-path", slot_save_path]
     
+    # Chat template file
+    chat_template_file = meta.get("chat_template_file", DEFAULTS["chat_template_file"])
+    if chat_template_file:
+        cmd += ["--chat-template-file", chat_template_file]
+    
     cache_reuse = meta.get("cache_reuse", DEFAULTS["cache_reuse"])
     if cache_reuse:
         cmd += ["--cache-reuse", str(cache_reuse)]

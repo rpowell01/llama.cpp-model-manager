@@ -349,3 +349,15 @@
 {"time": "2026-10-02T15:44:47Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 39536, "status": "running"}
 {"time": "2026-10-02T15:47:10Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 22808, "status": "running"}
 {"time": "2026-10-02T15:49:20Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 18560, "status": "running"}
+{"time": "2026-10-02T16:53:33Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 11640, "status": "running"}
+{"time": "2026-10-02T16:56:38Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 32444, "status": "running"}
+{"time": "2026-10-02T17:48:33Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 29976, "status": "running"}
+{"time": "2026-10-02T18:19:05Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 39408, "status": "running"}
+{"time": "2026-10-02T18:46:01Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 21112, "status": "running"}
+{"time": "2026-10-02T18:49:10Z", "action": "start", "model": "yi-coder-9b-chat-q4-k-m", "port": 11004, "pid": 16084, "status": "running"}
+{"time": "2026-10-02T19:48:57Z", "action": "download", "model": "yi-coder-9b-chat-instruct-ties.q4-k-m", "port": 0, "pid": null, "status": "completed (5328958048 bytes)"}
+{"time": "2026-10-02T19:50:44Z", "action": "start", "model": "yi-coder-9b-chat-instruct-ties.q4-k-m", "port": 11006, "pid": 34276, "status": "running"}
+{"time": "2026-10-02T20:11:26Z", "action": "download", "model": "yi-9b-coder-q4-k-m", "port": 0, "pid": null, "status": "completed (5328957184 bytes)"}
+{"time": "2026-10-02T20:13:48Z", "action": "start", "model": "yi-9b-coder-q4-k-m", "port": 11004, "pid": 15892, "status": "running"}
+{"time": "2026-10-02T21:43:53Z", "action": "download", "model": "yi-coder-9b-q4-k-m", "port": 0, "pid": null, "status": "completed (5328957440 bytes)"}
+{"time": "2026-10-02T21:46:40Z", "action": "start", "model": "yi-coder-9b-q4-k-m", "port": 11005, "pid": 14000, "status": "running"}

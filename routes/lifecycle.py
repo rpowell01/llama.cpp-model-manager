@@ -268,6 +268,8 @@ def api_start():
             "slot_save_path": getattr(model_dict, 'slot_save_path', ''),
             "cache_reuse": getattr(model_dict, 'cache_reuse', 4096),
             "swa_full": getattr(model_dict, 'swa_full', False),
+            # Chat template
+            "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
         }
 
         # Check if already running

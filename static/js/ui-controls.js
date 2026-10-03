@@ -288,7 +288,7 @@ async function renderPanelProperties(data, modelName) {
     <h3>Basic Configuration</h3>
     <div class="panel-grid">`;
     
-    const addItem = (label, value, isCode = false, isHtml = false) => {
+    const addItem = (label, value, isCode = false, isHtml = false, browseType = null) => {
       const escapedLabel = he(label);
       let escapedValue;
       if (isHtml) {
@@ -298,9 +298,18 @@ async function renderPanelProperties(data, modelName) {
       } else {
         escapedValue = he(value);
       }
+      
+      let browseBtn = "";
+      if (browseType) {
+        browseBtn = `<button type="button" class="browse-btn" data-field="${he(label.toLowerCase().replace(/\s+/g, '_'))}" data-browse-type="${browseType}">📁</button>`;
+      }
+      
       html += `<div class="panel-item">
         <span class="label">${escapedLabel}</span>
-        <span class="value">${escapedValue}</span>
+        <span class="value" ${browseType ? 'style="display: flex; gap: 0.25rem; align-items: center;"' : ''}>
+          ${escapedValue}
+          ${browseBtn}
+        </span>
       </div>`;
     };
 
@@ -331,6 +340,77 @@ async function renderPanelProperties(data, modelName) {
       </div>`;
     };
 
+    /**
+     * Add an editable field with a browse button for file/directory selection
+     * @param {string} label - Field label
+     * @param {string} field - Field name
+     * @param {string} value - Current value
+     * @param {string} browseType - Type of browse: 'file', 'directory', 'model-file'
+     */
+    const addEditableWithBrowse = (
+      label,
+      field,
+      value,
+      browseType = "file"
+    ) => {
+      const escapedLabel = he(label);
+      const escapedValue = he(String(value));
+      let browseBtn;
+      
+      if (browseType === "file") {
+        browseBtn = `<button type="button" class="browse-btn" data-field="${he(field)}" data-browse-type="file">📁</button>`;
+      } else if (browseType === "directory") {
+        browseBtn = `<button type="button" class="browse-btn" data-field="${he(field)}" data-browse-type="directory">📁</button>`;
+      } else if (browseType === "model-file") {
+        browseBtn = `<button type="button" class="browse-btn" data-field="${he(field)}" data-browse-type="model-file">📁</button>`;
+      }
+      
+      const escapedValue = he(String(value));
+      const input = `<input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}">`;
+      
+      html += `<div class="panel-item">
+        <span class="label">${he(label)}</span>
+        <span class="value" style="display: flex; gap: 0.25rem; align-items: center;">
+          <input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}" style="flex: 1;">
+          ${browseBtn}
+        </span>
+      </div>`;
+    };
+
+    /**
+     * Initialize browse button event handlers
+     * @param {HTMLElement} container - Container element to search for browse buttons
+     */
+    function initBrowseButtons(container) {
+      container.querySelectorAll(".browse-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const field = btn.dataset.field;
+          const browseType = btn.dataset.browseType;
+          const input = container.querySelector(`.meta-input[data-field="${field}"]`);
+          
+          if (!input) return;
+          
+          try {
+            let result;
+            if (browseType === "directory") {
+              result = await window.electronAPI.selectDirectory();
+            } else if (browseType === "file") {
+              result = await window.electronAPI.selectFile({ filters: [{ name: "All Files", extensions: ["*"] }] });
+            } else if (browseType === "model-file") {
+              result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
+            }
+            
+            if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+              input.value = result.filePaths[0];
+            }
+          } catch (err) {
+            console.error("Browse error:", err);
+            log('<b>Browse error:</b> ' + err, 'red');
+          }
+        });
+      });
+    }
+
     addItem("Model Name", modelName);
     addEditable("Port", "port", data.port, "number", 1, 0);
     // Note: Hugging Face Repo, Filename, Expected Size are typically static/model info
@@ -340,7 +420,7 @@ async function renderPanelProperties(data, modelName) {
       addItem("Hugging Face Repo", data.repo);
     }
     if (data.filename) {
-      addItem("Filename", data.filename);
+      addItem("Filename", data.filename, false, false, "model-file");
     }
     if (data.file_size_gb) {
       addItem("Expected Size (GB)", fmtGb(data.file_size_gb));
@@ -423,9 +503,12 @@ async function renderPanelProperties(data, modelName) {
       <span class="value">${flashSelect}</span>
     </div>`;
     
-addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
+addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "directory");
     addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1);
     addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox");
+    
+    // Chat template file with browse button
+    addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
     html += `</div></div>`;
 
@@ -670,6 +753,9 @@ addEditable("Slot Save Path", "slot_save_path", data.slot_save_path, "text");
    </div>`;
 
   content.innerHTML = html;
+
+  // Initialize browse buttons
+  initBrowseButtons(content);
 
   // Attach meta input listeners (no auto-save - values collected on Save)
   content.closest(".properties-panel").dataset.modelName = modelName;
