@@ -16,6 +16,77 @@ log = logging.getLogger("llamaweb")
 _chat_registry = None
 
 
+def _get_model_slot_save_path(model_name: str) -> str | None:
+    """Get the slot_save_path for a model from local models."""
+    local_models = get_models()
+    model_data = local_models.get(model_name)
+    if model_data and model_data.get("slot_save_path"):
+        return model_data["slot_save_path"]
+    return None
+
+
+def _generate_session_id(model_name: str, user_id: str = "default") -> str:
+    """Generate a session ID for slot persistence."""
+    sanitized = model_name.replace(" ", "_").replace("/", "_")
+    return f"{sanitized}_{user_id}"
+
+
+def _restore_slot_cache(model_name: str, port: int, session_id: str) -> bool:
+    """Restore KV cache from slot file before request."""
+    slot_save_path = _get_model_slot_save_path(model_name)
+    if not slot_save_path:
+        return False
+    
+    session_id_safe = session_id.replace(" ", "_").replace("/", "_")
+    filename = f"{slot_save_path}/slot_{session_id_safe}.bin"
+    
+    try:
+        resp = requests.post(
+            f"http://127.0.0.1:{port}/slots/0/restore",
+            json={"filename": filename},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            logging.getLogger("llamaweb").info(f"Restored slot cache for {model_name} session {session_id}")
+            return True
+        elif resp.status_code == 404:
+            # First message in session - no cache file yet
+            logging.getLogger("llamaweb").debug(f"No slot cache found for {model_name} session {session_id}")
+            return False
+        else:
+            logging.getLogger("llamaweb").warning(f"Slot restore failed for {model_name}: {resp.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logging.getLogger("llamaweb").warning(f"Slot restore error for {model_name}: {e}")
+        return False
+
+
+def _save_slot_cache(model_name: str, port: int, session_id: str) -> bool:
+    """Save KV cache to slot file after response."""
+    slot_save_path = _get_model_slot_save_path(model_name)
+    if not slot_save_path:
+        return False
+    
+    session_id_safe = session_id.replace(" ", "_").replace("/", "_")
+    filename = f"{slot_save_path}/slot_{session_id_safe}.bin"
+    
+    try:
+        resp = requests.post(
+            f"http://127.0.0.1:{port}/slots/0/save",
+            json={"filename": filename},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            logging.getLogger("llamaweb").info(f"Saved slot cache for {model_name} session {session_id}")
+            return True
+        else:
+            logging.getLogger("llamaweb").warning(f"Slot save failed for {model_name}: {resp.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logging.getLogger("llamaweb").warning(f"Slot save error for {model_name}: {e}")
+        return False
+
+
 def get_chat_registry() -> ModelRegistry:
     """Get or create the model registry instance for chat."""
     global _chat_registry
@@ -80,6 +151,14 @@ def api_chat():
         if not check_port_active(port_int):
             return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
+    # Generate session ID for slot persistence
+    session_id = _generate_session_id(model)
+    has_slot_cache = _get_model_slot_save_path(model) is not None
+    
+    # Restore slot cache before request
+    if has_slot_cache:
+        _restore_slot_cache(model, port_int, session_id)
+
     payload = dict(data)
     payload["stream"] = False
     if "messages" not in payload:
@@ -140,6 +219,11 @@ def api_chat():
         except Exception as e:
             log.error(f"Invalid JSON from model {model}: {resp.text[:500]}")
             return jsonify({"error": "Model returned invalid JSON response"}), 500
+        
+        # Save slot cache after successful response
+        if has_slot_cache:
+            _save_slot_cache(model, port_int, session_id)
+        
         return jsonify(json_data)
     except requests.exceptions.RequestException as e:
         log.error(f"Chat proxy error for {model}: {e}")
