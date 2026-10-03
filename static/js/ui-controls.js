@@ -390,7 +390,7 @@ async function renderPanelProperties(data, modelName) {
           try {
             let result;
             
-            // Try Electron API first (for Electron apps)
+            // Try Electron API first (for Electron apps) - returns full paths
             if (window.electronAPI && typeof window.electronAPI.selectDirectory === 'function') {
               if (browseType === "directory") {
                 result = await window.electronAPI.selectDirectory();
@@ -401,10 +401,11 @@ async function renderPanelProperties(data, modelName) {
               }
             } 
             // Fallback to File System Access API (modern browsers)
+            // Note: This API only provides file handles, not full paths due to security restrictions
             else if ('showDirectoryPicker' in window || 'showOpenFilePicker' in window) {
               if (browseType === "directory" && 'showDirectoryPicker' in window) {
                 const dirHandle = await window.showDirectoryPicker();
-                result = { canceled: false, filePaths: [dirHandle.name] };
+                result = { canceled: false, filePaths: [dirHandle.name] }; // Note: only name available
               } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
                 const options = browseType === "model-file" 
                   ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
@@ -412,17 +413,17 @@ async function renderPanelProperties(data, modelName) {
                 const fileHandles = await window.showOpenFilePicker(options);
                 if (fileHandles.length > 0) {
                   const file = await fileHandles[0].getFile();
-                  result = { canceled: false, filePaths: [file.name] };
+                  result = { canceled: false, filePaths: [file.name] }; // Note: only name available
                 }
               }
             }
-            // Last resort: prompt for manual path entry
+            // Last resort: prompt for manual path entry (user must enter full path)
             else {
               const message = browseType === "directory" 
-                ? "Enter directory path:" 
+                ? "Enter full directory path:" 
                 : browseType === "model-file" 
-                  ? "Enter path to GGUF model file:" 
-                  : "Enter file path:";
+                  ? "Enter full path to GGUF model file:" 
+                  : "Enter full file path:";
               const path = prompt(message, input.value);
               if (path) {
                 result = { canceled: false, filePaths: [path] };
