@@ -365,9 +365,6 @@ async function renderPanelProperties(data, modelName) {
         browseBtn = `<button type="button" class="browse-btn" data-field="${he(field)}" data-browse-type="model-file">📁</button>`;
       }
       
-      const escapedValue = he(String(value));
-      const input = `<input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}">`;
-      
       html += `<div class="panel-item">
         <span class="label">${he(label)}</span>
         <span class="value" style="display: flex; gap: 0.25rem; align-items: center;">
