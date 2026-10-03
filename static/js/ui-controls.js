@@ -389,12 +389,44 @@ async function renderPanelProperties(data, modelName) {
           
           try {
             let result;
-            if (browseType === "directory") {
-              result = await window.electronAPI.selectDirectory();
-            } else if (browseType === "file") {
-              result = await window.electronAPI.selectFile({ filters: [{ name: "All Files", extensions: ["*"] }] });
-            } else if (browseType === "model-file") {
-              result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
+            
+            // Try Electron API first (for Electron apps)
+            if (window.electronAPI && typeof window.electronAPI.selectDirectory === 'function') {
+              if (browseType === "directory") {
+                result = await window.electronAPI.selectDirectory();
+              } else if (browseType === "file") {
+                result = await window.electronAPI.selectFile({ filters: [{ name: "All Files", extensions: ["*"] }] });
+              } else if (browseType === "model-file") {
+                result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
+              }
+            } 
+            // Fallback to File System Access API (modern browsers)
+            else if ('showDirectoryPicker' in window || 'showOpenFilePicker' in window) {
+              if (browseType === "directory" && 'showDirectoryPicker' in window) {
+                const dirHandle = await window.showDirectoryPicker();
+                result = { canceled: false, filePaths: [dirHandle.name] };
+              } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
+                const options = browseType === "model-file" 
+                  ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
+                  : { types: [{ description: "All Files", accept: { "*/*": ["*"] } }] };
+                const fileHandles = await window.showOpenFilePicker(options);
+                if (fileHandles.length > 0) {
+                  const file = await fileHandles[0].getFile();
+                  result = { canceled: false, filePaths: [file.name] };
+                }
+              }
+            }
+            // Last resort: prompt for manual path entry
+            else {
+              const message = browseType === "directory" 
+                ? "Enter directory path:" 
+                : browseType === "model-file" 
+                  ? "Enter path to GGUF model file:" 
+                  : "Enter file path:";
+              const path = prompt(message, input.value);
+              if (path) {
+                result = { canceled: false, filePaths: [path] };
+              }
             }
             
             if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
