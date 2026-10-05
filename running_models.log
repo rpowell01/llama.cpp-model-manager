@@ -361,3 +361,25 @@
 {"time": "2026-10-02T20:13:48Z", "action": "start", "model": "yi-9b-coder-q4-k-m", "port": 11004, "pid": 15892, "status": "running"}
 {"time": "2026-10-02T21:43:53Z", "action": "download", "model": "yi-coder-9b-q4-k-m", "port": 0, "pid": null, "status": "completed (5328957440 bytes)"}
 {"time": "2026-10-02T21:46:40Z", "action": "start", "model": "yi-coder-9b-q4-k-m", "port": 11005, "pid": 14000, "status": "running"}
+{"time": "2026-10-03T04:21:35Z", "action": "download", "model": "jackod-9b-coder-mtp-gguf", "port": 0, "pid": null, "status": "completed (5780091648 bytes)"}
+{"time": "2026-10-03T16:56:32Z", "action": "start", "model": "yi-coder-9b-q4-k-m", "port": 11005, "pid": 15592, "status": "running"}
+{"time": "2026-10-03T17:18:58Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 44748, "status": "running"}
+{"time": "2026-10-03T17:22:22Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 128359, "status": "exited_early"}
+{"time": "2026-10-03T17:24:21Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 129006, "status": "exited_early"}
+{"time": "2026-10-03T17:25:38Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 129462, "status": "exited_early"}
+{"time": "2026-10-03T17:26:55Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 36876, "status": "running"}
+{"time": "2026-10-03T17:36:37Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 50748, "status": "running"}
+{"time": "2026-10-03T19:15:12Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 52196, "status": "running"}
+{"time": "2026-10-03T21:14:11Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 31124, "status": "running"}
+{"time": "2026-10-04T00:06:12Z", "action": "start", "model": "yi-coder-9b-q4-k-m", "port": 11005, "pid": 10060, "status": "running"}
+{"time": "2026-10-04T01:19:25Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 41660, "status": "running"}
+{"time": "2026-10-04T02:17:22Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 22564, "status": "running"}
+{"time": "2026-10-04T21:10:07Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 5492, "status": "exited_early"}
+{"time": "2026-10-04T22:02:28Z", "action": "download", "model": "oxcoder-9b.q4-k-m", "port": 0, "pid": null, "status": "completed (5629117536 bytes)"}
+{"time": "2026-10-04T22:11:08Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 42408, "status": "running"}
+{"time": "2026-10-04T22:17:21Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 39984, "status": "running"}
+{"time": "2026-10-04T22:22:09Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 23700, "status": "running"}
+{"time": "2026-10-04T23:50:26Z", "action": "download", "model": "pentacoder-9b.i1-q4-k-m", "port": 0, "pid": null, "status": "completed (5629136608 bytes)"}
+{"time": "2026-10-04T23:56:02Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 5628, "status": "running"}
+{"time": "2026-10-05T13:34:49Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 164659, "status": "exited_early"}
+{"time": "2026-10-05T15:59:42Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 193531, "status": "exited_early"}

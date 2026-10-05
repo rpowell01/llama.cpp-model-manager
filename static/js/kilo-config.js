@@ -15,6 +15,10 @@ function generateKiloCodeConfig(modelData, modelName) {
   const npm = '@ai-sdk/openai-compatible';
   const baseURL = `http://${HOST}:${modelData.port || 8080}/v1`;
 
+  // Use actual context length from model data
+  const context = modelData.ctx_size || 16384;
+  const inputLimit = context - 16384;
+
   return {
     [key]: {
       name: providerName,
@@ -28,8 +32,8 @@ function generateKiloCodeConfig(modelData, modelName) {
       models: {
         [modelName]: {
           limit: {
-            context: 16384,
-            input: 16384,
+            context: context,
+            input: inputLimit,
             output: 16384
           }
         }
