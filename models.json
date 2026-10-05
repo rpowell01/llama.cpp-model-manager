@@ -848,7 +848,7 @@
     "spec_draft_type_k": "q4_0",
     "spec_draft_type_v": "q4_0",
     "warmup_enabled": true,
-    "warmup_message": "Hello",
+    "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
     "slot_save_path": "",
     "cache_reuse": 4096,

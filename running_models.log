@@ -383,3 +383,5 @@
 {"time": "2026-10-04T23:56:02Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 5628, "status": "running"}
 {"time": "2026-10-05T13:34:49Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 164659, "status": "exited_early"}
 {"time": "2026-10-05T15:59:42Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 193531, "status": "exited_early"}
+{"time": "2026-10-05T16:39:13Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 51096, "status": "running"}
+{"time": "2026-10-05T16:43:13Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 25032, "status": "running"}

@@ -686,6 +686,10 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
     addEditable("Auto-download", "auto_download", data.auto_download, "checkbox");
     
+    // Custom HTTP Header for Kilo Code Config
+    addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
+    addEditable("Custom Header Value", "custom_header_value", data.custom_header_value || "", "text");
+    
     html += `</div></div>`;
 
 // Save/Cancel buttons

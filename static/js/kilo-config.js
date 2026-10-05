@@ -19,6 +19,14 @@ function generateKiloCodeConfig(modelData, modelName) {
   const context = modelData.ctx_size || 16384;
   const inputLimit = context - 16384;
 
+  // Build headers object from custom header fields
+  const headers = {};
+  const headerKey = modelData.custom_header_key || '';
+  const headerValue = modelData.custom_header_value || '';
+  if (headerKey && headerValue) {
+    headers[headerKey] = headerValue;
+  }
+
   return {
     [key]: {
       name: providerName,
@@ -27,7 +35,8 @@ function generateKiloCodeConfig(modelData, modelName) {
         baseURL: baseURL,
         apiKey: '${LLAMA_CPP_API_KEY}',
         rateLimitSeconds: 0.1,
-        maxRetries: 3
+        maxRetries: 3,
+        ...(Object.keys(headers).length > 0 ? { headers } : {})
       },
       models: {
         [modelName]: {
