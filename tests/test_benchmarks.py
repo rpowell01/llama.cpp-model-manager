@@ -1046,5 +1046,183 @@ class TestWSLPathConversion(unittest.TestCase):
         self.assertEqual(result, win_path)
 
 
+class TestConvertPathForBinary(unittest.TestCase):
+    """Tests for _convert_path_for_binary method."""
+
+    def setUp(self) -> None:
+        self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
+
+    @patch("benchmarks.config.convert_path_for_binary")
+    def test_convert_path_for_binary_calls_config(self, mock_convert: Mock) -> None:
+        """Test _convert_path_for_binary delegates to config.convert_path_for_binary."""
+        mock_convert.return_value = "/converted/path"
+        test_path = Path("/original/path/model.gguf")
+
+        result = self.runner._convert_path_for_binary(test_path)
+
+        mock_convert.assert_called_once_with(test_path)
+        self.assertEqual(result, "/converted/path")
+
+
+class TestPartialFailureScenarios(unittest.TestCase):
+    """Tests for partial failure scenarios (some reps succeed, some fail)."""
+
+    def setUp(self) -> None:
+        self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
+        self.runner._bench_binary = Path("/fake/dir/llama-bench")
+        self.runner._batched_bench_binary = Path("/fake/dir/llama-batched-bench")
+
+    @patch("benchmarks.tempfile.TemporaryDirectory")
+    @patch("benchmarks.subprocess.run")
+    def test_run_llama_bench_partial_failure(self, mock_run: Mock, mock_tempdir: Mock) -> None:
+        """Test llama-bench with some repetitions failing and some succeeding."""
+        mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
+
+        # First rep succeeds, second fails, third succeeds
+        outputs = [
+            json.dumps({"pp_avg": 1000.0, "tg_avg": 50.0}),
+            "",  # Failed rep (non-zero exit code)
+            json.dumps({"pp_avg": 1500.0, "tg_avg": 80.0}),
+        ]
+
+        mock_results = []
+        for i, out in enumerate(outputs):
+            mr = Mock()
+            if i == 1:  # Second rep fails
+                mr.returncode = 1
+                mr.stdout = ""
+                mr.stderr = "Error: temporary failure"
+            else:
+                mr.returncode = 0
+                mr.stdout = out
+                mr.stderr = ""
+            mock_results.append(mr)
+
+        mock_run.side_effect = mock_results
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
+            model_path = f.name
+
+        try:
+            result = self.runner.run_llama_bench(model_path, {"repetitions": 3})
+
+            # Should aggregate only the 2 successful reps
+            # Median of [1000, 1500] = 1250
+            # Median of [50, 80] = 65
+            self.assertEqual(result["pp_avg"], 1250.0)
+            self.assertEqual(result["tg_avg"], 65.0)
+            self.assertEqual(result["repetitions_completed"], 2)
+        finally:
+            os.unlink(model_path)
+
+    @patch("benchmarks.tempfile.TemporaryDirectory")
+    @patch("benchmarks.subprocess.run")
+    def test_run_llama_batched_bench_partial_failure(self, mock_run: Mock, mock_tempdir: Mock) -> None:
+        """Test llama-batched-bench with some repetitions failing and some succeeding."""
+        mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
+
+        # First rep succeeds, second fails, third succeeds
+        outputs = [
+            json.dumps({"throughput": 1000.0, "latency_p50": 20.0}),
+            "",  # Failed rep
+            json.dumps({"throughput": 2000.0, "latency_p50": 15.0}),
+        ]
+
+        mock_results = []
+        for i, out in enumerate(outputs):
+            mr = Mock()
+            if i == 1:  # Second rep fails
+                mr.returncode = 1
+                mr.stdout = ""
+                mr.stderr = "Error: OOM"
+            else:
+                mr.returncode = 0
+                mr.stdout = out
+                mr.stderr = ""
+            mock_results.append(mr)
+
+        mock_run.side_effect = mock_results
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
+            model_path = f.name
+
+        try:
+            result = self.runner.run_llama_batched_bench(model_path, {"repetitions": 3})
+
+            # Should aggregate only the 2 successful reps
+            # Median of [1000, 2000] = 1500
+            # Median of [15, 20] = 17.5
+            self.assertEqual(result["batch_throughput"], 1500.0)
+            self.assertEqual(result["latency_p50"], 17.5)
+            self.assertEqual(result["repetitions_completed"], 2)
+        finally:
+            os.unlink(model_path)
+
+
+class TestNoParseableMetrics(unittest.TestCase):
+    """Tests for scenarios where no parseable metrics are produced."""
+
+    def setUp(self) -> None:
+        self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
+        self.runner._bench_binary = Path("/fake/dir/llama-bench")
+        self.runner._batched_bench_binary = Path("/fake/dir/llama-batched-bench")
+
+    @patch("benchmarks.tempfile.TemporaryDirectory")
+    @patch("benchmarks.subprocess.run")
+    def test_run_llama_bench_no_parseable_metrics(self, mock_run: Mock, mock_tempdir: Mock) -> None:
+        """Test llama-bench when all repetitions produce no parseable metrics."""
+        mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
+
+        # All reps return valid exit code but empty/unparseable output
+        mock_results = []
+        for _ in range(3):
+            mr = Mock()
+            mr.returncode = 0
+            mr.stdout = "Starting benchmark...\nBenchmark complete.\n"  # No JSON
+            mr.stderr = ""
+            mock_results.append(mr)
+
+        mock_run.side_effect = mock_results
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
+            model_path = f.name
+
+        try:
+            with self.assertRaises(BenchmarkError) as cm:
+                self.runner.run_llama_bench(model_path, {"repetitions": 3})
+
+            self.assertIn("failed", str(cm.exception).lower())
+        finally:
+            os.unlink(model_path)
+
+    @patch("benchmarks.tempfile.TemporaryDirectory")
+    @patch("benchmarks.subprocess.run")
+    def test_run_llama_batched_bench_no_parseable_metrics(self, mock_run: Mock, mock_tempdir: Mock) -> None:
+        """Test llama-batched-bench when all repetitions produce no parseable metrics."""
+        mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
+
+        # All reps return valid exit code but empty/unparseable output
+        mock_results = []
+        for _ in range(3):
+            mr = Mock()
+            mr.returncode = 0
+            mr.stdout = "Running batched benchmark...\nDone.\n"  # No JSON
+            mr.stderr = ""
+            mock_results.append(mr)
+
+        mock_run.side_effect = mock_results
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
+            model_path = f.name
+
+        try:
+            with self.assertRaises(BenchmarkError) as cm:
+                self.runner.run_llama_batched_bench(model_path, {"repetitions": 3})
+
+            self.assertIn("failed", str(cm.exception).lower())
+        finally:
+            os.unlink(model_path)
+
+
 if __name__ == "__main__":
     unittest.main()
