@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 from logging import getLogger
 
 from config import DEFAULTS
-from models import get_models, save_models, add_model_entry, delete_model_entry
+from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
 
 log = getLogger("llamaweb")
 
@@ -456,3 +456,20 @@ def check_port_active(port):
             return True
     except Exception:
         return False
+
+
+@models_bp.route("/api/refresh-models", methods=["POST"])
+def api_refresh_models():
+    """Force refresh of the models cache by re-reading models.json and scanning filesystem."""
+    try:
+        refresh_models_cache()
+        models = get_models()
+        # Return the refreshed model list
+        return jsonify({
+            "status": "refreshed",
+            "models": {name: meta for name, meta in models.items()},
+            "count": len(models)
+        })
+    except Exception as e:
+        log.exception("Failed to refresh models cache")
+        return jsonify({"error": f"Failed to refresh models: {str(e)}"}), 500

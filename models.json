@@ -655,7 +655,14 @@
     "grp_attn_n": 8,
     "file_exists": true,
     "file_size_gb": 5.08,
-    "chat_template_file": ""
+    "chat_template_file": "",
+    "spec_ngram_mod_n_match": 32,
+    "spec_ngram_mod_n_min": 24,
+    "spec_ngram_mod_n_max": 12,
+    "spec_draft_type_k": "fp16",
+    "spec_draft_type_v": "fp16",
+    "custom_header_key": "x-ornith-baseurl",
+    "custom_header_value": "http:/192.168.86.51:11003/v1"
   },
   "jackod-9b-coder-mtp-gguf": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/jackod-9b-coder-mtp-gguf/JackOD-9B-Coder-Q4_K_M.gguf",
@@ -725,7 +732,9 @@
     "grp_attn": false,
     "grp_attn_n": 8,
     "file_exists": true,
-    "file_size_gb": 5.38
+    "file_size_gb": 5.38,
+    "custom_header_key": "x-jackod-baseurl",
+    "custom_header_value": "http://192.168.86.51:11004/v1"
   },
   "oxcoder-9b.q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/oxcoder-9b.q4-k-m/OxCoder-9B.Q4_K_M.gguf",
@@ -805,9 +814,9 @@
     "filename": "PentaCoder-9B.i1-Q4_K_M.gguf",
     "expected_size": 5629136608,
     "port": 11006,
-    "threads": 16,
-    "threads_batch": 16,
-    "timeout": 3600,
+    "threads": 11,
+    "threads_batch": 11,
+    "timeout": 7200,
     "mlock": true,
     "flash_attn": "on",
     "no_mmap": false,
@@ -867,6 +876,8 @@
     "grp_attn": false,
     "grp_attn_n": 8,
     "file_exists": true,
-    "file_size_gb": 5.24
+    "file_size_gb": 5.24,
+    "custom_header_key": "",
+    "custom_header_value": ""
   }
 }

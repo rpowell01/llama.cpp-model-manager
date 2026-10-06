@@ -6,6 +6,7 @@ Unit tests for optimizer module.
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -336,6 +337,108 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         # Empty results list with throughput target should also return empty config
         best_config_throughput = optimizer.select_optimal_config([], "throughput")
         self.assertEqual(best_config_throughput, {})
+
+    @patch("optimizer.BenchmarkRunner")
+    def test_run_benchmark_sweep_time_limit_early_exit(self, mock_runner_class) -> None:
+        """Test that run_benchmark_sweep exits early when max_duration_sec is exceeded."""
+        # Setup mock runner that takes some time
+        mock_runner = Mock()
+        
+        def slow_benchmark(*args, **kwargs):
+            time.sleep(0.05)  # Simulate benchmark taking 50ms
+            return {"pp_avg": 1000.0, "tg_avg": 50.0}
+        
+        mock_runner.run_llama_bench.side_effect = slow_benchmark
+        mock_runner_class.return_value = mock_runner
+        
+        optimizer = BenchmarkOptimizer()
+        config_list = [
+            {"n_gpu_layers": 0, "batch_size": 256, "threads": 4},
+            {"n_gpu_layers": 20, "batch_size": 512, "threads": 8},
+            {"n_gpu_layers": 50, "batch_size": 1024, "threads": 16},
+            {"n_gpu_layers": 99, "batch_size": 2048, "threads": 32},
+        ]
+        
+        # Set max_duration_sec to 0.1 seconds (100ms) - should only complete ~2 configs
+        start_time = time.time()
+        results = optimizer.run_benchmark_sweep(
+            str(self.model_path), config_list, max_duration_sec=0.1
+        )
+        elapsed = time.time() - start_time
+        
+        # Should exit early due to time limit
+        # With 50ms per config + overhead, we expect 1-2 configs to complete
+        self.assertGreaterEqual(len(results), 1)
+        self.assertLessEqual(len(results), 3)  # Should not complete all 4
+        self.assertLess(elapsed, 0.5)  # Should not take much longer than limit
+        
+        # All returned results should be successful
+        for result in results:
+            self.assertIn("config", result)
+            self.assertIn("metrics", result)
+            self.assertTrue(result["success"])
+        
+        # Verify benchmark runner was called for each completed config
+        self.assertEqual(mock_runner.run_llama_bench.call_count, len(results))
+
+    def test_load_from_cache_hardware_changed_invalidation(self) -> None:
+        """Test that _load_from_cache returns None when hardware has changed."""
+        optimizer = BenchmarkOptimizer(cache_dir=self.test_dir)
+        
+        # Original hardware info
+        original_hw = {
+            "cpu_count_logical": 8,
+            "cpu_count_physical": 4,
+            "memory_total_gb": 16,
+            "total_gpu_vram_gb": 8,
+            "has_nvidia_gpu": True,
+            "has_amd_gpu": False,
+            "has_intel_gpu": False,
+            "gpu_info": [{"name": "RTX 3060", "vendor": "NVIDIA", "memory_mb": 8192}],
+        }
+        
+        # Save a cached result with original hardware
+        test_data = {
+            "optimal_settings": {"n_gpu_layers": 50},
+            "benchmark_results": [],
+        }
+        cache_key = "test_hw_change_key"
+        optimizer._save_to_cache(cache_key, test_data, original_hw)
+        
+        # Verify we can load it back with same hardware
+        loaded_same_hw = optimizer._load_from_cache(cache_key, original_hw)
+        self.assertIsNotNone(loaded_same_hw)
+        self.assertEqual(loaded_same_hw["optimal_settings"], {"n_gpu_layers": 50})
+        
+        # Now try with different hardware (CPU count changed)
+        changed_hw_cpu = original_hw.copy()
+        changed_hw_cpu["cpu_count_logical"] = 16
+        changed_hw_cpu["cpu_count_physical"] = 8
+        
+        loaded_changed_cpu = optimizer._load_from_cache(cache_key, changed_hw_cpu)
+        self.assertIsNone(loaded_changed_cpu, "Should return None when CPU count changes")
+        
+        # Try with different GPU VRAM
+        changed_hw_vram = original_hw.copy()
+        changed_hw_vram["total_gpu_vram_gb"] = 16
+        
+        loaded_changed_vram = optimizer._load_from_cache(cache_key, changed_hw_vram)
+        self.assertIsNone(loaded_changed_vram, "Should return None when GPU VRAM changes")
+        
+        # Try with different GPU presence
+        changed_hw_gpu = original_hw.copy()
+        changed_hw_gpu["has_nvidia_gpu"] = False
+        changed_hw_gpu["has_amd_gpu"] = True
+        
+        loaded_changed_gpu = optimizer._load_from_cache(cache_key, changed_hw_gpu)
+        self.assertIsNone(loaded_changed_gpu, "Should return None when GPU vendor changes")
+        
+        # Try with different memory
+        changed_hw_mem = original_hw.copy()
+        changed_hw_mem["memory_total_gb"] = 32
+        
+        loaded_changed_mem = optimizer._load_from_cache(cache_key, changed_hw_mem)
+        self.assertIsNone(loaded_changed_mem, "Should return None when memory changes")
 
     @patch("optimizer.get_hardware_info")
     @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")

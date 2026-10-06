@@ -849,6 +849,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         return;
       }
 
+      // Check if model is currently running
+      const running = data.status && data.status.startsWith("running");
+
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving…";
 
@@ -864,18 +867,94 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         } else {
           // Update original values
           Object.assign(window.originalModelMeta, payload);
-          alert("Changes saved successfully");
-          // Auto-refresh model configuration to reflect changes
-          if (typeof refresh === "function") {
-            refresh(false).catch(() => {});
+          
+          // Force refresh models cache by re-reading models.json
+          try {
+            const refreshResp = await fetch("/api/refresh-models", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            if (refreshResp.ok) {
+              const refreshData = await refreshResp.json();
+              console.log("Models cache refreshed:", refreshData.count, "models loaded");
+            }
+          } catch (refreshErr) {
+            console.warn("Failed to refresh models cache:", refreshErr);
+          }
+
+          // If model is running, ask if user wants to restart with new settings
+          if (running) {
+            const shouldRestart = confirm(
+              "Changes saved successfully.\n\n" +
+              "The model is currently running. Some changes (like threads, GPU layers, context size, " +
+              "KV cache settings, etc.) require a restart to take effect.\n\n" +
+              "Do you want to restart the model now with the new settings?\n\n" +
+              "Note: Slot persistence (slot_save_path, cache_reuse) will be preserved if configured."
+            );
+            
+            if (shouldRestart) {
+              saveBtn.disabled = true;
+              saveBtn.textContent = "Restarting…";
+              
+              try {
+                // Stop the model
+                const stopResp = await fetch("/api/stop", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ model }),
+                });
+                const stopData = await stopResp.json();
+                if (!stopResp.ok || !stopData.success) {
+                  throw new Error(stopData.error || "Failed to stop model");
+                }
+                
+                // Wait a bit for the model to fully stop
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Start the model with new settings
+                const startResp = await fetch("/api/start", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ model }),
+                });
+                const startData = await startResp.json();
+                if (!startResp.ok) {
+                  throw new Error(startData.error || "Failed to start model");
+                }
+                
+                alert("Model restarted successfully with new settings!");
+                // Refresh the panel to show updated status
+                selectModel(model);
+              } catch (restartErr) {
+                console.error("Failed to restart model:", restartErr);
+                alert(`Model changes saved, but restart failed: ${restartErr.message}\n\nYou can manually start the model from the panel.`);
+              } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = "Save";
+              }
+            } else {
+              alert("Changes saved successfully. Restart the model manually for changes to take effect.");
+              // Still refresh the UI to show updated values
+              if (typeof refresh === "function") {
+                refresh(false).catch(() => {});
+              }
+            }
+          } else {
+            alert("Changes saved successfully");
+            // Auto-refresh model configuration to reflect changes
+            if (typeof refresh === "function") {
+              refresh(false).catch(() => {});
+            }
           }
         }
       } catch (err) {
         console.error("Failed to update meta", err);
         alert("Network error while saving");
       } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = "Save";
+        if (saveBtn.textContent === "Saving…" || saveBtn.textContent === "Restarting…") {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Save";
+        }
       }
     });
   }

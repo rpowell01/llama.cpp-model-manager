@@ -758,7 +758,7 @@ class BenchmarkOptimizer:
             log.info(f"Optimization completed for {model_path} (via fallback)")
             return result
          
-# Select optimal configuration
+        # Select optimal configuration
         optimal_config = self.select_optimal_config(
             benchmark_results, optimization_target
         )
@@ -774,6 +774,10 @@ class BenchmarkOptimizer:
             # Convert to BenchmarkConfig-compatible keys
             if "gpu_layers" in optimal_config:
                 optimal_config["n_gpu_layers"] = optimal_config.pop("gpu_layers")
+        else:
+            # All benchmarks succeeded - use the selected config as-is
+            # No fallback needed
+            log.info(f"All benchmarks succeeded, using empirical optimal config")
     
         # Create and return result
         result = {
