@@ -240,15 +240,21 @@ class BenchmarkOptimizer:
         """
         configs = []
         
-        # Extract hardware info
+        # Coerce None hardware values to safe defaults BEFORE using them
+        # This prevents crashes when hardware detection returns None for some values
+        cpu_count_logical = hardware_info.get("cpu_count_logical") or 16
+        cpu_count_physical = hardware_info.get("cpu_count_physical") or (cpu_count_logical // 2)
+        memory_total_gb = hardware_info.get("memory_total_gb") or 32
+        total_gpu_vram_gb = hardware_info.get("total_gpu_vram_gb") or 0
+        
+        # Extract hardware info (using coerced values)
         has_gpu = hardware_info.get("has_nvidia_gpu", False) or \
                   hardware_info.get("has_amd_gpu", False) or \
                   hardware_info.get("has_intel_gpu", False)
-        total_vram = hardware_info.get("total_gpu_vram_gb", 0) or 0
-        cpu_logical = hardware_info.get("cpu_count_logical", 16) or 16
-        cpu_physical_raw = hardware_info.get("cpu_count_physical")
-        cpu_physical = cpu_physical_raw if cpu_physical_raw is not None else cpu_logical // 2
-        mem_total = hardware_info.get("memory_total_gb", 32) or 32
+        total_vram = total_gpu_vram_gb
+        cpu_logical = cpu_count_logical
+        cpu_physical = cpu_count_physical
+        mem_total = memory_total_gb
         
         # Model info
         model_size_gb = 0

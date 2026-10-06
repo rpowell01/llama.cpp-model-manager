@@ -324,21 +324,26 @@ def compute_optimal_settings(hardware_info, model_info=None):
     """Compute optimal model settings based on hardware capabilities."""
     settings = {}
     
+    # Coerce None hardware values to safe defaults
+    # .get() default only applies when key is missing, not when value is None
+    cpu_logical = hardware_info.get("cpu_count_logical") or 16
+    cpu_physical = hardware_info.get("cpu_count_physical") or (cpu_logical // 2)
+    mem_total = hardware_info.get("memory_total_gb") or 32
+    mem_available = hardware_info.get("memory_available_gb") or (mem_total * 0.7)
+    total_vram = hardware_info.get("total_gpu_vram_gb") or 0
+    
     # CPU settings
-    cpu_logical = hardware_info.get("cpu_count_logical", 16)
-    cpu_physical = hardware_info.get("cpu_count_physical", cpu_logical // 2)
     settings["threads"] = cpu_physical
     settings["threads_batch"] = cpu_physical
     
     # Memory settings
-    mem_total = hardware_info.get("memory_total_gb", 32)
-    mem_available = hardware_info.get("memory_available_gb", mem_total * 0.7)
+    # mem_total and mem_available already coerced above
     
     # GPU settings
     has_nvidia = hardware_info.get("has_nvidia_gpu", False)
     has_amd = hardware_info.get("has_amd_gpu", False)
     has_intel = hardware_info.get("has_intel_gpu", False)
-    total_vram = hardware_info.get("total_gpu_vram_gb", 0)
+    # total_vram already coerced above
     gpu_info = hardware_info.get("gpu_info", [])
     
     # Model-specific overrides

@@ -876,7 +876,14 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
             });
             if (refreshResp.ok) {
               const refreshData = await refreshResp.json();
-              console.log("Models cache refreshed:", refreshData.count, "models loaded");
+              if (refreshData.status === "refreshed") {
+                console.log("Models cache refreshed:", refreshData.count, "models loaded");
+              } else {
+                console.warn("Models cache refresh returned unexpected status:", refreshData);
+              }
+            } else {
+              const err = await refreshResp.json().catch(() => ({}));
+              console.warn("Failed to refresh models cache:", err.error || "unknown");
             }
           } catch (refreshErr) {
             console.warn("Failed to refresh models cache:", refreshErr);
@@ -923,11 +930,17 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
                 }
                 
                 alert("Model restarted successfully with new settings!");
-                // Refresh the panel to show updated status
-                selectModel(model);
+                // Refresh the UI to show updated status in both panel and tile grid
+                if (typeof refresh === "function") {
+                  await refresh(false);
+                }
               } catch (restartErr) {
                 console.error("Failed to restart model:", restartErr);
                 alert(`Model changes saved, but restart failed: ${restartErr.message}\n\nYou can manually start the model from the panel.`);
+                // Still refresh UI to show current state
+                if (typeof refresh === "function") {
+                  try { await refresh(false); } catch (e) { console.warn("Refresh after restart failure:", e); }
+                }
               } finally {
                 saveBtn.disabled = false;
                 saveBtn.textContent = "Save";
@@ -936,14 +949,14 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
               alert("Changes saved successfully. Restart the model manually for changes to take effect.");
               // Still refresh the UI to show updated values
               if (typeof refresh === "function") {
-                refresh(false).catch(() => {});
+                try { await refresh(false); } catch (e) { console.warn("Refresh after save:", e); }
               }
             }
           } else {
             alert("Changes saved successfully");
             // Auto-refresh model configuration to reflect changes
             if (typeof refresh === "function") {
-              refresh(false).catch(() => {});
+              try { await refresh(false); } catch (e) { console.warn("Refresh after save:", e); }
             }
           }
         }
