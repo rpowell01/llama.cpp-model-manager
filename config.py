@@ -177,6 +177,9 @@ DEFAULTS: dict[str, Any] = {
     "swa_full": False,
     # Chat template
     "chat_template_file": "",
+    # Custom HTTP Header for Kilo Code Config
+    "custom_header_key": "",
+    "custom_header_value": "",
 }
 
 # Flask server port (set by main.py at runtime)
