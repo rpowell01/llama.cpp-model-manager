@@ -526,8 +526,8 @@
     "filename": "Qwopus3.5-9B-Coder-MTP-Q4_K_M.gguf",
     "expected_size": 5780092832,
     "port": 11002,
-    "threads": 16,
-    "threads_batch": 16,
+    "threads": 11,
+    "threads_batch": 11,
     "timeout": 3600,
     "mlock": true,
     "flash_attn": "on",
@@ -588,7 +588,9 @@
     "spec_ngram_mod_n_min": 48,
     "spec_ngram_mod_n_max": 64,
     "spec_draft_type_k": "q4_0",
-    "spec_draft_type_v": "q4_0"
+    "spec_draft_type_v": "q4_0",
+    "custom_header_key": "x-qwopus-baseurl",
+    "custom_header_value": "http://192.168.86.51:11002/v1"
   },
   "ornith-1.5-9b-mtp-iq4-xs": {
     "model_path": "/mnt/c/llama.cpp-sycl/models/ornith-1.5-9b-mtp-iq4-xs/Ornith-1.5-9B-MTP-IQ4_XS.gguf",

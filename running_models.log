@@ -388,3 +388,4 @@
 {"time": "2026-10-05T18:14:50Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 35780, "status": "running"}
 {"time": "2026-10-05T23:01:28Z", "action": "download", "model": "oxcoder-9b.q4-k-m", "port": 0, "pid": null, "status": "completed (5629117536 bytes)"}
 {"time": "2026-10-05T23:03:06Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 11936, "status": "running"}
+{"time": "2026-10-06T14:50:52Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 156776, "status": "exited_early"}
