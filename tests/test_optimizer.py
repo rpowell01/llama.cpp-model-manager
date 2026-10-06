@@ -321,6 +321,22 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         self.assertEqual(best_config_fallback["n_gpu_layers"], 20)
         self.assertEqual(best_config_fallback["batch_size"], 512)
 
+    def test_select_optimal_config_empty_results(self) -> None:
+        """Test optimal config selection with empty results list."""
+        optimizer = BenchmarkOptimizer()
+        
+        # Empty results list should return empty config
+        best_config = optimizer.select_optimal_config([], "balanced")
+        self.assertEqual(best_config, {})
+        
+        # Empty results list with latency target should also return empty config
+        best_config_latency = optimizer.select_optimal_config([], "latency")
+        self.assertEqual(best_config_latency, {})
+        
+        # Empty results list with throughput target should also return empty config
+        best_config_throughput = optimizer.select_optimal_config([], "throughput")
+        self.assertEqual(best_config_throughput, {})
+
     @patch("optimizer.get_hardware_info")
     @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
     @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")

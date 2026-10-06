@@ -707,6 +707,29 @@ class BenchmarkOptimizer:
         # Generate configuration combinations
         config_list = self.generate_config_combinations(hardware_info, model_info)
          
+        # Check for empty config list - fall back to heuristic immediately
+        if not config_list:
+            log.warning("No benchmark configurations generated, falling back to heuristic settings")
+            heuristic_settings = compute_optimal_settings(self._sanitize_hardware_info(hardware_info), model_info)
+            # Convert to BenchmarkConfig-compatible keys
+            if "gpu_layers" in heuristic_settings:
+                heuristic_settings["n_gpu_layers"] = heuristic_settings.pop("gpu_layers")
+            result = {
+                "optimal_settings": heuristic_settings,
+                "benchmark_results": [],
+                "hardware_info": hardware_info,
+                "model_info": model_info,
+                "cache_key": cache_key,
+                "optimization_target": optimization_target,
+                "fallback_reason": "no_configurations_generated"
+            }
+            
+            # Save to cache to prevent repeated attempts
+            self._save_to_cache(cache_key, result, hardware_info)
+            
+            log.info(f"Optimization completed for {model_path} (via fallback: no configurations)")
+            return result
+         
         # Run benchmark sweep
         try:
             benchmark_results = self.run_benchmark_sweep(
@@ -735,13 +758,17 @@ class BenchmarkOptimizer:
             log.info(f"Optimization completed for {model_path} (via fallback)")
             return result
          
-        # Select optimal configuration
+# Select optimal configuration
         optimal_config = self.select_optimal_config(
             benchmark_results, optimization_target
         )
-    
+
         # If no successful results, fall back to heuristic settings
-        if not optimal_config:
+        # Note: select_optimal_config may return a non-empty config from the
+        # first result even when all benchmarks failed, so we also check for
+        # actual successful results here.
+        successful_results = [r for r in benchmark_results if r.get("success", False)]
+        if not optimal_config or not successful_results:
             log.warning("No successful benchmark results, falling back to heuristic settings")
             optimal_config = compute_optimal_settings(self._sanitize_hardware_info(hardware_info), model_info)
             # Convert to BenchmarkConfig-compatible keys

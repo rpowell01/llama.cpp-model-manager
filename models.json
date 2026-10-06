@@ -735,7 +735,7 @@
     "port": 11005,
     "threads": 11,
     "threads_batch": 11,
-    "timeout": 3600,
+    "timeout": 7200,
     "mlock": true,
     "flash_attn": "on",
     "no_mmap": false,

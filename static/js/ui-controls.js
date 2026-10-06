@@ -865,6 +865,10 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           // Update original values
           Object.assign(window.originalModelMeta, payload);
           alert("Changes saved successfully");
+          // Auto-refresh model configuration to reflect changes
+          if (typeof refresh === "function") {
+            refresh(false).catch(() => {});
+          }
         }
       } catch (err) {
         console.error("Failed to update meta", err);
