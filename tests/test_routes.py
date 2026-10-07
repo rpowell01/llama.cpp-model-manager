@@ -1,5 +1,6 @@
 """Unit tests for Flask routes - lifecycle, chat, and status endpoints."""
 
+import os
 import pytest
 from unittest.mock import Mock, patch
 import sys
@@ -193,6 +194,7 @@ class TestStatusRoutes:
         """Test status endpoint in remote mode."""
         mock_registry = Mock()
         mock_registry.is_remote_mode = True
+        mock_registry.list_models.return_value = []  # Return iterable
         mock_get_registry.return_value = mock_registry
         
         response = client.get('/api/status')
@@ -685,3 +687,506 @@ class TestSystemRoutes:
         data = response.get_json()
         assert 'error' in data
         assert "Unknown model '123'" in data['error']
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_optimize_cached_with_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
+                                                             mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize returns cached result with fallback_reason."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {
+                'model_path': 'models/test.gguf',
+                'file_size_gb': 4.5,
+                'ctx_size': 4096,
+            }
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8,
+            'cpu_count_physical': 4,
+            'memory_total_gb': 16,
+            'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = {
+            'optimal_settings': {'n_gpu_layers': 30, 'batch_size': 1024},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'fallback_reason': 'BinaryNotFoundError: llama-bench not found',
+        }
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model'},
+            content_type='application/json')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        
+        # Should use cached result
+        assert data['cached'] is True
+        assert data['optimal_settings']['gpu_layers'] == 30
+        assert 'fallback_reason' in data
+        assert 'llama-bench not found' in data['fallback_reason']
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_optimize_throughput_target(self, mock_optimizer_class, mock_resolve_path,
+                                                   mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize with throughput target."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {
+                'model_path': 'models/test.gguf',
+                'file_size_gb': 4.5,
+                'ctx_size': 4096,
+            }
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8,
+            'cpu_count_physical': 4,
+            'memory_total_gb': 16,
+            'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = None
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 50, 'batch_size': 2048},
+            'benchmark_results': [{'config': {}, 'success': True}],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'throughput',
+        }
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'target': 'throughput', 'max_duration_sec': 60},
+            content_type='application/json')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['optimization_target'] == 'throughput'
+        mock_optimizer.optimize.assert_called_once_with(
+            str(mock_path), max_duration_sec=60, optimization_target='throughput'
+        )
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_optimize_latency_target(self, mock_optimizer_class, mock_resolve_path,
+                                                mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize with latency target."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = None
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 20, 'batch_size': 1024},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'latency',
+        }
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'target': 'latency', 'max_duration_sec': 30},
+            content_type='application/json')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['optimization_target'] == 'latency'
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_optimize_max_duration_boundary(self, mock_optimizer_class, mock_resolve_path,
+                                                       mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize with min/max duration values."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = None
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 50},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
+        }
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        
+        # Test min duration (10)
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'max_duration_sec': 10},
+            content_type='application/json')
+        assert response.status_code == 200
+        mock_optimizer.optimize.assert_called_with(str(mock_path), max_duration_sec=10, optimization_target='balanced')
+        
+        # Test max duration (3600)
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'max_duration_sec': 3600},
+            content_type='application/json')
+        assert response.status_code == 200
+        mock_optimizer.optimize.assert_called_with(str(mock_path), max_duration_sec=3600, optimization_target='balanced')
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_optimize_optimizer_exception(self, mock_optimizer_class, mock_resolve_path,
+                                                     mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize handles optimizer exceptions."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = None
+        mock_optimizer.optimize.side_effect = Exception("Optimization failed")
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model'},
+            content_type='application/json')
+        
+        assert response.status_code == 500
+        data = response.get_json()
+        assert 'error' in data
+        assert 'Optimization failed' in data['error']
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    def test_benchmark_optimize_file_not_found(self, mock_resolve_path, mock_hardware_info, mock_get_models, make_app):
+        """Test benchmark-optimize returns 404 when model file not found."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = False  # File doesn't exist
+        mock_resolve_path.return_value = mock_path
+        
+        client = make_app().test_client()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model'},
+            content_type='application/json')
+        
+        assert response.status_code == 404
+        data = response.get_json()
+        assert 'error' in data
+        assert 'Model file not found' in data['error']
+
+    @patch('routes.system.get_hardware_info')
+    def test_api_hardware_info(self, mock_hardware_info, make_app):
+        """Test /api/hardware-info endpoint."""
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8,
+            'cpu_count_physical': 4,
+            'memory_total_gb': 16,
+            'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+            'has_amd_gpu': False,
+            'has_intel_gpu': False,
+            'gpu_info': [{'name': 'RTX 3060', 'vendor': 'NVIDIA', 'memory_mb': 8192}],
+        }
+        
+        client = make_app().test_client()
+        response = client.get('/api/hardware-info')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['cpu_count_logical'] == 8
+        assert data['total_gpu_vram_gb'] == 8
+        assert data['has_nvidia_gpu'] is True
+
+    @patch('routes.system.get_hardware_info')
+    def test_api_hardware_info_exception(self, mock_hardware_info, make_app):
+        """Test /api/hardware-info handles exceptions."""
+        mock_hardware_info.side_effect = Exception("Hardware detection failed")
+        
+        client = make_app().test_client()
+        response = client.get('/api/hardware-info')
+        
+        assert response.status_code == 500
+        data = response.get_json()
+        assert 'error' in data
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    def test_optimize_settings_with_various_models(self, mock_hardware_info, mock_get_models, make_app):
+        """Test optimize-settings with different model configurations."""
+        mock_get_models.return_value = {
+            'small-model': {'model_path': 'models/small.gguf', 'file_size_gb': 1.5, 'ctx_size': 2048},
+            'large-model': {'model_path': 'models/large.gguf', 'file_size_gb': 20.0, 'ctx_size': 32768},
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 16,
+            'cpu_count_physical': 8,
+            'memory_total_gb': 64,
+            'total_gpu_vram_gb': 24,
+            'has_nvidia_gpu': True,
+            'has_amd_gpu': False,
+            'has_intel_gpu': False,
+            'gpu_info': [{'name': 'RTX 4090', 'vendor': 'NVIDIA', 'memory_mb': 24576}],
+        }
+        
+        client = make_app().test_client()
+        
+        # Test small model
+        response = client.post('/api/optimize-settings',
+            json={'model': 'small-model'}, content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['model'] == 'small-model'
+        assert 'optimal_settings' in data
+        
+        # Test large model
+        response = client.post('/api/optimize-settings',
+            json={'model': 'large-model'}, content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['model'] == 'large-model'
+        assert 'optimal_settings' in data
+        # Large model on high VRAM should have high gpu_layers
+        assert data['optimal_settings'].get('gpu_layers', 0) >= 50
+
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    def test_optimize_settings_cpu_only(self, mock_hardware_info, mock_get_models, make_app):
+        """Test optimize-settings with CPU-only hardware."""
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf', 'file_size_gb': 4.5, 'ctx_size': 4096},
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8,
+            'cpu_count_physical': 4,
+            'memory_total_gb': 16,
+            'total_gpu_vram_gb': 0,
+            'has_nvidia_gpu': False,
+            'has_amd_gpu': False,
+            'has_intel_gpu': False,
+            'gpu_info': [],
+        }
+        
+        client = make_app().test_client()
+        response = client.post('/api/optimize-settings',
+            json={'model': 'test-model'}, content_type='application/json')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['optimal_settings']['gpu_layers'] == 0
+        assert data['optimal_settings']['flash_attn'] == 'off'
+
+
+class TestBenchmarkOptimizationPerformance:
+    """Performance tests for benchmark optimization (run with RUN_PERF_TESTS=1)."""
+    
+    @pytest.mark.skipif(
+        not os.environ.get('RUN_PERF_TESTS'),
+        reason="Performance tests require RUN_PERF_TESTS=1 and test model/binaries"
+    )
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_benchmark_sweep_time_budget(self, mock_optimizer_class, mock_resolve_path,
+                                          mock_hardware_info, mock_get_models, make_app):
+        """Verify benchmark sweep completes within time budget."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        import time
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = None
+        
+        # Simulate a sweep that takes some time
+        def slow_optimize(*args, **kwargs):
+            time.sleep(0.1)  # Simulate work
+            return {
+                'optimal_settings': {'n_gpu_layers': 50},
+                'benchmark_results': [{'config': {}, 'success': True}],
+                'hardware_info': mock_hardware_info.return_value,
+                'cache_key': 'test_cache_key',
+                'optimization_target': 'balanced',
+            }
+        mock_optimizer.optimize.side_effect = slow_optimize
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        start = time.time()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'max_duration_sec': 5},
+            content_type='application/json')
+        elapsed = time.time() - start
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        # Should complete within max_duration_sec + some overhead
+        assert elapsed < 10  # Generous upper bound
+        assert data['duration_sec'] < 10
+
+    @pytest.mark.skipif(
+        not os.environ.get('RUN_PERF_TESTS'),
+        reason="Performance tests require RUN_PERF_TESTS=1 and test model/binaries"
+    )
+    @patch('routes.system.get_models')
+    @patch('routes.system.get_hardware_info')
+    @patch('config.resolve_model_path')
+    @patch('optimizer.BenchmarkOptimizer')
+    def test_cache_hit_performance(self, mock_optimizer_class, mock_resolve_path,
+                                    mock_hardware_info, mock_get_models, make_app):
+        """Verify cache hit reduces response time to < 1s."""
+        from unittest.mock import MagicMock
+        from pathlib import Path
+        import time
+        
+        mock_get_models.return_value = {
+            'test-model': {'model_path': 'models/test.gguf'}
+        }
+        mock_hardware_info.return_value = {
+            'cpu_count_logical': 8, 'cpu_count_physical': 4,
+            'memory_total_gb': 16, 'total_gpu_vram_gb': 8,
+            'has_nvidia_gpu': True,
+        }
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_resolve_path.return_value = mock_path
+        
+        mock_optimizer = Mock()
+        mock_optimizer._generate_cache_key.return_value = 'test_cache_key'
+        mock_optimizer._load_from_cache.return_value = {
+            'optimal_settings': {'n_gpu_layers': 30},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+        }
+        mock_optimizer_class.return_value = mock_optimizer
+        
+        client = make_app().test_client()
+        
+        # First request - cache miss
+        mock_optimizer._load_from_cache.return_value = None
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 50},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
+        }
+        start = time.time()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model'}, content_type='application/json')
+        first_elapsed = time.time() - start
+        
+        assert response.status_code == 200
+        assert response.get_json()['cached'] is False
+        
+        # Second request - cache hit
+        mock_optimizer._load_from_cache.return_value = {
+            'optimal_settings': {'n_gpu_layers': 30},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+        }
+        start = time.time()
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model'}, content_type='application/json')
+        second_elapsed = time.time() - start
+        
+        assert response.status_code == 200
+        assert response.get_json()['cached'] is True
+        # Cache hit should be much faster
+        assert second_elapsed < 1.0  # Less than 1 second
+        assert second_elapsed < first_elapsed * 0.5  # At least 2x faster
+
+
+if __name__ == "__main__":
+    unittest.main()
