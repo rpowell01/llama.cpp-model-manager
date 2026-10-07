@@ -18,7 +18,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-
 from benchmarks import (
     BenchmarkConfig,
     BenchmarkError,
