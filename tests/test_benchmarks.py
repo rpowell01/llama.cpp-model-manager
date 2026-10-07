@@ -77,8 +77,8 @@ class TestBenchmarkConfig(unittest.TestCase):
 class TestBenchmarkRunnerInit(unittest.TestCase):
     """Tests for BenchmarkRunner initialization and binary discovery."""
 
-    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", False)
@@ -93,8 +93,8 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             batched_bin.touch(mode=0o755)
 
             # Mock the config binaries to return our test files
-            with patch("config.LLAMA_BENCH", bench_bin), \
-                 patch("config.LLAMA_BATCHED_BENCH", batched_bin):
+            with patch("benchmarks.LLAMA_BENCH", bench_bin), \
+                 patch("benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
                 self.assertTrue(runner.has_llama_bench)
@@ -102,8 +102,8 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
                 self.assertEqual(runner._bench_binary, bench_bin)
                 self.assertEqual(runner._batched_bench_binary, batched_bin)
 
-    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", False)
@@ -116,8 +116,8 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             self.assertFalse(runner.has_llama_bench)
             self.assertFalse(runner.has_llama_batched_bench)
 
-    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", True)
@@ -131,15 +131,15 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin.touch(mode=0o755)
             batched_bin.touch(mode=0o755)
 
-            with patch("config.LLAMA_BENCH", bench_bin), \
-                 patch("config.LLAMA_BATCHED_BENCH", batched_bin):
+            with patch("benchmarks.LLAMA_BENCH", bench_bin), \
+                 patch("benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
                 self.assertTrue(runner.has_llama_bench)
                 self.assertTrue(runner.has_llama_batched_bench)
 
-    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.WINDOWS", False)
     @patch("config.WSL", False)
     def test_find_bench_binaries(self, _mock_batch, _mock_bench) -> None:
@@ -149,7 +149,7 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin = tmpdir_path / "llama-bench"
             bench_bin.touch(mode=0o755)
 
-            with patch("config.LLAMA_BENCH", bench_bin):
+            with patch("benchmarks.LLAMA_BENCH", bench_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
                 result = runner.find_bench_binaries()
 

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from config import WSL, WINDOWS, LLAMA_BENCH, LLAMA_BATCHED_BENCH
 
 log = logging.getLogger("llamaweb.benchmarks")
 
@@ -106,8 +107,8 @@ class BenchmarkRunner:
         """
         self._llama_server_dir = self._resolve_server_dir(llama_server_dir)
         # Use pre-resolved binaries from config (handles WSL/Windows path conversion)
-        self._bench_binary = config.LLAMA_BENCH
-        self._batched_bench_binary = config.LLAMA_BATCHED_BENCH
+        self._bench_binary = LLAMA_BENCH
+        self._batched_bench_binary = LLAMA_BATCHED_BENCH
         
         # Log what we found
         if self._bench_binary:
@@ -128,7 +129,7 @@ class BenchmarkRunner:
         env_dir = os.getenv("LLAMA_SERVER_DIR")
         if env_dir:
             path = Path(env_dir)
-            if config.WSL and config._is_windows_absolute_path(str(path)):
+            if WSL and config._is_windows_absolute_path(str(path)):
                 path = config._convert_windows_path_to_wsl(path)
             return path
 
@@ -288,16 +289,23 @@ class BenchmarkRunner:
             rep_start = time.time()
 
             try:
-                # Run in temporary directory to avoid polluting model directory
-                with tempfile.TemporaryDirectory(prefix=f"llama_bench_{'batched_' if is_batched else ''}") as tmpdir:
-                    result = subprocess.run(
-                        cmd,
-                        cwd=tmpdir,
-                        capture_output=True,
-                        text=True,
-                        timeout=config.timeout_sec,
-                        check=False,
-                    )
+                # Use binary's directory as working directory for Windows binaries on WSL
+                # Running from WSL temp directory breaks SYCL/Level Zero initialization
+                if WSL and LLAMA_BENCH and str(LLAMA_BENCH).endswith('.exe'):
+                    cwd = config.LLAMA_BENCH.parent
+                elif WSL and LLAMA_BATCHED_BENCH and str(LLAMA_BATCHED_BENCH).endswith('.exe'):
+                    cwd = config.LLAMA_BATCHED_BENCH.parent
+                else:
+                    cwd = None
+                
+                result = subprocess.run(
+                    cmd,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=config.timeout_sec,
+                    check=False,
+                )
 
                 rep_duration = time.time() - rep_start
                 total_duration += rep_duration
