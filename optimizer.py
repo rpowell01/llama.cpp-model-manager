@@ -516,16 +516,9 @@ class BenchmarkOptimizer:
                         f"(elapsed: {elapsed:.1f}s)")
                 break
                 
-            # Calculate remaining time for this config
-            remaining_time = max_duration_sec - elapsed
-            # Allocate time fairly but with minimum per config
-            # Cap at 60s for first config to allow model loading + SYCL compilation
-            time_per_config = max(5, min(60 if i == 0 else 30, remaining_time / (len(config_list) - i)))
-            
-            # Use more generous timeout for all configs (SYCL compilation on each fresh process)
-            # Manual test: 5 reps = 43s (first 23s compilation, rest ~10s each)
-            # With 2 reps: ~33s needed. Use 200% of allocated time, max 120s for all.
-            timeout_sec = min(120, int(time_per_config * 2.0))
+            # Use very large timeout to effectively disable timeout for benchmarking
+            # This avoids timeout issues during initial development
+            timeout_sec = 600  # 10 minutes - effectively no timeout
             
             try:
                 log.info(f"Testing configuration {i+1}/{len(config_list)}: "
