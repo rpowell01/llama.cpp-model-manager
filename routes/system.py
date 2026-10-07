@@ -325,7 +325,23 @@ def api_hardware_info():
 
 
 def compute_optimal_settings(hardware_info, model_info=None):
-    """Compute optimal model settings based on hardware capabilities."""
+    """
+    Compute optimal model settings based on hardware capabilities (HEURISTIC MODE).
+    
+    This function uses rule-based formulas to estimate good settings.
+    For more accurate, hardware-specific optimization, use the empirical
+    benchmark-based optimization via /api/benchmark-optimize or BenchmarkOptimizer.
+    
+    This is the LEGACY/HEURISTIC optimizer. It provides fast (~ms) estimates
+    but may not find the true optimum for your specific hardware/model combination.
+    
+    Args:
+        hardware_info: Dictionary from get_hardware_info()
+        model_info: Optional dictionary with model metadata (file_size_gb, ctx_size)
+        
+    Returns:
+        Dictionary of recommended llama.cpp server settings
+    """
     settings = {}
     
     # Coerce None hardware values to safe defaults
@@ -465,7 +481,21 @@ def compute_optimal_settings(hardware_info, model_info=None):
 
 @system_bp.route("/api/optimize-settings", methods=["POST"])
 def api_optimize_settings():
-    """Get optimized settings for a model based on hardware."""
+    """Get optimized settings for a model based on hardware (HEURISTIC MODE).
+    
+    This endpoint uses rule-based formulas for instant (~ms) optimization.
+    For empirical benchmark-based optimization, use /api/benchmark-optimize.
+    
+    Request body:
+        {"model": "string"}  # Required: model name from registry
+        
+    Response:
+        {
+            "hardware": {...},
+            "optimal_settings": {...},  # Heuristic estimates
+            "model": "string"
+        }
+    """
     from flask import request
     
     data = request.get_json(force=True) or {}
@@ -508,7 +538,7 @@ def api_benchmark_optimize():
     Request body:
         {
             "model": "string",                    # Required: model name from registry
-            "max_duration_sec": int,              # Optional: max benchmark time (default: 60)
+            "max_duration_sec": int,              # Optional: max benchmark time (default: BENCHMARK_MAX_DURATION)
             "target": "throughput"|"latency"|"balanced"  # Optional: optimization target (default: "balanced")
         }
     
@@ -526,6 +556,11 @@ def api_benchmark_optimize():
     from flask import request
     import time as time_module
     from optimizer import BenchmarkOptimizer
+    import config
+    
+    # Check if benchmark optimization is enabled
+    if not config.BENCHMARK_ENABLED:
+        return jsonify({"error": "Benchmark optimization is disabled. Set BENCHMARK_ENABLED=true to enable."}), 403
     
     data = request.get_json(force=True) or {}
     
@@ -552,7 +587,7 @@ def api_benchmark_optimize():
         return jsonify({"error": f"Invalid target '{target}'. Must be 'throughput', 'latency', or 'balanced'"}), 400
     
     # Validate max_duration_sec - reject bool (since bool is subclass of int)
-    max_duration_sec = data.get("max_duration_sec", 60)
+    max_duration_sec = data.get("max_duration_sec", config.BENCHMARK_MAX_DURATION)
     if type(max_duration_sec) is not int or max_duration_sec < 10 or max_duration_sec > 3600:
         return jsonify({"error": "max_duration_sec must be an integer between 10 and 3600"}), 400
     
@@ -584,8 +619,8 @@ def api_benchmark_optimize():
         hardware_info = get_hardware_info()
         log.info(f"Starting benchmark optimization for model '{model_name}' (target: {target}, max_duration: {max_duration_sec}s)")
         
-        # Create optimizer
-        optimizer = BenchmarkOptimizer()
+        # Create optimizer with configured cache directory
+        optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
         
         # Check if we have a cached result
         cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
