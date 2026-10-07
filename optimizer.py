@@ -523,9 +523,9 @@ class BenchmarkOptimizer:
             time_per_config = max(5, min(60 if i == 0 else 30, remaining_time / (len(config_list) - i)))
             
             # Use more generous timeout for first config (model loading + SYCL compilation)
-            # First run can take 60-120s due to model loading + kernel compilation
+            # First run can take 120-180s due to model loading + kernel compilation in fresh process
             if i == 0:
-                timeout_sec = min(120, int(time_per_config * 1.5))  # First config: 150% of allocated time, max 120s
+                timeout_sec = min(180, int(time_per_config * 2.0))  # First config: 200% of allocated time, max 180s
             else:
                 timeout_sec = min(30, int(time_per_config * 0.9))  # Subsequent: 90%, max 30s
             
