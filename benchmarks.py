@@ -105,9 +105,19 @@ class BenchmarkRunner:
                 If None, uses LLAMA_SERVER_DIR env var or config.BASE_DIR.
         """
         self._llama_server_dir = self._resolve_server_dir(llama_server_dir)
-        self._bench_binary: Path | None = None
-        self._batched_bench_binary: Path | None = None
-        self._find_bench_binaries()
+        # Use pre-resolved binaries from config (handles WSL/Windows path conversion)
+        self._bench_binary = config.LLAMA_BENCH
+        self._batched_bench_binary = config.LLAMA_BATCHED_BENCH
+        
+        # Log what we found
+        if self._bench_binary:
+            log.info(f"Found llama-bench: {self._bench_binary}")
+        else:
+            log.warning("llama-bench not found")
+        if self._batched_bench_binary:
+            log.info(f"Found llama-batched-bench: {self._batched_bench_binary}")
+        else:
+            log.warning("llama-batched-bench not found")
 
     def _resolve_server_dir(self, llama_server_dir: str | Path | None) -> Path:
         """Resolve the llama.cpp server directory."""
@@ -124,34 +134,6 @@ class BenchmarkRunner:
 
         # Fall back to BASE_DIR
         return config.BASE_DIR
-
-    def _find_bench_binaries(self) -> None:
-        """Locate llama-bench and llama-batched-bench binaries."""
-        search_dir = self._llama_server_dir
-        log.info(f"Searching for benchmark binaries in: {search_dir}")
-
-        # Determine binary suffix based on platform
-        if config.WINDOWS or config.WSL:
-            bench_name = "llama-bench.exe"
-            batched_name = "llama-batched-bench.exe"
-        else:
-            bench_name = "llama-bench"
-            batched_name = "llama-batched-bench"
-
-        bench_path = search_dir / bench_name
-        batched_path = search_dir / batched_name
-
-        if bench_path.exists():
-            self._bench_binary = bench_path
-            log.info(f"Found llama-bench: {bench_path}")
-        else:
-            log.warning(f"llama-bench not found at: {bench_path}")
-
-        if batched_path.exists():
-            self._batched_bench_binary = batched_path
-            log.info(f"Found llama-batched-bench: {batched_path}")
-        else:
-            log.warning(f"llama-batched-bench not found at: {batched_path}")
 
     @property
     def has_llama_bench(self) -> bool:

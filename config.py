@@ -231,8 +231,47 @@ if LLAMA_SERVER is None:
             LLAMA_SERVER = candidate
         else:
             candidate = BASE_DIR / "llama-server.exe"
-            if candidate.exists():
-                LLAMA_SERVER = candidate
+if candidate.exists():
+            LLAMA_SERVER = candidate
+
+# ──────────────────────────────────────────────────────────────────────────────
+# llama-bench and llama-batched-bench binary locations
+# ──────────────────────────────────────────────────────────────────────────────
+LLAMA_BENCH = None
+LLAMA_BATCHED_BENCH = None
+
+def _find_bench_binary(bench_dir: Path, name: str) -> Path | None:
+    """Find benchmark binary in directory, preferring .exe on Windows/WSL."""
+    if WINDOWS or WSL:
+        candidate = bench_dir / f"{name}.exe"
+        if candidate.exists():
+            return candidate
+    candidate = bench_dir / name
+    if candidate.exists():
+        return candidate
+    return None
+
+# Check for LLAMA_SERVER_DIR environment variable first (highest priority)
+llama_server_dir_env = os.getenv("LLAMA_SERVER_DIR")
+if llama_server_dir_env:
+    bench_dir = Path(llama_server_dir_env)
+    bench_dir = _convert_windows_path_to_wsl(bench_dir)
+    LLAMA_BENCH = _find_bench_binary(bench_dir, "llama-bench")
+    LLAMA_BATCHED_BENCH = _find_bench_binary(bench_dir, "llama-batched-bench")
+
+# Fallback to searching in BASE_DIR
+if LLAMA_BENCH is None or LLAMA_BATCHED_BENCH is None:
+    if WINDOWS:
+        LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
+        LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
+    elif WSL:
+        # On WSL, prefer Windows binary for better compatibility
+        LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
+        LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
+    else:
+        # On Linux, check for native binary first
+        LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
+        LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
 
 PYTHON = sys.executable
 
@@ -323,6 +362,9 @@ def convert_path_for_binary(path: Path) -> str:
     On Linux with Windows binary (WSL), convert /mnt/c/... to C:/...
     Windows APIs accept forward slashes, so we use C:/... format.
 
+    This applies to ANY Windows binary (.exe) - llama-server, llama-bench,
+    llama-batched-bench, llama-cli, etc.
+
     Args:
         path: The Path object to convert
 
@@ -330,7 +372,18 @@ def convert_path_for_binary(path: Path) -> str:
         String representation of the path, converted if necessary
     """
     path_str = str(path)
-    if LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe') and path_str.startswith('/mnt/'):
+    # Check if ANY llama.cpp binary is a Windows exe (server, bench, batched-bench, cli, etc.)
+    # This covers llama-server.exe, llama-bench.exe, llama-batched-bench.exe, etc.
+    llama_binaries = [
+        LLAMA_SERVER,
+        LLAMA_BENCH,
+        LLAMA_BATCHED_BENCH,
+    ]
+    is_windows_binary = any(
+        b and str(b).endswith('.exe') for b in llama_binaries if b
+    )
+    
+    if is_windows_binary and path_str.startswith('/mnt/'):
         # Convert /mnt/X/... to X:/...
         # Windows APIs accept forward slashes, avoiding backslash escaping issues
         parts = path_str.split('/')

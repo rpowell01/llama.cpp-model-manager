@@ -77,11 +77,13 @@ class TestBenchmarkConfig(unittest.TestCase):
 class TestBenchmarkRunnerInit(unittest.TestCase):
     """Tests for BenchmarkRunner initialization and binary discovery."""
 
+    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", False)
     @patch("config.WSL", False)
-    def test_init_with_explicit_dir(self, _mock_base_dir: Mock) -> None:
+    def test_init_with_explicit_dir(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization with explicit directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
@@ -90,18 +92,23 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin.touch(mode=0o755)
             batched_bin.touch(mode=0o755)
 
-            runner = BenchmarkRunner(llama_server_dir=tmpdir)
+            # Mock the config binaries to return our test files
+            with patch("config.LLAMA_BENCH", bench_bin), \
+                 patch("config.LLAMA_BATCHED_BENCH", batched_bin):
+                runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
-            self.assertTrue(runner.has_llama_bench)
-            self.assertTrue(runner.has_llama_batched_bench)
-            self.assertEqual(runner._bench_binary, bench_bin)
-            self.assertEqual(runner._batched_bench_binary, batched_bin)
+                self.assertTrue(runner.has_llama_bench)
+                self.assertTrue(runner.has_llama_batched_bench)
+                self.assertEqual(runner._bench_binary, bench_bin)
+                self.assertEqual(runner._batched_bench_binary, batched_bin)
 
+    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", False)
     @patch("config.WSL", False)
-    def test_init_missing_binaries(self, _mock_base_dir: Mock) -> None:
+    def test_init_missing_binaries(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization when binaries are missing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = BenchmarkRunner(llama_server_dir=tmpdir)
@@ -109,11 +116,13 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             self.assertFalse(runner.has_llama_bench)
             self.assertFalse(runner.has_llama_batched_bench)
 
+    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
     @patch("config.LLAMA_SERVER", None)
     @patch("config.WINDOWS", True)
     @patch("config.WSL", False)
-    def test_init_windows_binaries(self, _mock_base_dir: Mock) -> None:
+    def test_init_windows_binaries(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization finds .exe binaries on Windows."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
@@ -122,25 +131,30 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin.touch(mode=0o755)
             batched_bin.touch(mode=0o755)
 
-            runner = BenchmarkRunner(llama_server_dir=tmpdir)
+            with patch("config.LLAMA_BENCH", bench_bin), \
+                 patch("config.LLAMA_BATCHED_BENCH", batched_bin):
+                runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
-            self.assertTrue(runner.has_llama_bench)
-            self.assertTrue(runner.has_llama_batched_bench)
+                self.assertTrue(runner.has_llama_bench)
+                self.assertTrue(runner.has_llama_batched_bench)
 
+    @patch("config.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("config.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
     @patch("config.WINDOWS", False)
     @patch("config.WSL", False)
-    def test_find_bench_binaries(self) -> None:
+    def test_find_bench_binaries(self, _mock_batch, _mock_bench) -> None:
         """Test find_bench_binaries method."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             bench_bin = tmpdir_path / "llama-bench"
             bench_bin.touch(mode=0o755)
 
-            runner = BenchmarkRunner(llama_server_dir=tmpdir)
-            result = runner.find_bench_binaries()
+            with patch("config.LLAMA_BENCH", bench_bin):
+                runner = BenchmarkRunner(llama_server_dir=tmpdir)
+                result = runner.find_bench_binaries()
 
-            self.assertEqual(result["llama_bench"], bench_bin)
-            self.assertIsNone(result["llama_batched_bench"])
+                self.assertEqual(result["llama_bench"], bench_bin)
+                self.assertIsNone(result["llama_batched_bench"])
 
 
 class TestBenchmarkRunnerCommands(unittest.TestCase):
