@@ -7,7 +7,9 @@
   --green: #2ecc71;
   --red: #e74c3c;
   --yellow: #f1c40f;
+  --orange: #ff9800;
   --blue: #3498db;
+  --border: var(--surface2);
   --btn-run: #27ae60;
   --btn-stop: #e74c3c;
   --btn-download: #ff9800;

@@ -235,23 +235,27 @@ class TestSystemRoutes:
     """Tests for system routes (optimize-settings, benchmark-optimize)."""
     
     @pytest.fixture
-    def app(self):
-        from flask import Flask
-        from routes.system import system_bp
-        app = Flask(__name__)
-        app.register_blueprint(system_bp)
-        app.config['TESTING'] = True
-        return app
+    def make_app(self):
+        """Factory to create app after patches are applied."""
+        def _make_app():
+            from flask import Flask
+            from routes.system import system_bp
+            app = Flask(__name__)
+            app.register_blueprint(system_bp)
+            app.config['TESTING'] = True
+            return app
+        return _make_app
     
     @pytest.fixture
-    def client(self, app):
-        return app.test_client()
+    def client(self, make_app):
+        return make_app().test_client()
     
     @patch('routes.system.get_models')
-    def test_optimize_settings_missing_model(self, mock_get_models, client):
+    def test_optimize_settings_missing_model(self, mock_get_models, make_app):
         """Test optimize-settings without model name returns 400."""
         mock_get_models.return_value = {}
         
+        client = make_app().test_client()
         response = client.post('/api/optimize-settings',
             json={},
             content_type='application/json')
@@ -262,10 +266,11 @@ class TestSystemRoutes:
         assert data['error'] == 'Missing model name'
     
     @patch('routes.system.get_models')
-    def test_optimize_settings_unknown_model(self, mock_get_models, client):
+    def test_optimize_settings_unknown_model(self, mock_get_models, make_app):
         """Test optimize-settings with unknown model returns 404."""
         mock_get_models.return_value = {'known-model': {'model_path': 'models/known.gguf'}}
         
+        client = make_app().test_client()
         response = client.post('/api/optimize-settings',
             json={'model': 'unknown-model'},
             content_type='application/json')
@@ -277,7 +282,7 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    def test_optimize_settings_success(self, mock_hardware_info, mock_get_models, client):
+    def test_optimize_settings_success(self, mock_hardware_info, mock_get_models, make_app):
         """Test optimize-settings returns optimal settings."""
         mock_get_models.return_value = {
             'test-model': {
@@ -297,6 +302,7 @@ class TestSystemRoutes:
             'gpu_info': [{'name': 'RTX 3060', 'vendor': 'NVIDIA', 'memory_mb': 8192}],
         }
         
+        client = make_app().test_client()
         response = client.post('/api/optimize-settings',
             json={'model': 'test-model'},
             content_type='application/json')
@@ -313,10 +319,11 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_missing_model(self, mock_optimizer_class, mock_resolve_path, 
-                                               mock_hardware_info, mock_get_models, client):
+                                               mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize without model name returns 400."""
         mock_get_models.return_value = {}
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={},
             content_type='application/json')
@@ -331,10 +338,11 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_unknown_model(self, mock_optimizer_class, mock_resolve_path, 
-                                               mock_hardware_info, mock_get_models, client):
+                                               mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with unknown model returns 404."""
         mock_get_models.return_value = {'known-model': {'model_path': 'models/known.gguf'}}
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'unknown-model'},
             content_type='application/json')
@@ -349,12 +357,13 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_target(self, mock_optimizer_class, mock_resolve_path,
-                                                mock_hardware_info, mock_get_models, client):
+                                                mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with invalid target returns 400."""
         mock_get_models.return_value = {
             'test-model': {'model_path': 'models/test.gguf'}
         }
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model', 'target': 'invalid'},
             content_type='application/json')
@@ -369,12 +378,13 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_duration(self, mock_optimizer_class, mock_resolve_path,
-                                                  mock_hardware_info, mock_get_models, client):
+                                                  mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with invalid max_duration_sec returns 400."""
         mock_get_models.return_value = {
             'test-model': {'model_path': 'models/test.gguf'}
         }
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model', 'max_duration_sec': 5},
             content_type='application/json')
@@ -389,12 +399,13 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_no_model_path(self, mock_optimizer_class, mock_resolve_path,
-                                               mock_hardware_info, mock_get_models, client):
+                                               mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with model missing file path returns 400."""
         mock_get_models.return_value = {
             'test-model': {'model_path': ''}  # Empty path
         }
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model'},
             content_type='application/json')
@@ -409,7 +420,7 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_model_file_not_found(self, mock_optimizer_class, mock_resolve_path,
-                                                      mock_hardware_info, mock_get_models, client):
+                                                      mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize when model file doesn't exist returns 404."""
         from pathlib import Path
         mock_get_models.return_value = {
@@ -417,6 +428,7 @@ class TestSystemRoutes:
         }
         mock_resolve_path.return_value = Path('/nonexistent/test.gguf')
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model'},
             content_type='application/json')
@@ -431,7 +443,7 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_success(self, mock_optimizer_class, mock_resolve_path,
-                                         mock_hardware_info, mock_get_models, client):
+                                         mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns optimization results."""
         from unittest.mock import MagicMock
         from pathlib import Path
@@ -484,6 +496,7 @@ class TestSystemRoutes:
         }
         mock_optimizer_class.return_value = mock_optimizer
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model', 'target': 'balanced', 'max_duration_sec': 60},
             content_type='application/json')
@@ -524,7 +537,7 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_cached(self, mock_optimizer_class, mock_resolve_path,
-                                        mock_hardware_info, mock_get_models, client):
+                                        mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns cached result when available."""
         from unittest.mock import MagicMock
         from pathlib import Path
@@ -563,6 +576,7 @@ class TestSystemRoutes:
         }
         mock_optimizer_class.return_value = mock_optimizer
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model'},
             content_type='application/json')
@@ -579,7 +593,7 @@ class TestSystemRoutes:
     @patch('config.resolve_model_path')
     @patch('optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
-                                                 mock_hardware_info, mock_get_models, client):
+                                                 mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize includes fallback_reason when optimizer falls back."""
         from unittest.mock import MagicMock
         from pathlib import Path
@@ -610,6 +624,7 @@ class TestSystemRoutes:
         }
         mock_optimizer_class.return_value = mock_optimizer
         
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model'},
             content_type='application/json')
@@ -620,8 +635,9 @@ class TestSystemRoutes:
         assert 'fallback_reason' in data
         assert 'llama-bench not found' in data['fallback_reason']
 
-    def test_benchmark_optimize_invalid_model_type(self, client):
+    def test_benchmark_optimize_invalid_model_type(self, make_app):
         """Test benchmark-optimize with non-string model coerces to string and returns 404 for unknown model."""
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 123},
             content_type='application/json')
@@ -632,8 +648,9 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Unknown model '123'" in data['error']
 
-    def test_benchmark_optimize_invalid_target_type(self, client):
+    def test_benchmark_optimize_invalid_target_type(self, make_app):
         """Test benchmark-optimize with non-string target coerces to string and returns 400 for invalid target."""
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model', 'target': 5},
             content_type='application/json')
@@ -644,8 +661,9 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Invalid target '5'" in data['error']
 
-    def test_benchmark_optimize_boolean_duration(self, client):
+    def test_benchmark_optimize_boolean_duration(self, make_app):
         """Test benchmark-optimize with boolean max_duration_sec returns 400."""
+        client = make_app().test_client()
         response = client.post('/api/benchmark-optimize',
             json={'model': 'test-model', 'max_duration_sec': True},
             content_type='application/json')
@@ -655,8 +673,9 @@ class TestSystemRoutes:
         assert 'error' in data
         assert 'must be an integer' in data['error']
 
-    def test_optimize_settings_invalid_model_type(self, client):
+    def test_optimize_settings_invalid_model_type(self, make_app):
         """Test optimize-settings with non-string model coerces to string and returns 404 for unknown model."""
+        client = make_app().test_client()
         response = client.post('/api/optimize-settings',
             json={'model': 123},
             content_type='application/json')

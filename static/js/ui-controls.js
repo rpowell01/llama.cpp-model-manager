@@ -277,9 +277,46 @@ async function renderPanelProperties(data, modelName) {
         ■ Stop
       </button>
       <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        🔧 Optimize Settings for Hardware
+        🔧 Optimize Settings (Empirical Benchmarks)
       </button>
-      <span id="optimize-status-${modelSafeId}" style="align-self: center; font-size: 0.85rem; color: var(--muted);"></span>
+      <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        ⚡ Quick Optimize (Heuristics)
+      </button>
+    </div>
+    <div class="panel-item full-width" style="margin-top: 0.5rem;">
+      <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <input type="checkbox" id="use-empirical-${modelSafeId}" checked>
+          <span>Use empirical benchmarks (slower, more accurate)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <span>Max benchmark duration:</span>
+          <input type="number" id="max-duration-${modelSafeId}" value="60" min="10" max="3600" step="10" style="width: 70px;">
+          <span>seconds</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <span>Target:</span>
+          <select id="optimize-target-${modelSafeId}" style="width: 120px;">
+            <option value="balanced">Balanced</option>
+            <option value="throughput">Throughput</option>
+            <option value="latency">Latency</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="panel-item full-width" style="margin-top: 0.5rem;">
+      <span id="optimize-status-${modelSafeId}" style="font-size: 0.85rem; color: var(--muted);"></span>
+    </div>
+    <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
+      <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+        <div id="optimize-spinner-${modelSafeId}" style="width: 18px; height: 18px; border: 2px solid var(--surface2); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <span id="optimize-progress-text-${modelSafeId}" style="font-size: 0.85rem; color: var(--text);">Starting benchmark...</span>
+        <button type="button" id="optimize-cancel-${modelSafeId}" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Cancel</button>
+      </div>
+      <div id="optimize-progress-bar-container-${modelSafeId}" style="margin-top: 0.5rem; background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden; display: none;">
+        <div id="optimize-progress-bar-${modelSafeId}" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
+      </div>
+      <div id="optimize-details-${modelSafeId}" style="margin-top: 0.35rem; font-size: 0.75rem; color: var(--muted); display: none;"></div>
     </div>
   </div>`;
 
@@ -1001,69 +1038,320 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     });
   }
 
-  // Attach optimize settings button listener
+  // Attach optimize settings button listener (Empirical Benchmarks)
   const optimizeBtn = document.getElementById(`optimize-settings-${modelSafeId}`);
   if (optimizeBtn) {
     optimizeBtn.addEventListener("click", async () => {
-      const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
-      optimizeBtn.disabled = true;
-      optimizeBtn.textContent = "🔧 Optimizing…";
-      if (statusEl) {
-        statusEl.textContent = "Detecting hardware and computing optimal settings…";
-        statusEl.style.color = "var(--blue)";
+      await runOptimization(modelName, modelSafeId, content, true);
+    });
+  }
+
+  // Attach quick optimize button listener (Heuristics)
+  const quickOptimizeBtn = document.getElementById(`quick-optimize-${modelSafeId}`);
+  if (quickOptimizeBtn) {
+    quickOptimizeBtn.addEventListener("click", async () => {
+      await runOptimization(modelName, modelSafeId, content, false);
+    });
+  }
+
+  // Shared optimization logic
+  async function runOptimization(modelName, modelSafeId, content, useEmpirical) {
+    const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
+    const progressContainer = document.getElementById(`optimize-progress-${modelSafeId}`);
+    const progressText = document.getElementById(`optimize-progress-text-${modelSafeId}`);
+    const progressBarContainer = document.getElementById(`optimize-progress-bar-container-${modelSafeId}`);
+    const progressBar = document.getElementById(`optimize-progress-bar-${modelSafeId}`);
+    const detailsEl = document.getElementById(`optimize-details-${modelSafeId}`);
+    const cancelBtn = document.getElementById(`optimize-cancel-${modelSafeId}`);
+    const maxDurationInput = document.getElementById(`max-duration-${modelSafeId}`);
+    const targetSelect = document.getElementById(`optimize-target-${modelSafeId}`);
+
+    const btn = useEmpirical ? optimizeBtn : quickOptimizeBtn;
+    btn.disabled = true;
+    btn.textContent = useEmpirical ? "🔧 Benchmarking…" : "⚡ Computing…";
+    
+    if (statusEl) {
+      statusEl.textContent = "";
+      statusEl.style.color = "var(--muted)";
+    }
+    
+    // Show progress UI for empirical mode
+    if (useEmpirical) {
+      progressContainer.style.display = "block";
+      progressBarContainer.style.display = "block";
+      detailsEl.style.display = "block";
+      progressText.textContent = "Initializing benchmark...";
+      progressBar.style.width = "0%";
+      detailsEl.textContent = "";
+    }
+
+    // Create abort controller for cancellation
+    const abortController = new AbortController();
+    let isCancelled = false;
+
+    // Setup cancel button
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        isCancelled = true;
+        abortController.abort();
+        progressText.textContent = "Cancelling...";
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = "Cancelling...";
+      };
+    }
+
+    try {
+      // Determine which endpoint to call
+      const endpoint = useEmpirical ? "/api/benchmark-optimize" : "/api/optimize-settings";
+      
+      // Build request body
+      const requestBody = { model: modelName };
+      if (useEmpirical) {
+        requestBody.max_duration_sec = parseInt(maxDurationInput.value, 10) || 60;
+        requestBody.target = targetSelect.value || "balanced";
       }
 
-      try {
-        const resp = await fetch("/api/optimize-settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: modelName }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) {
-          throw new Error(result.error || "Failed to optimize settings");
-        }
+      const fetchPromise = fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal: abortController.signal,
+      });
 
-        const settings = result.optimal_settings;
-        const hardware = result.hardware;
-
-        // Populate form fields with optimal settings
-        let updatedCount = 0;
-        content.querySelectorAll(".meta-input").forEach((input) => {
-          const field = input.dataset.field;
-          if (settings.hasOwnProperty(field)) {
-            const value = settings[field];
-            if (input.type === "checkbox") {
-              input.checked = Boolean(value);
-            } else if (input.tagName === "SELECT") {
-              input.value = String(value);
-            } else {
-              input.value = value;
-            }
-            updatedCount++;
+      // For empirical mode, simulate progress updates since we can't get real-time progress from the server
+      let progressInterval = null;
+      let progressStartTime = Date.now();
+      let estimatedTotal = requestBody.max_duration_sec || 60;
+      
+      if (useEmpirical) {
+        progressInterval = setInterval(() => {
+          if (isCancelled) return;
+          
+          const elapsed = (Date.now() - progressStartTime) / 1000;
+          const progressPct = Math.min(95, (elapsed / estimatedTotal) * 100);
+          progressBar.style.width = `${progressPct}%`;
+          
+          // Simulate config testing progress
+          const configNum = Math.min(12, Math.max(1, Math.floor(progressPct / 8) + 1));
+          const gpuLayers = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99, 99][configNum - 1] || 99;
+          const batchSize = [512, 512, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048][configNum - 1] || 2048;
+          
+          progressText.textContent = `Running benchmarks... (${Math.floor(elapsed)}s / ~${estimatedTotal}s)`;
+          detailsEl.textContent = `Testing config ${configNum}/12: gpu_layers=${gpuLayers}, batch=${batchSize}...`;
+          
+          if (elapsed > estimatedTotal) {
+            progressText.textContent = `Benchmark running longer than estimated (${Math.floor(elapsed)}s)...`;
+            detailsEl.textContent = "Finalizing results...";
           }
-        });
+        }, 2000);
+      }
 
-        // Note: do NOT update originalModelMeta here - save should compare
-        // against the pre-optimization baseline so changes are detected
+      const resp = await fetchPromise;
+      
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
+      const result = await resp.json();
+      
+      if (!resp.ok) {
+        throw new Error(result.error || "Failed to optimize settings");
+      }
 
-        if (statusEl) {
-          statusEl.textContent = `Applied ${updatedCount} optimal settings based on: ${hardware.cpu_count_logical} CPUs, ${hardware.memory_total_gb}GB RAM${hardware.total_gpu_vram_gb ? `, ${hardware.total_gpu_vram_gb}GB GPU VRAM` : ""}${hardware.has_nvidia_gpu ? " (NVIDIA)" : ""}${hardware.has_amd_gpu ? " (AMD)" : ""}`;
-          statusEl.style.color = "var(--green)";
+      // Update progress to 100% for empirical mode
+      if (useEmpirical) {
+        progressBar.style.width = "100%";
+        progressText.textContent = "Benchmark complete!";
+        detailsEl.textContent = "";
+      }
+
+      const settings = result.optimal_settings;
+      const hardware = result.hardware_info || result.hardware;
+
+      // Populate form fields with optimal settings
+      let updatedCount = 0;
+      content.querySelectorAll(".meta-input").forEach((input) => {
+        const field = input.dataset.field;
+        if (settings.hasOwnProperty(field)) {
+          const value = settings[field];
+          if (input.type === "checkbox") {
+            input.checked = Boolean(value);
+          } else if (input.tagName === "SELECT") {
+            input.value = String(value);
+          } else {
+            input.value = value;
+          }
+          updatedCount++;
         }
+      });
+
+      // Note: do NOT update originalModelMeta here - save should compare
+      // against the pre-optimization baseline so changes are detected
+
+      // Build status message
+      let statusMsg = "";
+      if (useEmpirical) {
+        const bestResult = result.benchmark_results && result.benchmark_results.length > 0 
+          ? result.benchmark_results.reduce((best, r) => (r.tg_avg > best.tg_avg ? r : best), result.benchmark_results[0])
+          : null;
+        
+        const cachedStr = result.cached ? " (cached)" : "";
+        const fallbackStr = result.fallback_reason ? ` ⚠ Fallback: ${result.fallback_reason}` : "";
+        const throughputStr = bestResult ? `Best: ${bestResult.tg_avg.toFixed(1)} tok/s` : "";
+        const configStr = bestResult && bestResult.config ? ` (gpu_layers=${bestResult.config.n_gpu_layers || bestResult.config.gpu_layers}, batch=${bestResult.config.batch_size})` : "";
+        
+        statusMsg = `Empirical optimization complete${cachedStr}! ${throughputStr}${configStr}. Applied ${updatedCount} settings. Duration: ${result.duration_sec}s.${fallbackStr}`;
+      } else {
+        statusMsg = `Heuristic optimization complete! Applied ${updatedCount} settings based on: ${hardware.cpu_count_logical} CPUs, ${hardware.memory_total_gb}GB RAM${hardware.total_gpu_vram_gb ? `, ${hardware.total_gpu_vram_gb}GB GPU VRAM` : ""}${hardware.has_nvidia_gpu ? " (NVIDIA)" : ""}${hardware.has_amd_gpu ? " (AMD)" : ""}`;
+      }
+
+      if (statusEl) {
+        statusEl.textContent = statusMsg;
+        statusEl.style.color = result.fallback_reason ? "var(--orange)" : "var(--green)";
+      }
+
+      // Show summary alert with option to view full results
+      if (useEmpirical && result.benchmark_results && result.benchmark_results.length > 0) {
+        const viewDetails = confirm(
+          `${statusMsg}\n\nClick OK to view detailed benchmark results, or Cancel to continue.`
+        );
+        if (viewDetails) {
+          showBenchmarkResultsModal(result);
+        }
+      } else if (!useEmpirical) {
         alert(`Optimization complete! Applied ${updatedCount} settings. Review and click Save to persist.`);
-      } catch (err) {
-        console.error("Optimization failed", err);
+      }
+      
+    } catch (err) {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
+      console.error("Optimization failed", err);
+      
+      if (err.name === "AbortError" || isCancelled) {
+        if (statusEl) {
+          statusEl.textContent = "Optimization cancelled by user";
+          statusEl.style.color = "var(--orange)";
+        }
+        if (useEmpirical) {
+          progressText.textContent = "Cancelled";
+          detailsEl.textContent = "";
+        }
+      } else {
         if (statusEl) {
           statusEl.textContent = `Error: ${err.message}`;
           statusEl.style.color = "var(--red)";
         }
+        if (useEmpirical) {
+          progressText.textContent = `Error: ${err.message}`;
+          detailsEl.textContent = "";
+        }
         alert(`Optimization failed: ${err.message}`);
-      } finally {
-        optimizeBtn.disabled = false;
-        optimizeBtn.textContent = "🔧 Optimize Settings for Hardware";
       }
-    });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = useEmpirical ? "🔧 Optimize Settings (Empirical Benchmarks)" : "⚡ Quick Optimize (Heuristics)";
+      
+      if (useEmpirical) {
+        progressContainer.style.display = "none";
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = "Cancel";
+      }
+    }
+  }
+
+  // Modal to display benchmark results
+  function showBenchmarkResultsModal(result) {
+    // Remove existing modal if any
+    const existingModal = document.getElementById("benchmark-results-modal");
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    const modal = document.createElement("div");
+    modal.id = "benchmark-results-modal";
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+    `;
+
+    const hardware = result.hardware_info || result.hardware;
+    const hwInfo = hardware ? `
+      <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+        <strong>Hardware:</strong> ${hardware.cpu_count_logical} CPUs, ${hardware.memory_total_gb}GB RAM
+        ${hardware.total_gpu_vram_gb ? `, ${hardware.total_gpu_vram_gb}GB GPU VRAM` : ""}
+        ${hardware.has_nvidia_gpu ? " (NVIDIA)" : ""}${hardware.has_amd_gpu ? " (AMD)" : ""}
+      </div>
+    ` : "";
+
+    const results = result.benchmark_results || [];
+    const resultsHtml = results.length > 0 ? `
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+        <thead>
+          <tr style="background: var(--surface2);">
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Config</th>
+            <th style="padding: 0.5rem; text-align: right; border-bottom: 1px solid var(--border);">Tokens/s</th>
+            <th style="padding: 0.5rem; text-align: right; border-bottom: 1px solid var(--border);">Latency (ms)</th>
+            <th style="padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border);">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${results.map(r => `
+            <tr style="border-bottom: 1px solid var(--border); ${r.success ? '' : 'opacity: 0.6;'}">
+              <td style="padding: 0.5rem; font-family: monospace;">
+                ${r.config ? Object.entries(r.config).map(([k,v]) => `${k}=${v}`).join(', ') : 'N/A'}
+              </td>
+              <td style="padding: 0.5rem; text-align: right; ${r.success && r.tg_avg === Math.max(...results.filter(x => x.success).map(x => x.tg_avg)) ? 'font-weight: bold; color: var(--green);' : ''}">
+                ${r.success && r.tg_avg ? r.tg_avg.toFixed(1) : 'N/A'}
+              </td>
+              <td style="padding: 0.5rem; text-align: right;">
+                ${r.success && r.tg_avg ? (1000 / r.tg_avg).toFixed(1) : 'N/A'}
+              </td>
+              <td style="padding: 0.5rem; text-align: center;">
+                ${r.success ? '<span style="color: var(--green);">✓</span>' : '<span style="color: var(--red);">✗</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : '<p style="color: var(--muted);">No benchmark results available</p>';
+
+    modal.innerHTML = `
+      <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 800px; max-height: 80vh; overflow: auto; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2 style="margin: 0;">Benchmark Results</h2>
+          <button id="close-benchmark-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">&times;</button>
+        </div>
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+          <strong>Model:</strong> ${result.model} | 
+          <strong>Target:</strong> ${result.optimization_target} | 
+          <strong>Duration:</strong> ${result.duration_sec}s | 
+          <strong>Cached:</strong> ${result.cached ? 'Yes' : 'No'}
+          ${result.fallback_reason ? `<br><strong style="color: var(--orange);">Fallback: ${result.fallback_reason}</strong>` : ''}
+        </div>
+        ${hwInfo}
+        <div style="margin-bottom: 1rem;">
+          <strong>Optimal Settings Applied:</strong>
+          <pre style="background: var(--surface2); padding: 0.75rem; border-radius: 4px; font-size: 0.75rem; overflow: auto; max-height: 200px; margin-top: 0.5rem;">${JSON.stringify(result.optimal_settings, null, 2)}</pre>
+        </div>
+        <div>
+          <strong>All Benchmark Results (${results.length} configurations tested):</strong>
+          ${resultsHtml}
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    
+    // Close handlers
+    modal.querySelector("#close-benchmark-modal").onclick = () => modal.remove();
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    
+    // ESC key to close
+    const escHandler = (e) => { if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", escHandler); }};
+    document.addEventListener("keydown", escHandler);
   }
 
   // Attach start model button listener
