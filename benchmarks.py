@@ -576,12 +576,24 @@ class BenchmarkRunner:
         """Parse JSON output from llama-bench."""
         metrics = {}
 
-        # llama-bench JSON output structure
-        # Contains: pp_avg, tg_avg, pp_std, tg_std, latency percentiles, etc.
+        # Support BOTH old format (pp_avg/tg_avg) and new format (avg_ns/avg_ts)
+        # New format (actual llama-bench output):
+        if "avg_ns" in data:
+            ns_per_token = data["avg_ns"]
+            if ns_per_token > 0:
+                metrics["pp_avg"] = 1_000_000_000 / ns_per_token
+        if "avg_ts" in data:
+            metrics["tg_avg"] = data["avg_ts"]
+        if "stddev_ns" in data:
+            metrics["pp_std"] = data["stddev_ns"]
+        if "stddev_ts" in data:
+            metrics["tg_std"] = data["stddev_ts"]
+
+        # Old format (for backward compatibility with tests):
         if "pp_avg" in data:
-            metrics["pp_avg"] = data["pp_avg"]  # Prompt processing tokens/sec
+            metrics["pp_avg"] = data["pp_avg"]
         if "tg_avg" in data:
-            metrics["tg_avg"] = data["tg_avg"]  # Token generation tokens/sec
+            metrics["tg_avg"] = data["tg_avg"]
         if "pp_std" in data:
             metrics["pp_std"] = data["pp_std"]
         if "tg_std" in data:
@@ -592,6 +604,9 @@ class BenchmarkRunner:
             key = f"latency_{p}"
             if key in data:
                 metrics[key] = data[key]
+            ns_key = f"latency_ns_{p}"
+            if ns_key in data:
+                metrics[key] = data[ns_key] / 1_000_000
 
         # Memory usage
         if "mem_used_mb" in data:
