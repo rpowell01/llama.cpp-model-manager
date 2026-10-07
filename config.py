@@ -343,6 +343,36 @@ def convert_path_for_binary(path: Path) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Benchmark optimization configuration
+# ──────────────────────────────────────────────────────────────────────────────
+
+# BENCHMARK_MAX_DURATION: Maximum time (seconds) to spend on empirical benchmark optimization
+# Valid range: 10-3600 seconds. Default: 60 seconds.
+try:
+    BENCHMARK_MAX_DURATION = int(os.getenv("BENCHMARK_MAX_DURATION", "60"))
+except ValueError:
+    BENCHMARK_MAX_DURATION = 60
+if BENCHMARK_MAX_DURATION < 10:
+    BENCHMARK_MAX_DURATION = 10
+elif BENCHMARK_MAX_DURATION > 3600:
+    BENCHMARK_MAX_DURATION = 3600
+
+# BENCHMARK_CACHE_DIR: Directory to store benchmark cache files
+# Default: ~/.cache/llama-web/benchmarks/
+BENCHMARK_CACHE_DIR = os.getenv("BENCHMARK_CACHE_DIR")
+if BENCHMARK_CACHE_DIR:
+    BENCHMARK_CACHE_DIR = BENCHMARK_CACHE_DIR.strip()
+if BENCHMARK_CACHE_DIR:
+    BENCHMARK_CACHE_DIR = Path(BENCHMARK_CACHE_DIR).expanduser()
+else:
+    BENCHMARK_CACHE_DIR = Path.home() / ".cache" / "llama-web" / "benchmarks"
+
+# BENCHMARK_ENABLED: Enable/disable empirical benchmark optimization
+# Default: true
+BENCHMARK_ENABLED_STR = os.getenv("BENCHMARK_ENABLED", "true").strip().lower()
+BENCHMARK_ENABLED = BENCHMARK_ENABLED_STR in ("true", "1", "yes", "on")
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Remote configuration support
 #
 # REMOTE_MODE: When enabled (REMOTE_MODE=true), the application connects to an
