@@ -229,7 +229,7 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         self.assertNotIn("--numa", cmd)
 
     def test_build_command_with_speculative(self) -> None:
-        """Test command includes speculative decoding options."""
+        """Test command includes speculative decoding options (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             spec_type="ngram-simple",
@@ -237,9 +237,9 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("--spec-type", cmd)
@@ -248,46 +248,46 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         self.assertIn("5", cmd)
 
     def test_build_command_spec_type_none(self) -> None:
-        """Test command excludes speculative when type is none."""
+        """Test command excludes speculative when type is none (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             spec_type="none",
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertNotIn("--spec-type", cmd)
 
     def test_build_command_parallel_auto(self) -> None:
-        """Test command with parallel=auto uses --kv-unified."""
+        """Test command with parallel=auto uses --kv-unified (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             parallel="auto",
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("--kv-unified", cmd)
 
     def test_build_command_parallel_int(self) -> None:
-        """Test command with parallel=int uses -p."""
+        """Test command with parallel=int uses -p (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             parallel=4,
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("-p", cmd)
@@ -310,16 +310,16 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         self.assertNotIn("--kv-unified", cmd)
 
     def test_build_command_cpu_affinity(self) -> None:
-        """Test command includes CPU affinity when set."""
+        """Test command includes CPU affinity when set (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             cpu_affinity="0,1,2,3",
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("--cpu-affinity", cmd)
@@ -333,24 +333,24 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertNotIn("--cpu-affinity", cmd)
 
     def test_build_command_cpu_strict(self) -> None:
-        """Test command includes --cpu-strict when enabled."""
+        """Test command includes --cpu-strict when enabled (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             cpu_strict=True,
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("--cpu-strict", cmd)
@@ -363,9 +363,9 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         )
 
         cmd = self.runner._build_bench_command(
-            Path("/fake/dir/llama-bench"),
+            Path("/fake/dir/llama-batched-bench"),
             config,
-            is_batched=False,
+            is_batched=True,
         )
 
         self.assertIn("--swa-full", cmd)

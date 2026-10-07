@@ -203,54 +203,51 @@ class BenchmarkRunner:
         model_path = self._convert_path_for_binary(Path(config.model_path))
         cmd.extend(["-m", model_path])
 
-        # Common parameters
+        # Common parameters supported by both llama-bench and llama-batched-bench
         cmd.extend(["-ngl", str(config.n_gpu_layers)])
         cmd.extend(["-b", str(config.batch_size)])
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
-        # threads_batch (-tb) is a llama-server/llama-batched-bench parameter,
-        # not supported by llama-bench. Only add for batched benchmarks.
-        if is_batched:
-            cmd.extend(["-tb", str(config.threads_batch)])
-        cmd.extend(["-c", str(config.ctx_size)])
         cmd.extend(["--cache-type-k", config.cache_type_k])
         cmd.extend(["--cache-type-v", config.cache_type_v])
         cmd.extend(["--flash-attn", config.flash_attn])
 
-        # NUMA
-        if config.numa:
-            cmd.extend(["--numa", config.numa_value])
+        # Parameters ONLY supported by llama-batched-bench (and llama-server)
+        if is_batched:
+            # threads_batch (-tb) is a llama-server/llama-batched-bench parameter
+            cmd.extend(["-tb", str(config.threads_batch)])
+            # ctx_size (-c) is not supported by llama-bench
+            # Use -p/--n-prompt and -n/--n-gen for prompt/gen lengths instead
+            # NUMA is supported by both but with different syntax
+            # CPU affinity/mask
+            if config.cpu_affinity and config.cpu_affinity != "auto":
+                cmd.extend(["--cpu-affinity", config.cpu_affinity])
+            if config.cpu_strict:
+                cmd.append("--cpu-strict")
+            # Parallel sequences
+            if isinstance(config.parallel, int) and config.parallel > 1:
+                cmd.extend(["-p", str(config.parallel)])
+            elif config.parallel == "auto":
+                cmd.append("--kv-unified")
+            # Speculative decoding
+            if config.spec_type and config.spec_type != "none":
+                cmd.extend(["--spec-type", config.spec_type])
+                if config.spec_draft_n_max > 0:
+                    cmd.extend(["--spec-draft-n-max", str(config.spec_draft_n_max)])
+            # Slot cache persistence
+            if config.cache_reuse > 0:
+                cmd.extend(["--cache-reuse", str(config.cache_reuse)])
+            if config.cache_ram > 0:
+                cmd.extend(["--cache-ram", str(config.cache_ram)])
+            if config.swa_full:
+                cmd.append("--swa-full")
+        else:
+            # For llama-bench: use -p/--n-prompt and -n/--n-gen for prompt/gen lengths
+            # NUMA is supported by both
+            if config.numa:
+                cmd.extend(["--numa", config.numa_value])
 
-        # CPU affinity
-        if config.cpu_affinity and config.cpu_affinity != "auto":
-            cmd.extend(["--cpu-affinity", config.cpu_affinity])
-
-        if config.cpu_strict:
-            cmd.append("--cpu-strict")
-
-        # Parallel sequences
-        if isinstance(config.parallel, int) and config.parallel > 1:
-            cmd.extend(["-p", str(config.parallel)])
-        elif config.parallel == "auto":
-            cmd.append("--kv-unified")
-
-        # Speculative decoding
-        if config.spec_type and config.spec_type != "none":
-            cmd.extend(["--spec-type", config.spec_type])
-            if config.spec_draft_n_max > 0:
-                cmd.extend(["--spec-draft-n-max", str(config.spec_draft_n_max)])
-
-        # Slot cache persistence
-        if config.cache_reuse > 0:
-            cmd.extend(["--cache-reuse", str(config.cache_reuse)])
-
-        if config.cache_ram > 0:
-            cmd.extend(["--cache-ram", str(config.cache_ram)])
-
-        if config.swa_full:
-            cmd.append("--swa-full")
-
-        # Generation length
+        # Generation length (supported by both)
         cmd.extend(["-n", "128"])
 
         # Output format
