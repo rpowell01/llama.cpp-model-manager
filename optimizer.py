@@ -519,12 +519,13 @@ class BenchmarkOptimizer:
             # Calculate remaining time for this config
             remaining_time = max_duration_sec - elapsed
             # Allocate time fairly but with minimum per config
-            time_per_config = max(5, min(30, remaining_time / (len(config_list) - i)))
+            # Cap at 60s for first config to allow model loading + SYCL compilation
+            time_per_config = max(5, min(60 if i == 0 else 30, remaining_time / (len(config_list) - i)))
             
             # Use more generous timeout for first config (model loading + SYCL compilation)
-            # First run can take 30-60s due to model loading + kernel compilation
+            # First run can take 60-120s due to model loading + kernel compilation
             if i == 0:
-                timeout_sec = min(60, int(time_per_config * 1.2))  # First config: 120% of allocated time, max 60s
+                timeout_sec = min(120, int(time_per_config * 1.5))  # First config: 150% of allocated time, max 120s
             else:
                 timeout_sec = min(30, int(time_per_config * 0.9))  # Subsequent: 90%, max 30s
             
