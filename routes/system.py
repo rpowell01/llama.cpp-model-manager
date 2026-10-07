@@ -20,6 +20,10 @@ except ImportError:
 from config import LOG_FILE, FLASK_PORT
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
 from state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
+from models import get_models as get_models_local
+
+# Use the imported function directly (not re-imported inside functions)
+get_models = get_models_local
 
 system_bp = Blueprint("system", __name__)
 log = getLogger("llamaweb")
@@ -463,10 +467,15 @@ def compute_optimal_settings(hardware_info, model_info=None):
 def api_optimize_settings():
     """Get optimized settings for a model based on hardware."""
     from flask import request
-    from models import get_models
     
     data = request.get_json(force=True) or {}
-    model_name = data.get("model", "").strip()
+    model_name_raw = data.get("model")
+    if model_name_raw is None:
+        return jsonify({"error": "Missing model name"}), 400
+    try:
+        model_name = str(model_name_raw).strip()
+    except Exception:
+        return jsonify({"error": "Model name must be a string"}), 400
     
     if not model_name:
         return jsonify({"error": "Missing model name"}), 400
@@ -489,6 +498,165 @@ def api_optimize_settings():
     except Exception as e:
         log.exception("Failed to compute optimal settings")
         return jsonify({"error": str(e)}), 500
+
+
+@system_bp.route("/api/benchmark-optimize", methods=["POST"])
+def api_benchmark_optimize():
+    """
+    Run empirical benchmark optimization for a model.
+    
+    Request body:
+        {
+            "model": "string",                    # Required: model name from registry
+            "max_duration_sec": int,              # Optional: max benchmark time (default: 60)
+            "target": "throughput"|"latency"|"balanced"  # Optional: optimization target (default: "balanced")
+        }
+    
+    Response:
+        {
+            "optimal_settings": {...},            # Same format as /api/optimize-settings
+            "benchmark_results": [...],           # Raw benchmark results for transparency
+            "hardware_info": {...},               # Hardware info used for optimization
+            "cached": bool,                       # Whether result came from cache
+            "duration_sec": float,                # Total optimization time
+            "optimization_target": "string",      # Target used for optimization
+            "fallback_reason": "string"           # Present if fallback to heuristic was used
+        }
+    """
+    from flask import request
+    import time as time_module
+    from optimizer import BenchmarkOptimizer
+    
+    data = request.get_json(force=True) or {}
+    
+    # Validate model name - coerce to string and strip
+    model_name_raw = data.get("model")
+    if model_name_raw is None:
+        return jsonify({"error": "Missing model name"}), 400
+    try:
+        model_name = str(model_name_raw).strip()
+    except Exception:
+        return jsonify({"error": "Model name must be a string"}), 400
+    
+    if not model_name:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    # Validate optimization target - coerce to string and lower
+    target_raw = data.get("target", "balanced")
+    try:
+        target = str(target_raw).lower()
+    except Exception:
+        return jsonify({"error": "Target must be a string"}), 400
+    
+    if target not in ("throughput", "latency", "balanced"):
+        return jsonify({"error": f"Invalid target '{target}'. Must be 'throughput', 'latency', or 'balanced'"}), 400
+    
+    # Validate max_duration_sec - reject bool (since bool is subclass of int)
+    max_duration_sec = data.get("max_duration_sec", 60)
+    if type(max_duration_sec) is not int or max_duration_sec < 10 or max_duration_sec > 3600:
+        return jsonify({"error": "max_duration_sec must be an integer between 10 and 3600"}), 400
+    
+    models = get_models()
+    model_info = models.get(model_name)
+    
+    if not model_info:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    
+    # Get model path
+    model_path_str = model_info.get("model_path", "")
+    if not model_path_str:
+        return jsonify({"error": f"Model '{model_name}' has no associated file path"}), 400
+    
+    # Resolve model path
+    try:
+        from config import resolve_model_path
+        model_path = resolve_model_path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model file not found: {model_path}"}), 404
+    except Exception as e:
+        log.exception(f"Failed to resolve model path for '{model_name}'")
+        return jsonify({"error": f"Failed to resolve model path: {e}"}), 500
+    
+    try:
+        start_time = time_module.time()
+        
+        # Get hardware info
+        hardware_info = get_hardware_info()
+        log.info(f"Starting benchmark optimization for model '{model_name}' (target: {target}, max_duration: {max_duration_sec}s)")
+        
+        # Create optimizer
+        optimizer = BenchmarkOptimizer()
+        
+        # Check if we have a cached result
+        cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
+        cached_result = optimizer._load_from_cache(cache_key, hardware_info)
+        
+        if cached_result is not None:
+            # Return cached result immediately
+            duration_sec = time_module.time() - start_time
+            
+            # Convert optimal_settings from BenchmarkConfig format back to compute_optimal_settings format
+            optimal_settings = cached_result.get("optimal_settings", {}).copy()
+            if "n_gpu_layers" in optimal_settings:
+                optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+            
+            response = {
+                "optimal_settings": optimal_settings,
+                "benchmark_results": cached_result.get("benchmark_results", []),
+                "hardware_info": cached_result.get("hardware_info", hardware_info),
+                "cached": True,
+                "duration_sec": round(duration_sec, 2),
+                "optimization_target": target,
+                "model": model_name,
+            }
+            
+            # Include fallback reason if present in cached result
+            if "fallback_reason" in cached_result:
+                response["fallback_reason"] = cached_result["fallback_reason"]
+            
+            log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: True)")
+            return jsonify(response)
+        
+        # No valid cache - run optimization
+        result = optimizer.optimize(
+            str(model_path),
+            max_duration_sec=max_duration_sec,
+            optimization_target=target
+        )
+        
+        duration_sec = time_module.time() - start_time
+        
+        # Convert optimal_settings from BenchmarkConfig format back to compute_optimal_settings format
+        # (replace n_gpu_layers with gpu_layers for compatibility)
+        optimal_settings = result.get("optimal_settings", {}).copy()
+        if "n_gpu_layers" in optimal_settings:
+            optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+        
+        # Build response
+        response = {
+            "optimal_settings": optimal_settings,
+            "benchmark_results": result.get("benchmark_results", []),
+            "hardware_info": result.get("hardware_info", hardware_info),
+            "cached": False,
+            "duration_sec": round(duration_sec, 2),
+            "optimization_target": target,
+            "model": model_name,
+        }
+        
+        # Include fallback reason if present
+        if "fallback_reason" in result:
+            response["fallback_reason"] = result["fallback_reason"]
+        
+        log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: False)")
+        
+        return jsonify(response)
+        
+    except FileNotFoundError as e:
+        log.exception(f"Model file not found for '{model_name}'")
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        log.exception(f"Benchmark optimization failed for '{model_name}'")
+        return jsonify({"error": f"Optimization failed: {str(e)}"}), 500
 
 
 @system_bp.route("/api/logs")
