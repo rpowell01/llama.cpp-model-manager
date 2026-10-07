@@ -522,12 +522,10 @@ class BenchmarkOptimizer:
             # Cap at 60s for first config to allow model loading + SYCL compilation
             time_per_config = max(5, min(60 if i == 0 else 30, remaining_time / (len(config_list) - i)))
             
-            # Use more generous timeout for first config (model loading + SYCL compilation)
-            # First run can take 120-180s due to model loading + kernel compilation in fresh process
-            if i == 0:
-                timeout_sec = min(180, int(time_per_config * 2.0))  # First config: 200% of allocated time, max 180s
-            else:
-                timeout_sec = min(30, int(time_per_config * 0.9))  # Subsequent: 90%, max 30s
+            # Use more generous timeout for all configs (SYCL compilation on each fresh process)
+            # Manual test: 5 reps = 43s (first 23s compilation, rest ~10s each)
+            # With 2 reps: ~33s needed. Use 200% of allocated time, max 120s for all.
+            timeout_sec = min(120, int(time_per_config * 2.0))
             
             try:
                 log.info(f"Testing configuration {i+1}/{len(config_list)}: "
