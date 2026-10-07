@@ -292,9 +292,9 @@ class BenchmarkRunner:
                 # Use binary's directory as working directory for Windows binaries on WSL
                 # Running from WSL temp directory breaks SYCL/Level Zero initialization
                 if WSL and LLAMA_BENCH and str(LLAMA_BENCH).endswith('.exe'):
-                    cwd = config.LLAMA_BENCH.parent
+                    cwd = LLAMA_BENCH.parent
                 elif WSL and LLAMA_BATCHED_BENCH and str(LLAMA_BATCHED_BENCH).endswith('.exe'):
-                    cwd = config.LLAMA_BATCHED_BENCH.parent
+                    cwd = LLAMA_BATCHED_BENCH.parent
                 else:
                     cwd = None
                 
