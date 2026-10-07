@@ -528,26 +528,48 @@ class BenchmarkRunner:
     @staticmethod
     def _parse_json_output(output: str, is_batched: bool) -> dict[str, Any]:
         """Parse JSON output from benchmark."""
+        # llama-bench outputs multiple JSON objects (one per test phase)
+        # Try to parse as array first, then try individual objects
+        parsed_objects = []
+        
+        # Try to parse as JSON array
         try:
             data = json.loads(output)
-        except json.JSONDecodeError as e:
-            log.warning(f"Failed to parse JSON output: {e}")
-            # Try to extract JSON from mixed output
+            if isinstance(data, list):
+                parsed_objects = data
+            else:
+                parsed_objects = [data]
+        except json.JSONDecodeError:
+            # Try to extract multiple JSON objects from mixed output
+            # llama-bench outputs one JSON object per line for each test phase
             for line in output.splitlines():
                 line = line.strip()
                 if line.startswith(("{", "[")):
                     try:
-                        data = json.loads(line)
-                        break
+                        obj = json.loads(line)
+                        if isinstance(obj, list):
+                            parsed_objects.extend(obj)
+                        else:
+                            parsed_objects.append(obj)
                     except json.JSONDecodeError:
                         continue
+        
+        if not parsed_objects:
+            return {}
+        
+        # Aggregate metrics from all parsed objects
+        aggregated = {}
+        for obj in parsed_objects:
+            if is_batched:
+                metrics = BenchmarkRunner._parse_batched_json(obj)
             else:
-                return {}
-
-        if is_batched:
-            return BenchmarkRunner._parse_batched_json(data)
-        else:
-            return BenchmarkRunner._parse_regular_json(data)
+                metrics = BenchmarkRunner._parse_regular_json(obj)
+            # Merge metrics, preferring non-zero values
+            for k, v in metrics.items():
+                if k not in aggregated or (v and not aggregated.get(k)):
+                    aggregated[k] = v
+        
+        return aggregated
 
     @staticmethod
     def _parse_regular_json(data: dict[str, Any]) -> dict[str, Any]:
