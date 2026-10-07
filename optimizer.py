@@ -521,11 +521,19 @@ class BenchmarkOptimizer:
             # Allocate time fairly but with minimum per config
             time_per_config = max(5, min(30, remaining_time / (len(config_list) - i)))
             
+            # Use more generous timeout for first config (model loading + SYCL compilation)
+            # First run can take 30-60s due to model loading + kernel compilation
+            if i == 0:
+                timeout_sec = min(60, int(time_per_config * 1.2))  # First config: 120% of allocated time, max 60s
+            else:
+                timeout_sec = min(30, int(time_per_config * 0.9))  # Subsequent: 90%, max 30s
+            
             try:
                 log.info(f"Testing configuration {i+1}/{len(config_list)}: "
                         f"ngl={config.get('n_gpu_layers')}, "
                         f"batch={config.get('batch_size')}, "
-                        f"threads={config.get('threads')}")
+                        f"threads={config.get('threads')}, "
+                        f"timeout={timeout_sec}s")
                 
                 # Create benchmark config
                 bench_config = BenchmarkConfig(
@@ -540,7 +548,7 @@ class BenchmarkOptimizer:
                     flash_attn=config.get("flash_attn", "auto"),
                     ctx_size=config.get("ctx_size", 128000),
                     repetitions=2,  # Fewer repetitions for sweep speed
-                    timeout_sec=min(30, int(time_per_config * 0.8)),  # Leave overhead
+                    timeout_sec=timeout_sec,
                 )
                 
                 # Run llama-bench (single sequence) for sweep
