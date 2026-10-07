@@ -208,7 +208,10 @@ class BenchmarkRunner:
         cmd.extend(["-b", str(config.batch_size)])
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
-        cmd.extend(["-tb", str(config.threads_batch)])
+        # threads_batch (-tb) is a llama-server/llama-batched-bench parameter,
+        # not supported by llama-bench. Only add for batched benchmarks.
+        if is_batched:
+            cmd.extend(["-tb", str(config.threads_batch)])
         cmd.extend(["-c", str(config.ctx_size)])
         cmd.extend(["--cache-type-k", config.cache_type_k])
         cmd.extend(["--cache-type-v", config.cache_type_v])
