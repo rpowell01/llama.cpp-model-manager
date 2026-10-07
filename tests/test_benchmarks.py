@@ -1022,7 +1022,7 @@ class TestWSLPathConversion(unittest.TestCase):
     """Tests for WSL path conversion (internal helper)."""
 
     @patch("config.WSL", True)
-    def test_wsl_path_conversion(self, *_args: object, **_kwargs: object) -> None:
+    def test_wsl_path_conversion(self) -> None:
         """Test Windows to WSL path conversion."""
         from config import _convert_windows_path_to_wsl
 
@@ -1037,7 +1037,7 @@ class TestWSLPathConversion(unittest.TestCase):
         self.assertEqual(result, linux_path)
 
     @patch("config.WSL", False)
-    def test_non_wsl_no_conversion(self, *_args: object, **_kwargs: object) -> None:
+    def test_non_wsl_no_conversion(self) -> None:
         """Test no conversion when not in WSL."""
         from config import _convert_windows_path_to_wsl
 
