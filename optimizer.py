@@ -837,30 +837,49 @@ class BenchmarkOptimizer:
         
         log.info(f"Running single benchmark for {model_path} with config: {current_config}")
         
-        # Create benchmark config from current_config
+        # Filter current_config to only include valid BenchmarkConfig parameters
+        # Many form fields (auto_download, comment, custom_header_*, etc.) are NOT benchmark parameters
+        valid_benchmark_params = {
+            "n_gpu_layers", "batch_size", "ubatch_size", "threads", "threads_batch",
+            "cache_type_k", "cache_type_v", "flash_attn", "cache_reuse", "cache_ram",
+            "swa_full", "numa", "numa_value", "cpu_affinity", "cpu_strict",
+            "ctx_size", "parallel", "spec_type", "spec_draft_n_max",
+        }
+        
+        filtered_config = {k: v for k, v in current_config.items() if k in valid_benchmark_params}
+        
+        # Set defaults for any missing required parameters
+        defaults = {
+            "n_gpu_layers": 99,
+            "batch_size": 4096,
+            "ubatch_size": 1024,
+            "threads": 16,
+            "threads_batch": 16,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0",
+            "flash_attn": "auto",
+            "cache_reuse": 0,
+            "cache_ram": 0,
+            "swa_full": False,
+            "numa": False,
+            "numa_value": "interleave",
+            "cpu_affinity": "auto",
+            "cpu_strict": False,
+            "ctx_size": 4096,
+            "parallel": 1,
+            "spec_type": "none",
+            "spec_draft_n_max": 0,
+        }
+        
+        # Apply defaults for missing values
+        for key, default_val in defaults.items():
+            if key not in filtered_config:
+                filtered_config[key] = default_val
+        
+        # Create benchmark config from filtered_config
         bench_config = BenchmarkConfig(
             model_path=model_path,
-            n_gpu_layers=current_config.get("n_gpu_layers", 99),
-            batch_size=current_config.get("batch_size", 4096),
-            ubatch_size=current_config.get("ubatch_size", 1024),
-            threads=current_config.get("threads", 16),
-            threads_batch=current_config.get("threads_batch", 16),
-            cache_type_k=current_config.get("cache_type_k", "q4_0"),
-            cache_type_v=current_config.get("cache_type_v", "q4_0"),
-            flash_attn=current_config.get("flash_attn", "auto"),
-            ctx_size=current_config.get("ctx_size", 128000),
-            repetitions=2,
-            timeout_sec=600,
-            numa=current_config.get("numa", False),
-            numa_value=current_config.get("numa_value", "interleave"),
-            cpu_affinity=current_config.get("cpu_affinity", "auto"),
-            cpu_strict=current_config.get("cpu_strict", False),
-            parallel=current_config.get("parallel", 1),
-            spec_type=current_config.get("spec_type", "none"),
-            spec_draft_n_max=current_config.get("spec_draft_n_max", 0),
-            cache_reuse=current_config.get("cache_reuse", 0),
-            cache_ram=current_config.get("cache_ram", 0),
-            swa_full=current_config.get("swa_full", False),
+            **filtered_config,
         )
         
         # Run llama-bench (single sequence) for current config
