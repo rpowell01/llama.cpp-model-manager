@@ -1378,19 +1378,23 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       </div>
     ` : "";
 
-    const results = result.benchmark_results || [];
+const results = result.benchmark_results || [];
+    const cacheKey = result.cache_key || "N/A";
     const resultsHtml = results.length > 0 ? `
-      <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
         <thead>
           <tr style="background: var(--surface2);">
             <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Config</th>
+            <th style="padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border);">Type</th>
+            <th style="padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border);">Date/Time</th>
+            <th style="padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border);">Target</th>
             <th style="padding: 0.5rem; text-align: right; border-bottom: 1px solid var(--border);">Tokens/s</th>
             <th style="padding: 0.5rem; text-align: right; border-bottom: 1px solid var(--border);">Latency (ms)</th>
             <th style="padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border);">Status</th>
           </tr>
         </thead>
         <tbody>
-          ${results.map(r => {
+          ${results.map((r, idx) => {
             // Filter config to only show relevant benchmark parameters
             const benchmarkParamKeys = new Set([
               "n_gpu_layers", "gpu_layers", "batch_size", "ubatch_size", 
@@ -1403,11 +1407,29 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
               .filter(([k]) => benchmarkParamKeys.has(k))
               .map(([k,v]) => `${k}=${v}`)
               .join(', ') : 'N/A';
+            
+            // Format timestamp
+            let dateStr = 'N/A';
+            if (r.timestamp) {
+              const date = new Date(r.timestamp * 1000);
+              dateStr = date.toLocaleString();
+            }
+            
+            // Test type
+            const testType = r.test_type || (r.optimization_target === 'current_config_test' ? 'custom' : 'automatic');
+            const typeBadge = testType === 'custom' 
+              ? '<span style="background: var(--blue); color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem;">Custom</span>'
+              : '<span style="background: var(--green); color: white; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem;">Auto</span>';
+            
+            // Optimization target
+            const target = r.optimization_target || result.optimization_target || 'balanced';
+            
             return `
             <tr style="border-bottom: 1px solid var(--border); ${r.success ? '' : 'opacity: 0.6;'}">
-              <td style="padding: 0.5rem; font-family: monospace;">
-                ${filteredConfig}
-              </td>
+              <td style="padding: 0.5rem; font-family: monospace; font-size: 0.7rem;">${filteredConfig}</td>
+              <td style="padding: 0.5rem; text-align: center;">${typeBadge}</td>
+              <td style="padding: 0.5rem; text-align: center; font-size: 0.7rem;">${dateStr}</td>
+              <td style="padding: 0.5rem; text-align: center; text-transform: capitalize;">${target}</td>
               <td style="padding: 0.5rem; text-align: right; ${r.success && r.tg_avg === Math.max(...results.filter(x => x.success).map(x => x.tg_avg)) ? 'font-weight: bold; color: var(--green);' : ''}">
                 ${r.success && r.tg_avg ? r.tg_avg.toFixed(1) : 'N/A'}
               </td>
@@ -1424,8 +1446,8 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     ` : '<p style="color: var(--muted);">No benchmark results available</p>';
 
     modal.innerHTML = `
-      <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 800px; max-height: 80vh; overflow: auto; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1000px; max-height: 80vh; overflow: auto; width: 95%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <h2 style="margin: 0;">Benchmark Results</h2>
           <button id="close-benchmark-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">&times;</button>
         </div>
@@ -1435,6 +1457,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           <strong>Duration:</strong> ${result.duration_sec}s | 
           <strong>Cached:</strong> ${result.cached ? 'Yes' : 'No'}
           ${result.fallback_reason ? `<br><strong style="color: var(--orange);">Fallback: ${result.fallback_reason}</strong>` : ''}
+        </div>
+        <div style="margin-bottom: 1rem; padding: 0.5rem; background: var(--surface3); border-radius: 4px; font-size: 0.75rem; font-family: monospace; word-break: break-all;">
+          <strong>Cache Key:</strong> ${cacheKey}
         </div>
         ${hwInfo}
         <div style="margin-bottom: 1rem;">

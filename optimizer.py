@@ -494,7 +494,8 @@ class BenchmarkOptimizer:
         self, 
         model_path: str, 
         config_list: List[Dict[str, Any]], 
-        max_duration_sec: int = 100
+        max_duration_sec: int = 100,
+        optimization_target: str = 'balanced'
     ) -> List[Dict[str, Any]]:
         """
         Run benchmark sweep across multiple configurations.
@@ -577,6 +578,9 @@ class BenchmarkOptimizer:
                     "latency_p50": result.get("latency_p50"),
                     "latency_p90": result.get("latency_p90"),
                     "latency_p99": result.get("latency_p99"),
+                    "timestamp": time.time(),
+                    "test_type": "automatic",
+                    "optimization_target": optimization_target,
                     # For optimization, we'll use a combined score later
                 }
                 
@@ -594,6 +598,9 @@ class BenchmarkOptimizer:
                     "error": str(e),
                     "pp_avg": 0,
                     "tg_avg": 0,
+                    "timestamp": time.time(),
+                    "test_type": "automatic",
+                    "optimization_target": optimization_target,
                 })
                 
         log.info(f"Benchmark sweep completed: {len(results)} configurations tested "
@@ -747,7 +754,7 @@ class BenchmarkOptimizer:
         # Run benchmark sweep
         try:
             benchmark_results = self.run_benchmark_sweep(
-                model_path, config_list, max_duration_sec
+                model_path, config_list, max_duration_sec, optimization_target
             )
         except Exception as e:
             log.warning(f"Benchmark sweep failed with exception: {e}. Falling back to heuristic settings.")
@@ -937,6 +944,9 @@ class BenchmarkOptimizer:
             "stdout": result.get("stdout", ""),
             "stderr": result.get("stderr", ""),
             "duration_sec": result.get("duration_sec", 0),
+            "timestamp": time.time(),
+            "test_type": "custom",
+            "optimization_target": "current_config_test",
         }
         
         # Load existing cache to preserve historical results and optimal settings
