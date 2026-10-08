@@ -903,10 +903,11 @@ class BenchmarkOptimizer:
             "parallel": bench_config.parallel,
         })
         
-        # Create benchmark result entry
+        # run_llama_bench returns metrics dict on success, raises exception on failure
+        # So if we get here, success = True
         benchmark_result = {
             "config": current_config,
-            "success": result.get("success", False),
+            "success": True,
             "tg_avg": result.get("tg_avg"),
             "pp_avg": result.get("pp_avg"),
             "pg_avg": result.get("pg_avg"),

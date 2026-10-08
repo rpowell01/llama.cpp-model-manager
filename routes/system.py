@@ -785,6 +785,44 @@ def api_benchmark_optimize():
                 current_config,
                 max_duration_sec=max_duration_sec
             )
+            
+            # Also load cached optimization results for comparison
+            cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
+            cached_result = optimizer._load_from_cache(cache_key, hardware_info)
+            cached_benchmarks = []
+            if cached_result and cached_result.get("benchmark_results"):
+                # Only include successful cached benchmarks
+                cached_benchmarks = [r for r in cached_result["benchmark_results"] if r.get("success", False)]
+            
+            # Combine current benchmark result with cached benchmarks for comparison
+            combined_results = result.get("benchmark_results", []) + cached_benchmarks
+            
+            duration_sec = time_module.time() - start_time
+            
+            # Convert optimal_settings from BenchmarkConfig format back to compute_optimal_settings format
+            optimal_settings = result.get("optimal_settings", {}).copy()
+            if "n_gpu_layers" in optimal_settings:
+                optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+            
+            response = {
+                "optimal_settings": optimal_settings,
+                "benchmark_results": combined_results,
+                "hardware_info": result.get("hardware_info", hardware_info),
+                "cached": False,
+                "duration_sec": round(duration_sec, 2),
+                "optimization_target": target,
+                "model": model_name,
+                "test_current_config": True,
+                "cached_benchmarks_count": len(cached_benchmarks),
+            }
+            
+            # Include fallback reason if present
+            if "fallback_reason" in result:
+                response["fallback_reason"] = result["fallback_reason"]
+            
+            log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: False, test_current_config: True, cached_benchmarks: {len(cached_benchmarks)})")
+            
+            return jsonify(response)
         else:
             # Check if we have a cached result
             cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
