@@ -191,12 +191,12 @@ class BenchmarkRunner:
         cmd.extend(["-b", str(config.batch_size)])
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
-        cmd.extend(["--cache-type-k", config.cache_type_k])
-        cmd.extend(["--cache-type-v", config.cache_type_v])
-        cmd.extend(["--flash-attn", config.flash_attn])
 
         # Parameters ONLY supported by llama-batched-bench (and llama-server)
         if is_batched:
+            cmd.extend(["--cache-type-k", config.cache_type_k])
+            cmd.extend(["--cache-type-v", config.cache_type_v])
+            cmd.extend(["--flash-attn", config.flash_attn])
             # threads_batch (-tb) is a llama-server/llama-batched-bench parameter
             cmd.extend(["-tb", str(config.threads_batch)])
             # ctx_size (-c) is not supported by llama-bench
