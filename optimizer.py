@@ -282,28 +282,32 @@ class BenchmarkOptimizer:
             spec_draft_p_split_options = [0.0, 0.1]  # 0.0 means disabled
         
         # GPU layers to test - based on available VRAM and model size
-        gpu_layers_options = [0]  # Always include CPU-only option
+        # Skip CPU-only (0) when GPU is available - it's always slower
+        gpu_layers_options = []
         if has_gpu and total_vram > 0:
-            # Add GPU layers options based on VRAM
+            # Test specific meaningful GPU layer configurations
             if total_vram >= 24:
-                gpu_layers_options.extend([20, 50, 99])
+                gpu_layers_options = [99, 35, 20]
             elif total_vram >= 16:
-                gpu_layers_options.extend([20, 50])
+                gpu_layers_options = [99, 35, 20]
             elif total_vram >= 8:
-                gpu_layers_options.append(20)
+                gpu_layers_options = [99, 35, 20]
             else:
-                gpu_layers_options.append(10)  # Low VRAM
-                
-            # Filter based on model size - don't test configs that clearly won't fit
-            if model_size_gb > 0:
-                filtered_layers = []
-                for layers in gpu_layers_options:
-                    # Very rough estimate: if offloading many layers, need VRAM for model
-                    # This is conservative - actual usage depends on quantization
-                    estimated_vram_needed = model_size_gb * (layers / 100) * 1.5  # rough factor
-                    if estimated_vram_needed <= total_vram * 0.9:  # leave some headroom
-                        filtered_layers.append(layers)
-                gpu_layers_options = filtered_layers if filtered_layers else [0]
+                gpu_layers_options = [20, 10]
+        else:
+            # No GPU available - use CPU only
+            gpu_layers_options = [0]
+            
+        # Filter based on model size - don't test configs that clearly won't fit
+        if model_size_gb > 0:
+            filtered_layers = []
+            for layers in gpu_layers_options:
+                # Very rough estimate: if offloading many layers, need VRAM for model
+                # This is conservative - actual usage depends on quantization
+                estimated_vram_needed = model_size_gb * (layers / 100) * 1.5  # rough factor
+                if estimated_vram_needed <= total_vram * 0.9:  # leave some headroom
+                    filtered_layers.append(layers)
+            gpu_layers_options = filtered_layers if filtered_layers else [0]
         
         # Batch/UBatch pairs - from benchmark design
         batch_ubatch_pairs = [

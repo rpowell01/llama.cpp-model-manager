@@ -57,10 +57,146 @@ def _detect_windows_gpu() -> list[dict]:
         with open("/proc/version", "r") as f:
             if "microsoft" not in f.read().lower() and "wsl" not in f.read().lower():
                 return gpus
-    except Exception:
-        return gpus
+        
+        # Query Windows for video controllers
+        # Use cmd.exe /c to avoid Python subprocess timeout issues in WSL
+        cmd = [
+            "cmd.exe", "/c", "powershell.exe", "-Command",
+            "Get-CimInstance Win32_VideoController | "
+            "Select-Object Name, AdapterRAM, DriverVersion, PNPDeviceID | "
+            "ConvertTo-Json -Compress"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return gpus
+        
+        import json
+        data = json.loads(result.stdout)
+        # Handle both single object and array
+        if isinstance(data, dict):
+            data = [data]
+        
+        for gpu in data:
+            name = gpu.get("Name", "")
+            if not name:
+                continue
+            
+            # Determine vendor from name
+            name_lower = name.lower()
+            if "nvidia" in name_lower or "geforce" in name_lower or "quadro" in name_lower or "tesla" in name_lower:
+                vendor = "NVIDIA"
+            elif "amd" in name_lower or "radeon" in name_lower:
+                vendor = "AMD"
+            elif "intel" in name_lower or "arc" in name_lower or "uhd" in name_lower or "iris" in name_lower:
+                vendor = "Intel"
+            else:
+                vendor = "Unknown"
+            
+            # Parse AdapterRAM (comes in bytes, may be null or weird format)
+            # Windows WMI sometimes returns values near max int32 (2147483647) as a placeholder
+            # for unknown VRAM, which equals ~2047 MB - we should ignore these
+            memory_mb = None
+            adapter_ram = gpu.get("AdapterRAM")
+            # Check for bogus max int32 values that indicate unknown VRAM
+            # Use a threshold since the exact value may vary (e.g., 2147479552 = 0x7ffff000)
+            MAX_INT32 = 2147483647
+            BOGUS_THRESHOLD = MAX_INT32 - 10000  # Values within 10KB of max int32 are likely bogus
+            is_bogus = adapter_ram and isinstance(adapter_ram, (int, float)) and adapter_ram >= BOGUS_THRESHOLD
+            if adapter_ram and isinstance(adapter_ram, (int, float)) and adapter_ram > 0 and adapter_ram < BOGUS_THRESHOLD:
+                memory_mb = int(adapter_ram / (1024 * 1024))
+            
+            # Store whether this is a shared memory GPU with bogus VRAM for later estimation
+            is_shared_memory = vendor == "Intel" and (memory_mb is None or is_bogus)
+            
+            # Extract device ID from PNPDeviceID
+            device_id = None
+            pnp_id = gpu.get("PNPDeviceID", "")
+            if pnp_id:
+                # Format: PCI\VEN_8086&DEV_7D55&SUBSYS_3F9617AA&REV_08\3&11583659&0&10
+                ven_match = re.search(r"VEN_([0-9A-Fa-f]{4})", pnp_id)
+                dev_match = re.search(r"DEV_([0-9A-Fa-f]{4})", pnp_id)
+                if ven_match and dev_match:
+                    device_id = f"{ven_match.group(1)}:{dev_match.group(1)}"
+            
+            gpus.append({
+                "name": name,
+                "vendor": vendor,
+                "driver_version": gpu.get("DriverVersion"),
+                "device_id": device_id,
+                "memory_mb": memory_mb,
+                "source": "windows_wmi",
+                "is_shared_memory": is_shared_memory
+            })
+    except Exception as e:
+        log.debug(f"Windows GPU detection failed: {e}")
     
-    # Query Windows for video controllers
+    return gpus
+
+
+def _detect_windows_cpu_memory() -> dict:
+    """Detect CPU and memory from Windows host when running in WSL.
+    
+    Uses PowerShell WMI queries to get CPU and memory information from the Windows host.
+    This is useful when running in WSL where Linux tools cannot see the Windows host resources.
+    
+    Returns:
+        Dictionary with cpu_count_logical, cpu_count_physical, memory_total_gb, memory_available_gb
+    """
+    info = {}
+    try:
+        # Check if we're in WSL
+        with open("/proc/version", "r") as f:
+            if "microsoft" not in f.read().lower() and "wsl" not in f.read().lower():
+                return info
+    except Exception:
+        return info
+    
+    try:
+        # Query Windows for CPU and memory info
+        cmd = [
+            "cmd.exe", "/c", "powershell.exe", "-Command",
+            "Get-CimInstance Win32_Processor | "
+            "Select-Object NumberOfLogicalProcessors, NumberOfCores | "
+            "ConvertTo-Json -Compress"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            import json
+            data = json.loads(result.stdout)
+            if isinstance(data, dict):
+                data = [data]
+            total_logical = sum(int(p.get("NumberOfLogicalProcessors", 0)) for p in data)
+            total_cores = sum(int(p.get("NumberOfCores", 0)) for p in data)
+            if total_logical > 0:
+                info["cpu_count_logical"] = total_logical
+            if total_cores > 0:
+                info["cpu_count_physical"] = total_cores
+    except Exception:
+        pass
+    
+    try:
+        # Query Windows for memory
+        cmd = [
+            "cmd.exe", "/c", "powershell.exe", "-Command",
+            "Get-CimInstance Win32_OperatingSystem | "
+            "Select-Object TotalVisibleMemorySize, FreePhysicalMemory | "
+            "ConvertTo-Json -Compress"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            import json
+            data = json.loads(result.stdout)
+            # Memory in KB, convert to GB
+            total_kb = int(data.get("TotalVisibleMemorySize", 0))
+            free_kb = int(data.get("FreePhysicalMemory", 0))
+            if total_kb > 0:
+                info["memory_total_gb"] = round(total_kb / (1024 * 1024), 1)
+            if free_kb > 0:
+                info["memory_available_gb"] = round(free_kb / (1024 * 1024), 1)
+    except Exception:
+        pass
+    
+    return info
     # Use cmd.exe /c to avoid Python subprocess timeout issues in WSL
     try:
         cmd = [
@@ -155,15 +291,31 @@ def get_hardware_info():
         "opencl_version": None,
     }
     
-    # Try to get physical CPU count
+    # If running in WSL, try to get Windows host hardware info first
     try:
-        import psutil
-        info["cpu_count_physical"] = psutil.cpu_count(logical=False)
-        mem = psutil.virtual_memory()
-        info["memory_total_gb"] = round(mem.total / (1024**3), 1)
-        info["memory_available_gb"] = round(mem.available / (1024**3), 1)
+        with open("/proc/version", "r") as f:
+            if "microsoft" in f.read().lower() or "wsl" in f.read().lower():
+                # We're in WSL - get Windows host hardware info
+                win_info = _detect_windows_cpu_memory()
+                info.update(win_info)
     except Exception:
         pass
+    
+    # Fallback to Linux/psutil detection (for non-WSL or if WSL detection failed)
+    if info["cpu_count_logical"] is None or info["memory_total_gb"] is None:
+        try:
+            import psutil
+            if info["cpu_count_physical"] is None:
+                info["cpu_count_physical"] = psutil.cpu_count(logical=False)
+            if info["cpu_count_logical"] is None:
+                info["cpu_count_logical"] = psutil.cpu_count()
+            mem = psutil.virtual_memory()
+            if info["memory_total_gb"] is None:
+                info["memory_total_gb"] = round(mem.total / (1024**3), 1)
+            if info["memory_available_gb"] is None:
+                info["memory_available_gb"] = round(mem.available / (1024**3), 1)
+        except Exception:
+            pass
     
     # Detect NVIDIA GPU
     nvidia_detected = False

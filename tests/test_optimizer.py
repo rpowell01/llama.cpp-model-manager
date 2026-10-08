@@ -751,9 +751,10 @@ class TestGenerateConfigCombinationsEdgeCases(unittest.TestCase):
         
         # Should have limited GPU layer options
         gpu_layers_set = {c.get("n_gpu_layers") for c in configs}
-        # With 6GB VRAM, should only have 0 and 10
-        self.assertIn(0, gpu_layers_set)
+        # With 6GB VRAM, should only have 10 and 20 (no CPU-only)
         self.assertIn(10, gpu_layers_set)
+        self.assertIn(20, gpu_layers_set)
+        self.assertNotIn(0, gpu_layers_set)  # CPU-only should be skipped when GPU available
         self.assertNotIn(99, gpu_layers_set)
         
         # Cache type should be q4_0 for low VRAM
@@ -774,13 +775,13 @@ class TestGenerateConfigCombinationsEdgeCases(unittest.TestCase):
         }
         configs = self.optimizer.generate_config_combinations(hw, self.model_info)
         
-        # Should have GPU layer options for 8-16GB VRAM (only 20 from variations)
-        # Note: baseline from compute_optimal_settings may include 99 if model fits
+        # Should have GPU layer options (no CPU-only when GPU available)
         gpu_layers_set = {c.get("n_gpu_layers") for c in configs}
-        self.assertIn(0, gpu_layers_set)
+        self.assertNotIn(0, gpu_layers_set)  # CPU-only should be skipped when GPU available
         self.assertIn(20, gpu_layers_set)
-        self.assertNotIn(50, gpu_layers_set)  # 50 requires >= 16GB VRAM
-        # 99 may be present if baseline heuristic chooses full offload
+        self.assertIn(35, gpu_layers_set)
+        self.assertIn(99, gpu_layers_set)
+        self.assertNotIn(50, gpu_layers_set)  # 50 not in our new scheme
         
         # Cache type should include q8_0 and q4_0
         cache_types = {(c.get("cache_type_k"), c.get("cache_type_v")) for c in configs}
@@ -801,11 +802,11 @@ class TestGenerateConfigCombinationsEdgeCases(unittest.TestCase):
         }
         configs = self.optimizer.generate_config_combinations(hw, self.model_info)
         
-        # Should have full GPU layer options
+        # Should have full GPU layer options (no CPU-only when GPU available)
         gpu_layers_set = {c.get("n_gpu_layers") for c in configs}
-        self.assertIn(0, gpu_layers_set)
+        self.assertNotIn(0, gpu_layers_set)  # CPU-only should be skipped when GPU available
         self.assertIn(20, gpu_layers_set)
-        self.assertIn(50, gpu_layers_set)
+        self.assertIn(35, gpu_layers_set)
         self.assertIn(99, gpu_layers_set)
         
         # Cache type should be fp16 for high VRAM
@@ -874,7 +875,10 @@ class TestGenerateConfigCombinationsEdgeCases(unittest.TestCase):
         # Should not have 99 layers since 15GB model needs more VRAM than available
         gpu_layers_set = {c.get("n_gpu_layers") for c in configs}
         self.assertNotIn(99, gpu_layers_set)
-        self.assertIn(0, gpu_layers_set)
+        # CPU-only (0) should not be included when GPU is available
+        self.assertNotIn(0, gpu_layers_set)
+        # Should have lower layer options
+        self.assertIn(20, gpu_layers_set)
 
     def test_low_memory_filters_batch_sizes(self) -> None:
         """Test that low memory filters out large batch sizes."""
