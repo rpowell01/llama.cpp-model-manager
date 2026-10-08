@@ -94,13 +94,30 @@ def _get_wsl_ip() -> str | None:
 
 
 def main() -> None:
-    # Configure logging
+    # Configure logging with SSE handler for web console
+    from state import add_log_entry
+    
+    class SSELogHandler(logging.Handler):
+        """Custom logging handler that forwards logs to SSE clients."""
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                color = "inherit"
+                if record.levelno >= logging.ERROR:
+                    color = "red"
+                elif record.levelno >= logging.WARNING:
+                    color = "yellow"
+                add_log_entry(msg, color)
+            except Exception:
+                pass  # Don't let logging errors break the app
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         handlers=[
             logging.FileHandler(BASE_DIR / "webapp.log"),
-            logging.StreamHandler(sys.stderr)
+            logging.StreamHandler(sys.stderr),
+            SSELogHandler()
         ]
     )
     log = logging.getLogger("llamaweb")
