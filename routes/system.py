@@ -793,6 +793,9 @@ def api_benchmark_optimize():
             if cached_result and cached_result.get("benchmark_results"):
                 # Only include successful cached benchmarks
                 cached_benchmarks = [r for r in cached_result["benchmark_results"] if r.get("success", False)]
+                log.info(f"Found {len(cached_benchmarks)} successful cached benchmarks for comparison")
+            else:
+                log.info(f"No cached benchmarks found (cached_result: {cached_result is not None}, has_benchmarks: {bool(cached_result and cached_result.get('benchmark_results'))})")
             
             # Combine current benchmark result with cached benchmarks for comparison
             combined_results = result.get("benchmark_results", []) + cached_benchmarks
