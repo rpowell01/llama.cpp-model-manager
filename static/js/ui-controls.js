@@ -282,6 +282,9 @@ async function renderPanelProperties(data, modelName) {
       <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
         ⚡ Quick Optimize (Heuristics)
       </button>
+      <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        📊 View Historical Benchmark Results
+      </button>
     </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
@@ -1050,6 +1053,14 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     });
   }
 
+  // Attach view history button listener
+  const viewHistoryBtn = document.getElementById(`view-history-${modelSafeId}`);
+  if (viewHistoryBtn) {
+    viewHistoryBtn.addEventListener("click", async () => {
+      await viewHistoricalBenchmarks(modelName, modelSafeId);
+    });
+  }
+
   // Shared optimization logic
   async function runOptimization(modelName, modelSafeId, content, useEmpirical) {
     const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
@@ -1307,6 +1318,41 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     }
   }
 
+  // View historical benchmarks without running new ones
+  async function viewHistoricalBenchmarks(modelName, modelSafeId) {
+    const btn = document.getElementById(`view-history-${modelSafeId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "📊 Loading…";
+    }
+    
+    try {
+      const resp = await fetch("/api/benchmark-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelName }),
+      });
+      
+      const result = await resp.json();
+      
+      if (!resp.ok) {
+        throw new Error(result.error || "Failed to load benchmark history");
+      }
+      
+      // Show the results modal with cached data
+      showBenchmarkResultsModal(result);
+      
+    } catch (err) {
+      console.error("Failed to load benchmark history", err);
+      alert(`Failed to load benchmark history: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "📊 View Historical Benchmark Results";
+      }
+    }
+  }
+
   // Modal to display benchmark results
   function showBenchmarkResultsModal(result) {
     // Remove existing modal if any
@@ -1344,10 +1390,23 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           </tr>
         </thead>
         <tbody>
-          ${results.map(r => `
+          ${results.map(r => {
+            // Filter config to only show relevant benchmark parameters
+            const benchmarkParamKeys = new Set([
+              "n_gpu_layers", "gpu_layers", "batch_size", "ubatch_size", 
+              "threads", "threads_batch", "cache_type_k", "cache_type_v", 
+              "flash_attn", "ctx_size", "parallel", "numa", "numa_value",
+              "cpu_affinity", "cpu_strict", "spec_type", "spec_draft_n_max",
+              "cache_reuse", "cache_ram", "swa_full"
+            ]);
+            const filteredConfig = r.config ? Object.entries(r.config)
+              .filter(([k]) => benchmarkParamKeys.has(k))
+              .map(([k,v]) => `${k}=${v}`)
+              .join(', ') : 'N/A';
+            return `
             <tr style="border-bottom: 1px solid var(--border); ${r.success ? '' : 'opacity: 0.6;'}">
               <td style="padding: 0.5rem; font-family: monospace;">
-                ${r.config ? Object.entries(r.config).map(([k,v]) => `${k}=${v}`).join(', ') : 'N/A'}
+                ${filteredConfig}
               </td>
               <td style="padding: 0.5rem; text-align: right; ${r.success && r.tg_avg === Math.max(...results.filter(x => x.success).map(x => x.tg_avg)) ? 'font-weight: bold; color: var(--green);' : ''}">
                 ${r.success && r.tg_avg ? r.tg_avg.toFixed(1) : 'N/A'}
@@ -1358,8 +1417,8 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
               <td style="padding: 0.5rem; text-align: center;">
                 ${r.success ? '<span style="color: var(--green);">✓</span>' : '<span style="color: var(--red);">✗</span>'}
               </td>
-            </tr>
-          `).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     ` : '<p style="color: var(--muted);">No benchmark results available</p>';

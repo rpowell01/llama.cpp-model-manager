@@ -899,6 +899,107 @@ def api_benchmark_optimize():
         return jsonify({"error": f"Optimization failed: {str(e)}"}), 500
 
 
+@system_bp.route("/api/benchmark-history", methods=["POST"])
+def api_benchmark_history():
+    """
+    Get historical benchmark results for a model without running new benchmarks.
+    
+    Request body:
+        {
+            "model": "string"  # Required: model name from registry
+        }
+    
+    Response:
+        {
+            "optimal_settings": {...},      # Best settings from cache
+            "benchmark_results": [...],     # All historical benchmark results
+            "hardware_info": {...},         # Hardware info used
+            "cached": true,                 # Always true for history endpoint
+            "duration_sec": 0,              # No new benchmark run
+            "optimization_target": "string", # Target from cached result
+            "model": "string",
+        }
+    """
+    from flask import request
+    from optimizer import BenchmarkOptimizer
+    import config
+    
+    data = request.get_json(force=True) or {}
+    
+    model_name_raw = data.get("model")
+    if model_name_raw is None:
+        return jsonify({"error": "Missing model name"}), 400
+    try:
+        model_name = str(model_name_raw).strip()
+    except Exception:
+        return jsonify({"error": "Model name must be a string"}), 400
+    
+    if not model_name:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    models = get_models()
+    model_info = models.get(model_name)
+    
+    if not model_info:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    
+    model_path_str = model_info.get("model_path", "")
+    if not model_path_str:
+        return jsonify({"error": f"Model '{model_name}' has no associated file path"}), 400
+    
+    try:
+        from config import resolve_model_path
+        model_path = resolve_model_path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model file not found: {model_path}"}), 404
+    except Exception as e:
+        log.exception(f"Failed to resolve model path for '{model_name}'")
+        return jsonify({"error": f"Failed to resolve model path: {e}"}), 500
+    
+    try:
+        hardware_info = get_hardware_info()
+        
+        optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
+        cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
+        cached_result = optimizer._load_from_cache(cache_key, hardware_info)
+        
+        if cached_result is None:
+            return jsonify({
+                "error": "No benchmark history found for this model on current hardware",
+                "model": model_name,
+            }), 404
+        
+        # Convert optimal_settings format
+        optimal_settings = cached_result.get("optimal_settings", {}).copy()
+        if "n_gpu_layers" in optimal_settings:
+            optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+        
+        response = {
+            "optimal_settings": optimal_settings,
+            "benchmark_results": cached_result.get("benchmark_results", []),
+            "hardware_info": cached_result.get("hardware_info", hardware_info),
+            "cached": True,
+            "duration_sec": 0,
+            "optimization_target": cached_result.get("optimization_target", "balanced"),
+            "model": model_name,
+        }
+        
+        # Include fallback reason if present
+        if "fallback_reason" in cached_result:
+            response["fallback_reason"] = cached_result["fallback_reason"]
+        
+        log.info(f"Benchmark history retrieved for '{model_name}' (cached results: {len(cached_result.get('benchmark_results', []))})")
+        
+        return jsonify(response)
+        
+    except FileNotFoundError as e:
+        log.exception(f"Model file not found for '{model_name}'")
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        log.exception(f"Benchmark history retrieval failed for '{model_name}'")
+        return jsonify({"error": f"History retrieval failed: {str(e)}"}), 500
+
+
 @system_bp.route("/api/logs")
 def api_logs():
     if not LOG_FILE.exists():
