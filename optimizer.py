@@ -195,11 +195,11 @@ class BenchmarkOptimizer:
                  
             log.info(f"Loaded optimization result from cache: {cache_key}")
             return cached
-             
+            
         except (json.JSONDecodeError, OSError) as e:
             log.warning(f"Failed to load cache {cache_path}: {e}")
             return None
-            
+
     def _save_to_cache(self, cache_key: str, result: Dict[str, Any], hardware_info: Dict[str, Any]) -> None:
         """
         Save optimization result to cache.
@@ -209,23 +209,27 @@ class BenchmarkOptimizer:
             result: Result dictionary to cache
             hardware_info: Current hardware information to store in cache
         """
+        log.info(f"Attempting to save cache: {cache_key}")
         cache_path = self._get_cache_path(cache_key)
         try:
             # Add timestamp and hardware info to result for cache validation
             result_to_cache = result.copy()
             result_to_cache["timestamp"] = time.time()
             result_to_cache["hardware_info"] = hardware_info
-             
+            
             with open(cache_path, 'w') as f:
                 json.dump(result_to_cache, f, indent=2)
-                 
+            
             log.info(f"Saved optimization result to cache: {cache_key}")
         except OSError as e:
             log.warning(f"Failed to save cache {cache_path}: {e}")
-            
+        except Exception as e:
+            log.exception(f"Unexpected error saving cache {cache_path}: {e}")
+            raise
+
     def generate_config_combinations(
-        self, 
-        hardware_info: Dict[str, Any], 
+        self,
+        hardware_info: Dict[str, Any],
         model_info: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
