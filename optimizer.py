@@ -837,13 +837,14 @@ class BenchmarkOptimizer:
         
         log.info(f"Running single benchmark for {model_path} with config: {current_config}")
         
-        # Filter current_config to only include valid BenchmarkConfig parameters
-        # Many form fields (auto_download, comment, custom_header_*, etc.) are NOT benchmark parameters
+        # Filter current_config to only include valid llama-bench parameters
+        # llama-bench (regular) does NOT support: cache_reuse, cache_ram, swa_full, spec_type, spec_draft_n_max
+        # Those are only for llama-batched-bench / llama-server
         valid_benchmark_params = {
             "n_gpu_layers", "batch_size", "ubatch_size", "threads", "threads_batch",
-            "cache_type_k", "cache_type_v", "flash_attn", "cache_reuse", "cache_ram",
-            "swa_full", "numa", "numa_value", "cpu_affinity", "cpu_strict",
-            "ctx_size", "parallel", "spec_type", "spec_draft_n_max",
+            "cache_type_k", "cache_type_v", "flash_attn",
+            "numa", "numa_value", "cpu_affinity", "cpu_strict",
+            "ctx_size", "parallel",
         }
         
         filtered_config = {k: v for k, v in current_config.items() if k in valid_benchmark_params}
@@ -858,17 +859,12 @@ class BenchmarkOptimizer:
             "cache_type_k": "q4_0",
             "cache_type_v": "q4_0",
             "flash_attn": "auto",
-            "cache_reuse": 0,
-            "cache_ram": 0,
-            "swa_full": False,
             "numa": False,
             "numa_value": "interleave",
             "cpu_affinity": "auto",
             "cpu_strict": False,
             "ctx_size": 4096,
             "parallel": 1,
-            "spec_type": "none",
-            "spec_draft_n_max": 0,
         }
         
         # Apply defaults for missing values
@@ -901,11 +897,6 @@ class BenchmarkOptimizer:
             "cpu_affinity": bench_config.cpu_affinity,
             "cpu_strict": bench_config.cpu_strict,
             "parallel": bench_config.parallel,
-            "spec_type": bench_config.spec_type,
-            "spec_draft_n_max": bench_config.spec_draft_n_max,
-            "cache_reuse": bench_config.cache_reuse,
-            "cache_ram": bench_config.cache_ram,
-            "swa_full": bench_config.swa_full,
         })
         
         # Create benchmark result entry
