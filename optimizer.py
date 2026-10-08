@@ -872,6 +872,10 @@ class BenchmarkOptimizer:
             if key not in filtered_config:
                 filtered_config[key] = default_val
         
+        # Use longer timeout for single benchmark (max_duration_sec passed in, default 600s)
+        filtered_config["timeout_sec"] = max_duration_sec
+        filtered_config["repetitions"] = 3
+        
         # Create benchmark config from filtered_config
         bench_config = BenchmarkConfig(
             model_path=model_path,
