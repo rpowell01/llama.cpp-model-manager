@@ -400,11 +400,11 @@ def convert_path_for_binary(path: Path) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 
 # BENCHMARK_MAX_DURATION: Maximum time (seconds) to spend on empirical benchmark optimization
-# Valid range: 10-3600 seconds. Default: 60 seconds.
+# Valid range: 10-3600 seconds. Default: 300 seconds (5 minutes).
 try:
-    BENCHMARK_MAX_DURATION = int(os.getenv("BENCHMARK_MAX_DURATION", "60"))
+    BENCHMARK_MAX_DURATION = int(os.getenv("BENCHMARK_MAX_DURATION", "300"))
 except ValueError:
-    BENCHMARK_MAX_DURATION = 60
+    BENCHMARK_MAX_DURATION = 300
 if BENCHMARK_MAX_DURATION < 10:
     BENCHMARK_MAX_DURATION = 10
 elif BENCHMARK_MAX_DURATION > 3600:

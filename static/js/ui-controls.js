@@ -286,12 +286,8 @@ async function renderPanelProperties(data, modelName) {
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-          <input type="checkbox" id="use-empirical-${modelSafeId}" checked>
-          <span>Use empirical benchmarks (slower, more accurate)</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
           <span>Max benchmark duration:</span>
-          <input type="number" id="max-duration-${modelSafeId}" value="60" min="10" max="3600" step="10" style="width: 70px;">
+          <input type="number" id="max-duration-${modelSafeId}" value="300" min="30" max="3600" step="10" style="width: 70px;">
           <span>seconds</span>
         </label>
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
@@ -304,10 +300,14 @@ async function renderPanelProperties(data, modelName) {
         </label>
       </div>
     </div>
-    <div class="panel-item full-width" style="margin-top: 0.5rem;">
-      <span id="optimize-status-${modelSafeId}" style="font-size: 0.85rem; color: var(--muted);"></span>
+    <div class="panel-item full-width" style="margin-top: 0.5rem; display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
+      <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        🔧 Optimize Settings (Empirical Benchmarks)
+      </button>
+      <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        ⚡ Quick Optimize (Heuristics)
+      </button>
     </div>
-    <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
       <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <div id="optimize-spinner-${modelSafeId}" style="width: 18px; height: 18px; border: 2px solid var(--surface2); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
         <span id="optimize-progress-text-${modelSafeId}" style="font-size: 0.85rem; color: var(--text);">Starting benchmark...</span>
