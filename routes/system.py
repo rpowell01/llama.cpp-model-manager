@@ -798,7 +798,16 @@ def api_benchmark_optimize():
                 log.info(f"No cached benchmarks found (cached_result: {cached_result is not None}, has_benchmarks: {bool(cached_result and cached_result.get('benchmark_results'))})")
             
             # Combine current benchmark result with cached benchmarks for comparison
-            combined_results = result.get("benchmark_results", []) + cached_benchmarks
+            # Deduplicate by config to avoid showing same benchmark twice
+            combined_results = result.get("benchmark_results", []).copy()
+            for cached_bm in cached_benchmarks:
+                cached_config_str = str(sorted(cached_bm.get("config", {}).items()))
+                is_duplicate = any(
+                    str(sorted(r.get("config", {}).items())) == cached_config_str 
+                    for r in combined_results
+                )
+                if not is_duplicate:
+                    combined_results.append(cached_bm)
             
             duration_sec = time_module.time() - start_time
             
@@ -817,6 +826,7 @@ def api_benchmark_optimize():
                 "model": model_name,
                 "test_current_config": True,
                 "cached_benchmarks_count": len(cached_benchmarks),
+                "cache_key": cache_key,
             }
             
             # Include fallback reason if present
@@ -848,6 +858,7 @@ def api_benchmark_optimize():
                     "duration_sec": round(duration_sec, 2),
                     "optimization_target": target,
                     "model": model_name,
+                    "cache_key": cached_result.get("cache_key", cache_key),
                 }
                 
                 # Include fallback reason if present in cached result
@@ -881,6 +892,7 @@ def api_benchmark_optimize():
             "duration_sec": round(duration_sec, 2),
             "optimization_target": target,
             "model": model_name,
+            "cache_key": result.get("cache_key", cache_key),
         }
         
         # Include fallback reason if present
