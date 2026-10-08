@@ -789,16 +789,35 @@ class BenchmarkOptimizer:
             # No fallback needed
             log.info(f"All benchmarks succeeded, using empirical optimal config")
     
-        # Create and return result
+# Create and return result
+        # Load existing cache to preserve historical benchmark results
+        cached_result = self._load_from_cache(cache_key, hardware_info)
+        all_benchmark_results = benchmark_results.copy()
+        if cached_result and cached_result.get("benchmark_results"):
+            # Add historical results that aren't already in current results
+            # (avoid duplicates by checking config)
+            existing_configs = set()
+            for r in benchmark_results:
+                config_str = str(sorted(r.get("config", {}).items()))
+                existing_configs.add(config_str)
+            
+            for hist_result in cached_result["benchmark_results"]:
+                hist_config_str = str(sorted(hist_result.get("config", {}).items()))
+                if hist_config_str not in existing_configs:
+                    all_benchmark_results.append(hist_result)
+        
         result = {
             "optimal_settings": optimal_config,
-            "benchmark_results": benchmark_results,
+            "benchmark_results": all_benchmark_results,
             "hardware_info": hardware_info,
             "model_info": model_info,
             "cache_key": cache_key,
             "optimization_target": optimization_target,
         }
-    
+        
+        # Save to cache with all historical results
+        self._save_to_cache(cache_key, result, hardware_info)
+        
         log.info(f"Optimization completed for {model_path}")
         return result
 
@@ -916,15 +935,41 @@ class BenchmarkOptimizer:
             "duration_sec": result.get("duration_sec", 0),
         }
         
-        # The "optimal" settings are just the current config we tested
-        optimal_settings = current_config.copy()
+        # Load existing cache to preserve historical results and optimal settings
+        cache_key = self._generate_cache_key(model_path, hardware_info)
+        cached_result = self._load_from_cache(cache_key, hardware_info)
+        
+        # Start with existing cached benchmark results (if any)
+        all_benchmark_results = []
+        if cached_result and cached_result.get("benchmark_results"):
+            all_benchmark_results = cached_result["benchmark_results"].copy()
+        
+        # Add the new single benchmark result
+        all_benchmark_results.append(benchmark_result)
+        
+        # Use optimal_settings from cache if available (from full optimization), otherwise current config
+        if cached_result and cached_result.get("optimal_settings"):
+            optimal_settings = cached_result["optimal_settings"].copy()
+        else:
+            optimal_settings = current_config.copy()
+        
+        # Save updated cache with all historical results
+        result_to_cache = {
+            "optimal_settings": optimal_settings,
+            "benchmark_results": all_benchmark_results,
+            "hardware_info": hardware_info,
+            "model_info": model_info,
+            "cache_key": cache_key,
+            "optimization_target": cached_result.get("optimization_target", "balanced") if cached_result else "balanced",
+        }
+        self._save_to_cache(cache_key, result_to_cache, hardware_info)
         
         return {
             "optimal_settings": optimal_settings,
-            "benchmark_results": [benchmark_result],
+            "benchmark_results": all_benchmark_results,
             "hardware_info": hardware_info,
             "model_info": model_info,
-            "cache_key": self._generate_cache_key(model_path, hardware_info),
+            "cache_key": cache_key,
             "optimization_target": "current_config_test",
         }
 
