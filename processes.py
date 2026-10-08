@@ -36,6 +36,10 @@ from models import InvalidModeError
 
 log = logging.getLogger("llamaweb.processes")
 
+# Cache for WSL host IP to avoid repeated log messages
+_wsl_host_cache: str | None = None
+_wsl_host_logged: bool = False
+
 
 def _get_wsl_host_ip() -> str | None:
     """
@@ -151,16 +155,22 @@ def get_server_host() -> str:
     Note: The host is resolved on each call to handle network changes (e.g., DHCP
     lease renewal in WSL+Windows mode) that could result in stale cached IPs.
     """
+    global _wsl_host_cache, _wsl_host_logged
+    
     # When running in WSL with a Windows binary, the server runs on Windows
     # and listens on the Windows host IP. We need to connect to that IP.
     if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
         wsl_host = _get_wsl_host_ip()
         if wsl_host:
-            log.info(f"WSL+Windows detected: using host {wsl_host} for client connections")
+            if not _wsl_host_logged:
+                log.info(f"WSL+Windows detected: using host {wsl_host} for client connections")
+                _wsl_host_logged = True
             return wsl_host
         else:
             # Fallback: try 127.0.0.1 which may work if Windows has loopback enabled
-            log.warning("WSL+Windows detected but could not determine host IP; falling back to 127.0.0.1")
+            if not _wsl_host_logged:
+                log.warning("WSL+Windows detected but could not determine host IP; falling back to 127.0.0.1")
+                _wsl_host_logged = True
             return "127.0.0.1"
 
     # For all other cases (native Windows, native Linux), client connects to localhost
