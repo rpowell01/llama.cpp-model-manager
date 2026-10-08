@@ -283,7 +283,7 @@ async function renderPanelProperties(data, modelName) {
         ⚡ Quick Optimize (Heuristics)
       </button>
     </div>
-<div class="panel-item full-width" style="margin-top: 0.5rem;">
+    <div class="panel-item full-width" style="margin-top: 0.5rem;">
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
           <span>Max benchmark duration:</span>
@@ -299,7 +299,8 @@ async function renderPanelProperties(data, modelName) {
           </select>
         </label>
       </div>
-    </div>`;
+    </div>
+    <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
       <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <div id="optimize-spinner-${modelSafeId}" style="width: 18px; height: 18px; border: 2px solid var(--surface2); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
         <span id="optimize-progress-text-${modelSafeId}" style="font-size: 0.85rem; color: var(--text);">Starting benchmark...</span>
