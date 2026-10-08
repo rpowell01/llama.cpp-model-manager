@@ -802,6 +802,117 @@ class BenchmarkOptimizer:
         log.info(f"Optimization completed for {model_path}")
         return result
 
+    def run_single_benchmark(
+        self,
+        model_path: str,
+        current_config: Dict[str, Any],
+        max_duration_sec: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Run a single benchmark with the provided configuration.
+        
+        Args:
+            model_path: Path to model file
+            current_config: Current configuration to benchmark
+            max_duration_sec: Maximum time for the benchmark
+            
+        Returns:
+            Dictionary containing benchmark result and optimal settings (same as current config)
+        """
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+            
+        # Get hardware and model info
+        hardware_info = get_hardware_info()
+        model_info = {}
+        try:
+            model_stat = os.stat(model_path)
+            model_info["file_size_gb"] = round(model_stat.st_size / (1024**3), 2)
+            model_info["file_path"] = model_path
+            model_info["ctx_size"] = current_config.get("ctx_size", 4096)
+        except OSError:
+            model_info["file_size_gb"] = 0
+            model_info["file_path"] = model_path
+            model_info["ctx_size"] = 4096
+        
+        log.info(f"Running single benchmark for {model_path} with config: {current_config}")
+        
+        # Create benchmark config from current_config
+        bench_config = BenchmarkConfig(
+            model_path=model_path,
+            n_gpu_layers=current_config.get("n_gpu_layers", 99),
+            batch_size=current_config.get("batch_size", 4096),
+            ubatch_size=current_config.get("ubatch_size", 1024),
+            threads=current_config.get("threads", 16),
+            threads_batch=current_config.get("threads_batch", 16),
+            cache_type_k=current_config.get("cache_type_k", "q4_0"),
+            cache_type_v=current_config.get("cache_type_v", "q4_0"),
+            flash_attn=current_config.get("flash_attn", "auto"),
+            ctx_size=current_config.get("ctx_size", 128000),
+            repetitions=2,
+            timeout_sec=600,
+            numa=current_config.get("numa", False),
+            numa_value=current_config.get("numa_value", "interleave"),
+            cpu_affinity=current_config.get("cpu_affinity", "auto"),
+            cpu_strict=current_config.get("cpu_strict", False),
+            parallel=current_config.get("parallel", 1),
+            spec_type=current_config.get("spec_type", "none"),
+            spec_draft_n_max=current_config.get("spec_draft_n_max", 0),
+            cache_reuse=current_config.get("cache_reuse", 0),
+            cache_ram=current_config.get("cache_ram", 0),
+            swa_full=current_config.get("swa_full", False),
+        )
+        
+        # Run llama-bench (single sequence) for current config
+        runner = BenchmarkRunner()
+        result = runner.run_llama_bench(model_path, {
+            "n_gpu_layers": bench_config.n_gpu_layers,
+            "batch_size": bench_config.batch_size,
+            "ubatch_size": bench_config.ubatch_size,
+            "threads": bench_config.threads,
+            "threads_batch": bench_config.threads_batch,
+            "cache_type_k": bench_config.cache_type_k,
+            "cache_type_v": bench_config.cache_type_v,
+            "flash_attn": bench_config.flash_attn,
+            "ctx_size": bench_config.ctx_size,
+            "repetitions": bench_config.repetitions,
+            "timeout_sec": bench_config.timeout_sec,
+            "numa": bench_config.numa,
+            "numa_value": bench_config.numa_value,
+            "cpu_affinity": bench_config.cpu_affinity,
+            "cpu_strict": bench_config.cpu_strict,
+            "parallel": bench_config.parallel,
+            "spec_type": bench_config.spec_type,
+            "spec_draft_n_max": bench_config.spec_draft_n_max,
+            "cache_reuse": bench_config.cache_reuse,
+            "cache_ram": bench_config.cache_ram,
+            "swa_full": bench_config.swa_full,
+        })
+        
+        # Create benchmark result entry
+        benchmark_result = {
+            "config": current_config,
+            "success": result.get("success", False),
+            "tg_avg": result.get("tg_avg"),
+            "pp_avg": result.get("pp_avg"),
+            "pg_avg": result.get("pg_avg"),
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr", ""),
+            "duration_sec": result.get("duration_sec", 0),
+        }
+        
+        # The "optimal" settings are just the current config we tested
+        optimal_settings = current_config.copy()
+        
+        return {
+            "optimal_settings": optimal_settings,
+            "benchmark_results": [benchmark_result],
+            "hardware_info": hardware_info,
+            "model_info": model_info,
+            "cache_key": self._generate_cache_key(model_path, hardware_info),
+            "optimization_target": "current_config_test",
+        }
+
 
 # Convenience function for direct usage
 def optimize_model(

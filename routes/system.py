@@ -743,6 +743,10 @@ def api_benchmark_optimize():
     if type(max_duration_sec) is not int or max_duration_sec < 10 or max_duration_sec > 3600:
         return jsonify({"error": "max_duration_sec must be an integer between 10 and 3600"}), 400
     
+    # Check if we're testing a specific current config
+    test_current_config = data.get("test_current_config", False)
+    current_config = data.get("current_config", {}) if test_current_config else {}
+    
     models = get_models()
     model_info = models.get(model_name)
     
@@ -769,47 +773,55 @@ def api_benchmark_optimize():
         
         # Get hardware info
         hardware_info = get_hardware_info()
-        log.info(f"Starting benchmark optimization for model '{model_name}' (target: {target}, max_duration: {max_duration_sec}s)")
+        log.info(f"Starting benchmark optimization for model '{model_name}' (target: {target}, max_duration: {max_duration_sec}s, test_current_config: {test_current_config})")
         
         # Create optimizer with configured cache directory
         optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
         
-        # Check if we have a cached result
-        cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
-        cached_result = optimizer._load_from_cache(cache_key, hardware_info)
-        
-        if cached_result is not None:
-            # Return cached result immediately
-            duration_sec = time_module.time() - start_time
+        if test_current_config and current_config:
+            # Run single benchmark with current config
+            result = optimizer.run_single_benchmark(
+                str(model_path),
+                current_config,
+                max_duration_sec=max_duration_sec
+            )
+        else:
+            # Check if we have a cached result
+            cache_key = optimizer._generate_cache_key(str(model_path), hardware_info)
+            cached_result = optimizer._load_from_cache(cache_key, hardware_info)
             
-            # Convert optimal_settings from BenchmarkConfig format back to compute_optimal_settings format
-            optimal_settings = cached_result.get("optimal_settings", {}).copy()
-            if "n_gpu_layers" in optimal_settings:
-                optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+            if cached_result is not None:
+                # Return cached result immediately
+                duration_sec = time_module.time() - start_time
+                
+                # Convert optimal_settings from BenchmarkConfig format back to compute_optimal_settings format
+                optimal_settings = cached_result.get("optimal_settings", {}).copy()
+                if "n_gpu_layers" in optimal_settings:
+                    optimal_settings["gpu_layers"] = optimal_settings.pop("n_gpu_layers")
+                
+                response = {
+                    "optimal_settings": optimal_settings,
+                    "benchmark_results": cached_result.get("benchmark_results", []),
+                    "hardware_info": cached_result.get("hardware_info", hardware_info),
+                    "cached": True,
+                    "duration_sec": round(duration_sec, 2),
+                    "optimization_target": target,
+                    "model": model_name,
+                }
+                
+                # Include fallback reason if present in cached result
+                if "fallback_reason" in cached_result:
+                    response["fallback_reason"] = cached_result["fallback_reason"]
+                
+                log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: True)")
+                return jsonify(response)
             
-            response = {
-                "optimal_settings": optimal_settings,
-                "benchmark_results": cached_result.get("benchmark_results", []),
-                "hardware_info": cached_result.get("hardware_info", hardware_info),
-                "cached": True,
-                "duration_sec": round(duration_sec, 2),
-                "optimization_target": target,
-                "model": model_name,
-            }
-            
-            # Include fallback reason if present in cached result
-            if "fallback_reason" in cached_result:
-                response["fallback_reason"] = cached_result["fallback_reason"]
-            
-            log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: True)")
-            return jsonify(response)
-        
-        # No valid cache - run optimization
-        result = optimizer.optimize(
-            str(model_path),
-            max_duration_sec=max_duration_sec,
-            optimization_target=target
-        )
+            # No valid cache - run optimization
+            result = optimizer.optimize(
+                str(model_path),
+                max_duration_sec=max_duration_sec,
+                optimization_target=target
+            )
         
         duration_sec = time_module.time() - start_time
         
@@ -834,7 +846,7 @@ def api_benchmark_optimize():
         if "fallback_reason" in result:
             response["fallback_reason"] = result["fallback_reason"]
         
-        log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: False)")
+        log.info(f"Benchmark optimization completed for '{model_name}' in {duration_sec:.2f}s (cached: False, test_current_config: {test_current_config})")
         
         return jsonify(response)
         

@@ -298,6 +298,10 @@ async function renderPanelProperties(data, modelName) {
             <option value="latency">Latency</option>
           </select>
         </label>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+          <input type="checkbox" id="bench-current-config-${modelSafeId}" style="width: 16px; height: 16px;">
+          <span>Run benchmark using currently defined property values</span>
+        </label>
       </div>
     </div>
     <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
@@ -1057,6 +1061,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     const cancelBtn = document.getElementById(`optimize-cancel-${modelSafeId}`);
     const maxDurationInput = document.getElementById(`max-duration-${modelSafeId}`);
     const targetSelect = document.getElementById(`optimize-target-${modelSafeId}`);
+    const benchCurrentConfigCheckbox = document.getElementById(`bench-current-config-${modelSafeId}`);
 
     const btn = useEmpirical ? optimizeBtn : quickOptimizeBtn;
     btn.disabled = true;
@@ -1101,6 +1106,55 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       if (useEmpirical) {
         requestBody.max_duration_sec = parseInt(maxDurationInput.value, 10) || 60;
         requestBody.target = targetSelect.value || "balanced";
+        
+        // Check if "Run benchmark using currently defined property values" is checked
+        if (benchCurrentConfigCheckbox && benchCurrentConfigCheckbox.checked) {
+          // Read current form values from the panel
+          const currentConfig = {};
+          content.querySelectorAll(".meta-input").forEach((input) => {
+            const field = input.dataset.field;
+            if (field) {
+              let value;
+              if (input.type === "checkbox") {
+                value = input.checked;
+              } else if (input.tagName === "SELECT") {
+                value = input.value;
+              } else {
+                value = input.value;
+                // Try to convert to number if it looks like a number
+                if (value !== "" && !isNaN(value)) {
+                  value = parseFloat(value);
+                }
+              }
+              // Map field names to optimizer parameter names
+              const fieldMap = {
+                "gpu_layers": "n_gpu_layers",
+                "threads_batch": "threads_batch",
+                "flash_attn": "flash_attn",
+                "cache_type_k": "cache_type_k",
+                "cache_type_v": "cache_type_v",
+                "numa": "numa",
+                "numa_value": "numa_value",
+                "cpu_affinity": "cpu_affinity",
+                "cpu_strict": "cpu_strict",
+                "batch_size": "batch_size",
+                "ubatch_size": "ubatch_size",
+                "threads": "threads",
+                "ctx_size": "ctx_size",
+                "parallel": "parallel",
+                "spec_type": "spec_type",
+                "spec_draft_n_max": "spec_draft_n_max",
+                "cache_reuse": "cache_reuse",
+                "cache_ram": "cache_ram",
+                "swa_full": "swa_full",
+              };
+              const mappedField = fieldMap[field] || field;
+              currentConfig[mappedField] = value;
+            }
+          });
+          requestBody.test_current_config = true;
+          requestBody.current_config = currentConfig;
+        }
       }
 
       const fetchPromise = fetch(endpoint, {
