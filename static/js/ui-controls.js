@@ -1205,13 +1205,11 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
               detailsEl.textContent = "Finalizing results...";
             }
           } else {
-            // Full optimization sweep - simulate 12 configs
+            // Full optimization sweep - generic progress (configs vary by hardware)
             const configNum = Math.min(12, Math.max(1, Math.floor(progressPct / 8) + 1));
-            const gpuLayers = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99, 99][configNum - 1] || 99;
-            const batchSize = [512, 512, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048][configNum - 1] || 2048;
             
             progressText.textContent = `Running benchmarks... (${Math.floor(elapsed)}s / ~${estimatedTotal}s)`;
-            detailsEl.textContent = `Testing config ${configNum}/12: gpu_layers=${gpuLayers}, batch=${batchSize}...`;
+            detailsEl.textContent = `Testing configuration ${configNum} of ~12...`;
             
             if (elapsed > estimatedTotal) {
               progressText.textContent = `Benchmark running longer than estimated (${Math.floor(elapsed)}s)...`;
