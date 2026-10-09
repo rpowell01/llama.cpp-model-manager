@@ -1180,6 +1180,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       let progressStartTime = Date.now();
       let estimatedTotal = requestBody.max_duration_sec || 60;
       
+      // Check if running single config test (checkbox checked)
+      const isSingleConfigTest = useEmpirical && requestBody.test_current_config === true;
+      
       if (useEmpirical) {
         progressInterval = setInterval(() => {
           if (isCancelled) return;
@@ -1188,17 +1191,32 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           const progressPct = Math.min(95, (elapsed / estimatedTotal) * 100);
           progressBar.style.width = `${progressPct}%`;
           
-          // Simulate config testing progress
-          const configNum = Math.min(12, Math.max(1, Math.floor(progressPct / 8) + 1));
-          const gpuLayers = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99, 99][configNum - 1] || 99;
-          const batchSize = [512, 512, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048][configNum - 1] || 2048;
-          
-          progressText.textContent = `Running benchmarks... (${Math.floor(elapsed)}s / ~${estimatedTotal}s)`;
-          detailsEl.textContent = `Testing config ${configNum}/12: gpu_layers=${gpuLayers}, batch=${batchSize}...`;
-          
-          if (elapsed > estimatedTotal) {
-            progressText.textContent = `Benchmark running longer than estimated (${Math.floor(elapsed)}s)...`;
-            detailsEl.textContent = "Finalizing results...";
+          if (isSingleConfigTest) {
+            // Single config test - show single benchmark progress
+            progressText.textContent = `Running single benchmark... (${Math.floor(elapsed)}s / ~${estimatedTotal}s)`;
+            
+            if (progressPct < 10) {
+              detailsEl.textContent = "Initializing benchmark...";
+            } else if (progressPct < 40) {
+              detailsEl.textContent = "Running warmup...";
+            } else if (progressPct < 85) {
+              detailsEl.textContent = "Running timed iterations...";
+            } else {
+              detailsEl.textContent = "Finalizing results...";
+            }
+          } else {
+            // Full optimization sweep - simulate 12 configs
+            const configNum = Math.min(12, Math.max(1, Math.floor(progressPct / 8) + 1));
+            const gpuLayers = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99, 99][configNum - 1] || 99;
+            const batchSize = [512, 512, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048][configNum - 1] || 2048;
+            
+            progressText.textContent = `Running benchmarks... (${Math.floor(elapsed)}s / ~${estimatedTotal}s)`;
+            detailsEl.textContent = `Testing config ${configNum}/12: gpu_layers=${gpuLayers}, batch=${batchSize}...`;
+            
+            if (elapsed > estimatedTotal) {
+              progressText.textContent = `Benchmark running longer than estimated (${Math.floor(elapsed)}s)...`;
+              detailsEl.textContent = "Finalizing results...";
+            }
           }
         }, 2000);
       }
