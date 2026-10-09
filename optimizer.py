@@ -108,7 +108,9 @@ class BenchmarkOptimizer:
         
     def _generate_cache_key(self, model_path: str, hardware_info: Dict[str, Any]) -> str:
         """
-        Generate cache key based on model and hardware fingerprint.
+        Generate cache key based on model and hardware fingerprint only.
+        Optimization parameters (target, duration) are NOT included so that
+        longer runs can incrementally build on shorter runs.
         
         Args:
             model_path: Path to model file
@@ -145,7 +147,7 @@ class BenchmarkOptimizer:
             
         hw_fingerprint = "|".join(hw_fingerprint_parts)
         
-        # Combine model and hardware fingerprints
+        # Combine model and hardware fingerprints (NO optimization parameters)
         combined = f"{model_fingerprint}|{hw_fingerprint}"
         return hashlib.md5(combined.encode()).hexdigest()
         
@@ -714,15 +716,16 @@ class BenchmarkOptimizer:
             model_info["file_path"] = model_path
             model_info["ctx_size"] = 4096
              
-        # Generate cache key
+        # Generate cache key (model + hardware only, no optimization params for incremental caching)
         cache_key = self._generate_cache_key(model_path, hardware_info)
          
-        # Try to load from cache first
+        # Try to load from cache first (but don't return early - we want incremental runs)
         cached_result = self._load_from_cache(cache_key, hardware_info)
-        if cached_result is not None:
-            log.info(f"Using cached optimization result for {model_path}")
-            return cached_result
-             
+        cached_benchmark_results = []
+        if cached_result is not None and cached_result.get("benchmark_results"):
+            cached_benchmark_results = cached_result["benchmark_results"]
+            log.info(f"Loaded {len(cached_benchmark_results)} cached benchmark results for {model_path}")
+         
         log.info(f"Starting optimization for {model_path}")
          
         # Generate configuration combinations
@@ -737,7 +740,7 @@ class BenchmarkOptimizer:
                 heuristic_settings["n_gpu_layers"] = heuristic_settings.pop("gpu_layers")
             result = {
                 "optimal_settings": heuristic_settings,
-                "benchmark_results": [],
+                "benchmark_results": cached_benchmark_results,  # Preserve any cached results
                 "hardware_info": hardware_info,
                 "model_info": model_info,
                 "cache_key": cache_key,
@@ -751,44 +754,74 @@ class BenchmarkOptimizer:
             log.info(f"Optimization completed for {model_path} (via fallback: no configurations)")
             return result
          
-        # Run benchmark sweep
-        try:
-            benchmark_results = self.run_benchmark_sweep(
-                model_path, config_list, max_duration_sec, optimization_target
-            )
-        except Exception as e:
-            log.warning(f"Benchmark sweep failed with exception: {e}. Falling back to heuristic settings.")
-            # Fall back to heuristic settings on any benchmark failure
-            heuristic_settings = compute_optimal_settings(self._sanitize_hardware_info(hardware_info), model_info)
-            # Convert to BenchmarkConfig-compatible keys
-            if "gpu_layers" in heuristic_settings:
-                heuristic_settings["n_gpu_layers"] = heuristic_settings.pop("gpu_layers")
-            result = {
-                "optimal_settings": heuristic_settings,
-                "benchmark_results": [],
-                "hardware_info": hardware_info,
-                "model_info": model_info,
-                "cache_key": cache_key,
-                "optimization_target": optimization_target,
-                "fallback_reason": str(e)
+        # Find which configs from config_list are missing from cached results
+        def config_to_key(config: Dict[str, Any]) -> str:
+            """Create a comparable key for a config dict."""
+            # Only compare benchmark-relevant parameters
+            relevant_keys = {
+                "n_gpu_layers", "batch_size", "ubatch_size", "threads", "threads_batch",
+                "cache_type_k", "cache_type_v", "flash_attn", "ctx_size", "parallel",
+                "numa", "numa_value", "cpu_affinity", "cpu_strict",
+                "spec_type", "spec_draft_n_max", "spec_ngram_size_n", "spec_ngram_size_m",
+                "spec_draft_p_split", "swa_full"
             }
-            
-            # Save to cache (even failures to prevent repeated attempts)
-            self._save_to_cache(cache_key, result, hardware_info)
-            
-            log.info(f"Optimization completed for {model_path} (via fallback)")
-            return result
-         
-        # Select optimal configuration
+            filtered = {k: v for k, v in config.items() if k in relevant_keys}
+            return str(sorted(filtered.items()))
+        
+        # Build set of cached config keys
+        cached_config_keys = set()
+        for r in cached_benchmark_results:
+            config_key = config_to_key(r.get("config", {}))
+            cached_config_keys.add(config_key)
+        
+        # Find missing configs
+        missing_configs = []
+        for config in config_list:
+            if config_to_key(config) not in cached_config_keys:
+                missing_configs.append(config)
+        
+        log.info(f"Configurations: {len(config_list)} total, {len(cached_benchmark_results)} cached, {len(missing_configs)} missing")
+        
+        # Run benchmark sweep ONLY for missing configurations
+        new_benchmark_results = []
+        if missing_configs:
+            try:
+                new_benchmark_results = self.run_benchmark_sweep(
+                    model_path, missing_configs, max_duration_sec, optimization_target
+                )
+            except Exception as e:
+                log.warning(f"Benchmark sweep failed with exception: {e}. Using cached results only.")
+                # If we have cached results, use them; otherwise fall back
+                if cached_benchmark_results:
+                    new_benchmark_results = []
+                else:
+                    # No cached results - fall back to heuristic
+                    heuristic_settings = compute_optimal_settings(self._sanitize_hardware_info(hardware_info), model_info)
+                    if "gpu_layers" in heuristic_settings:
+                        heuristic_settings["n_gpu_layers"] = heuristic_settings.pop("gpu_layers")
+                    result = {
+                        "optimal_settings": heuristic_settings,
+                        "benchmark_results": [],
+                        "hardware_info": hardware_info,
+                        "model_info": model_info,
+                        "cache_key": cache_key,
+                        "optimization_target": optimization_target,
+                        "fallback_reason": str(e)
+                    }
+                    self._save_to_cache(cache_key, result, hardware_info)
+                    log.info(f"Optimization completed for {model_path} (via fallback)")
+                    return result
+        
+        # Combine cached + new results
+        all_benchmark_results = cached_benchmark_results + new_benchmark_results
+        
+        # Select optimal configuration from ALL results (cached + new)
         optimal_config = self.select_optimal_config(
-            benchmark_results, optimization_target
+            all_benchmark_results, optimization_target
         )
 
         # If no successful results, fall back to heuristic settings
-        # Note: select_optimal_config may return a non-empty config from the
-        # first result even when all benchmarks failed, so we also check for
-        # actual successful results here.
-        successful_results = [r for r in benchmark_results if r.get("success", False)]
+        successful_results = [r for r in all_benchmark_results if r.get("success", False)]
         if not optimal_config or not successful_results:
             log.warning("No successful benchmark results, falling back to heuristic settings")
             optimal_config = compute_optimal_settings(self._sanitize_hardware_info(hardware_info), model_info)
@@ -796,27 +829,9 @@ class BenchmarkOptimizer:
             if "gpu_layers" in optimal_config:
                 optimal_config["n_gpu_layers"] = optimal_config.pop("gpu_layers")
         else:
-            # All benchmarks succeeded - use the selected config as-is
-            # No fallback needed
-            log.info(f"All benchmarks succeeded, using empirical optimal config")
+            log.info(f"Selected optimal config from {len(successful_results)} successful results")
     
-# Create and return result
-        # Load existing cache to preserve historical benchmark results
-        cached_result = self._load_from_cache(cache_key, hardware_info)
-        all_benchmark_results = benchmark_results.copy()
-        if cached_result and cached_result.get("benchmark_results"):
-            # Add historical results that aren't already in current results
-            # (avoid duplicates by checking config)
-            existing_configs = set()
-            for r in benchmark_results:
-                config_str = str(sorted(r.get("config", {}).items()))
-                existing_configs.add(config_str)
-            
-            for hist_result in cached_result["benchmark_results"]:
-                hist_config_str = str(sorted(hist_result.get("config", {}).items()))
-                if hist_config_str not in existing_configs:
-                    all_benchmark_results.append(hist_result)
-        
+        # Create and return result with all historical results
         result = {
             "optimal_settings": optimal_config,
             "benchmark_results": all_benchmark_results,
@@ -829,7 +844,7 @@ class BenchmarkOptimizer:
         # Save to cache with all historical results
         self._save_to_cache(cache_key, result, hardware_info)
         
-        log.info(f"Optimization completed for {model_path}")
+        log.info(f"Optimization completed for {model_path} ({len(all_benchmark_results)} total benchmark results)")
         return result
 
     def run_single_benchmark(

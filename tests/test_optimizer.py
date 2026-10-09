@@ -489,28 +489,79 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         # Check that optimal settings were selected correctly
         self.assertEqual(result["optimal_settings"], {"n_gpu_layers": 20, "batch_size": 512})
 
+    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
     @patch("optimizer.get_hardware_info")
     @patch("optimizer.BenchmarkOptimizer._load_from_cache")
-    def test_optimize_uses_cache(self, mock_load_cache, mock_hw_info) -> None:
-        """Test that optimize uses cached results when available."""
+    def test_optimize_uses_cache_incrementally(self, mock_load_cache, mock_hw_info, mock_gen_configs, mock_run_sweep) -> None:
+        """Test that optimize loads cached results and only runs missing configurations."""
         # Setup mocks
         mock_hw_info.return_value = self.hardware_info
+        
+        # Cached result with 1 previous benchmark result
         cached_result = {
             "optimal_settings": {"n_gpu_layers": 30, "batch_size": 1024},
-            "benchmark_results": [],
+            "benchmark_results": [
+                {
+                    "config": {"n_gpu_layers": 30, "batch_size": 1024, "threads": 16},
+                    "success": True,
+                    "pp_avg": 1000.0,
+                    "tg_avg": 50.0,
+                }
+            ],
             "hardware_info": self.hardware_info,
             "model_info": self.model_info,
             "cache_key": "cached_key",
+            "optimization_target": "balanced",
         }
         mock_load_cache.return_value = cached_result
+        
+        # generate_config_combinations returns 3 configs (1 cached + 2 new)
+        mock_gen_configs.return_value = [
+            {"n_gpu_layers": 30, "batch_size": 1024, "threads": 16},  # Already cached
+            {"n_gpu_layers": 20, "batch_size": 512, "threads": 16},   # New
+            {"n_gpu_layers": 10, "batch_size": 256, "threads": 16},   # New
+        ]
+        
+        # run_benchmark_sweep returns results for the 2 new configs
+        mock_run_sweep.return_value = [
+            {
+                "config": {"n_gpu_layers": 20, "batch_size": 512, "threads": 16},
+                "success": True,
+                "pp_avg": 1200.0,
+                "tg_avg": 60.0,
+            },
+            {
+                "config": {"n_gpu_layers": 10, "batch_size": 256, "threads": 16},
+                "success": True,
+                "pp_avg": 800.0,
+                "tg_avg": 40.0,
+            },
+        ]
         
         optimizer = BenchmarkOptimizer(cache_dir=self.test_dir)
         result = optimizer.optimize(str(self.model_path))
         
-        # Should return cached result without doing optimization
+        # Verify cache was loaded
         mock_load_cache.assert_called_once()
-        self.assertEqual(result["optimal_settings"], {"n_gpu_layers": 30, "batch_size": 1024})
-        self.assertEqual(result["cache_key"], "cached_key")
+        
+        # Verify config generation was called
+        mock_gen_configs.assert_called_once()
+        
+        # Verify run_benchmark_sweep was called with ONLY the 2 missing configs
+        mock_run_sweep.assert_called_once()
+        called_args = mock_run_sweep.call_args
+        missing_configs = called_args[0][1]  # Second positional arg is config_list
+        self.assertEqual(len(missing_configs), 2)
+        self.assertEqual(missing_configs[0]["n_gpu_layers"], 20)
+        self.assertEqual(missing_configs[1]["n_gpu_layers"], 10)
+        
+        # Verify result contains ALL 3 configs (1 cached + 2 new)
+        self.assertEqual(len(result["benchmark_results"]), 3)
+        
+        # Verify cache_key is a valid hash (computed from model + hardware)
+        self.assertIsInstance(result["cache_key"], str)
+        self.assertEqual(len(result["cache_key"]), 32)  # MD5 hex length
 
     def test_optimize_model_file_not_found(self) -> None:
         """Test optimize with nonexistent model file."""
