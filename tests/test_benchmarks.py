@@ -307,11 +307,13 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         self.assertIn("-p", cmd)
         self.assertIn("4", cmd)
 
-    def test_build_command_parallel_one(self) -> None:
-        """Test command with parallel=1 uses neither -p nor --kv-unified."""
+    def test_build_command_prompt_size(self) -> None:
+        """Test command includes prompt size (-p) and generation size (-n)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             parallel=1,
+            n_prompt=2048,
+            n_gen=256,
         )
 
         cmd = self.runner._build_bench_command(
@@ -320,7 +322,12 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
             is_batched=False,
         )
 
-        self.assertNotIn("-p", cmd)
+        # Should include -p for prompt size and -n for generation size
+        self.assertIn("-p", cmd)
+        self.assertIn("2048", cmd)
+        self.assertIn("-n", cmd)
+        self.assertIn("256", cmd)
+        # Should NOT include --kv-unified (only for parallel="auto")
         self.assertNotIn("--kv-unified", cmd)
 
     def test_build_command_cpu_affinity(self) -> None:

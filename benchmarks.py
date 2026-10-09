@@ -72,6 +72,10 @@ class BenchmarkConfig:
     spec_type: str = "none"
     spec_draft_n_max: int = 8
 
+    # Prompt/Generation lengths (for -p/-n parameters)
+    n_prompt: int = 512  # Default prompt size
+    n_gen: int = 128     # Default generation size
+
     # Benchmark-specific
     repetitions: int = 3
     timeout_sec: int = 30
@@ -207,11 +211,13 @@ class BenchmarkRunner:
                 cmd.extend(["--cpu-affinity", config.cpu_affinity])
             if config.cpu_strict:
                 cmd.append("--cpu-strict")
-            # Parallel sequences
+            # Parallel sequences (batched bench uses -p for parallel)
             if isinstance(config.parallel, int) and config.parallel > 1:
                 cmd.extend(["-p", str(config.parallel)])
             elif config.parallel == "auto":
                 cmd.append("--kv-unified")
+            # Prompt length for batched bench - use long form --n-prompt to avoid conflict with -p for parallel
+            cmd.extend(["--n-prompt", str(config.n_prompt)])
             # Speculative decoding
             if config.spec_type and config.spec_type != "none":
                 cmd.extend(["--spec-type", config.spec_type])
@@ -229,9 +235,11 @@ class BenchmarkRunner:
             # NUMA is supported by both
             if config.numa:
                 cmd.extend(["--numa", config.numa_value])
-
-        # Generation length (supported by both)
-        cmd.extend(["-n", "128"])
+            # Prompt length (llama-bench uses -p for n_prompt)
+            cmd.extend(["-p", str(config.n_prompt)])
+        
+        # Generation length (supported by both) - use -n for n_gen
+        cmd.extend(["-n", str(config.n_gen)])
 
         # Output format
         if config.output_format == "json":
@@ -498,6 +506,8 @@ class BenchmarkRunner:
             timeout_sec=config_dict.get("timeout_sec", 30),
             output_format=config_dict.get("output_format", "json"),
             extra_args=config_dict.get("extra_args", []),
+            n_prompt=config_dict.get("n_prompt", 512),
+            n_gen=config_dict.get("n_gen", 128),
         )
 
     @staticmethod

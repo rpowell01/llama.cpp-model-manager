@@ -422,13 +422,27 @@ class BenchmarkOptimizer:
                 config["flash_attn"] = flash_attn
                 configs.append(config)
                 
-        # Generate context size variations
+# Generate context size variations
         for ctx_size in ctx_size_options[:3]:  # Limit to top 3
             if ctx_size != baseline_config.get("ctx_size", 4096):
                 config = baseline_config.copy()
                 config["ctx_size"] = ctx_size
                 configs.append(config)
         
+        # Generate prompt size variations (for agentic coding large contexts)
+        prompt_size_options = [8192, 16384, 32768]
+        # Filter by model context size
+        prompt_size_options = [p for p in prompt_size_options if p <= model_ctx]
+        if not prompt_size_options:
+            prompt_size_options = [min(model_ctx, 4096)]
+        
+        for n_prompt in prompt_size_options:
+            if n_prompt != baseline_config.get("n_prompt", 512):
+                config = baseline_config.copy()
+                config["n_prompt"] = n_prompt
+                config["n_gen"] = 128  # Keep generation size fixed
+                configs.append(config)
+         
         # Generate speculative decoding variations
         if (has_nvidia or has_amd or has_intel) and model_size_gb >= 6:
             # Generate all combinations of speculative decoding parameters
@@ -550,6 +564,8 @@ class BenchmarkOptimizer:
                     cache_type_v=config.get("cache_type_v", "q4_0"),
                     flash_attn=config.get("flash_attn", "auto"),
                     ctx_size=config.get("ctx_size", 128000),
+                    n_prompt=config.get("n_prompt", 512),
+                    n_gen=config.get("n_gen", 128),
                     repetitions=2,  # Fewer repetitions for sweep speed
                     timeout_sec=timeout_sec,
                 )
@@ -566,6 +582,8 @@ class BenchmarkOptimizer:
                     "cache_type_v": bench_config.cache_type_v,
                     "flash_attn": bench_config.flash_attn,
                     "ctx_size": bench_config.ctx_size,
+                    "n_prompt": bench_config.n_prompt,
+                    "n_gen": bench_config.n_gen,
                     "repetitions": bench_config.repetitions,
                     "timeout_sec": bench_config.timeout_sec,
                 })
@@ -763,7 +781,8 @@ class BenchmarkOptimizer:
                 "cache_type_k", "cache_type_v", "flash_attn", "ctx_size", "parallel",
                 "numa", "numa_value", "cpu_affinity", "cpu_strict",
                 "spec_type", "spec_draft_n_max", "spec_ngram_size_n", "spec_ngram_size_m",
-                "spec_draft_p_split", "swa_full"
+                "spec_draft_p_split", "swa_full",
+                "n_prompt"
             }
             filtered = {k: v for k, v in config.items() if k in relevant_keys}
             return str(sorted(filtered.items()))
@@ -894,6 +913,7 @@ class BenchmarkOptimizer:
             "cache_type_k", "cache_type_v", "flash_attn",
             "numa", "numa_value", "cpu_affinity", "cpu_strict",
             "ctx_size", "parallel",
+            "n_prompt", "n_gen",
         }
         
         filtered_config = {k: v for k, v in current_config.items() if k in valid_benchmark_params}
@@ -914,6 +934,8 @@ class BenchmarkOptimizer:
             "cpu_strict": False,
             "ctx_size": 4096,
             "parallel": 1,
+            "n_prompt": 512,
+            "n_gen": 128,
         }
         
         # Apply defaults for missing values
@@ -925,59 +947,95 @@ class BenchmarkOptimizer:
         filtered_config["timeout_sec"] = max_duration_sec
         filtered_config["repetitions"] = 3
         
-        log.info(f"Running single benchmark for {model_path} with config: {filtered_config}")
+        # Sweep prompt sizes for agentic coding (large context)
+        model_ctx = filtered_config.get("ctx_size", 4096)
+        prompt_sizes = [8192, 16384, 32768]
+        prompt_sizes = [p for p in prompt_sizes if p <= model_ctx]
+        if not prompt_sizes:
+            prompt_sizes = [min(model_ctx, 512)]
         
-        # Create benchmark config from filtered_config
-        bench_config = BenchmarkConfig(
-            model_path=model_path,
-            **filtered_config,
-        )
+        log.info(f"Running single benchmark sweep for {model_path} with {len(prompt_sizes)} prompt sizes: {prompt_sizes}")
         
-        # Run llama-bench (single sequence) for current config
-        runner = BenchmarkRunner()
-        result = runner.run_llama_bench(model_path, {
-            "n_gpu_layers": bench_config.n_gpu_layers,
-            "batch_size": bench_config.batch_size,
-            "ubatch_size": bench_config.ubatch_size,
-            "threads": bench_config.threads,
-            "threads_batch": bench_config.threads_batch,
-            "cache_type_k": bench_config.cache_type_k,
-            "cache_type_v": bench_config.cache_type_v,
-            "flash_attn": bench_config.flash_attn,
-            "ctx_size": bench_config.ctx_size,
-            "repetitions": bench_config.repetitions,
-            "timeout_sec": bench_config.timeout_sec,
-            "numa": bench_config.numa,
-            "numa_value": bench_config.numa_value,
-            "cpu_affinity": bench_config.cpu_affinity,
-            "cpu_strict": bench_config.cpu_strict,
-            "parallel": bench_config.parallel,
-        })
+        all_benchmark_results = []
         
-        # run_llama_bench returns metrics dict on success, raises exception on failure
-        # So if we get here, success = True
-        benchmark_result = {
-            "config": current_config,
-            "success": True,
-            "tg_avg": result.get("tg_avg"),
-            "pp_avg": result.get("pp_avg"),
-            "pg_avg": result.get("pg_avg"),
-            "stdout": result.get("stdout", ""),
-            "stderr": result.get("stderr", ""),
-            "duration_sec": result.get("duration_sec", 0),
-            "timestamp": time.time(),
-            "test_type": "custom",
-            "optimization_target": "current_config_test",
-        }
+        # Run benchmark for each prompt size
+        for n_prompt in prompt_sizes:
+            bench_config = BenchmarkConfig(
+                model_path=model_path,
+                n_gpu_layers=filtered_config["n_gpu_layers"],
+                batch_size=filtered_config["batch_size"],
+                ubatch_size=filtered_config["ubatch_size"],
+                threads=filtered_config["threads"],
+                threads_batch=filtered_config["threads_batch"],
+                cache_type_k=filtered_config["cache_type_k"],
+                cache_type_v=filtered_config["cache_type_v"],
+                flash_attn=filtered_config["flash_attn"],
+                ctx_size=filtered_config["ctx_size"],
+                n_prompt=n_prompt,
+                n_gen=filtered_config.get("n_gen", 128),
+                repetitions=filtered_config["repetitions"],
+                timeout_sec=filtered_config["timeout_sec"],
+                numa=filtered_config.get("numa", False),
+                numa_value=filtered_config.get("numa_value", "interleave"),
+                cpu_affinity=filtered_config.get("cpu_affinity", "auto"),
+                cpu_strict=filtered_config.get("cpu_strict", False),
+                parallel=filtered_config.get("parallel", 1),
+            )
+            
+            runner = BenchmarkRunner()
+            result = runner.run_llama_bench(model_path, {
+                "n_gpu_layers": bench_config.n_gpu_layers,
+                "batch_size": bench_config.batch_size,
+                "ubatch_size": bench_config.ubatch_size,
+                "threads": bench_config.threads,
+                "threads_batch": bench_config.threads_batch,
+                "cache_type_k": bench_config.cache_type_k,
+                "cache_type_v": bench_config.cache_type_v,
+                "flash_attn": bench_config.flash_attn,
+                "ctx_size": bench_config.ctx_size,
+                "n_prompt": bench_config.n_prompt,
+                "n_gen": bench_config.n_gen,
+                "repetitions": bench_config.repetitions,
+                "timeout_sec": bench_config.timeout_sec,
+                "numa": bench_config.numa,
+                "numa_value": bench_config.numa_value,
+                "cpu_affinity": bench_config.cpu_affinity,
+                "cpu_strict": bench_config.cpu_strict,
+                "parallel": bench_config.parallel,
+            })
+            
+            # run_llama_bench returns metrics dict on success, raises exception on failure
+            benchmark_result = {
+                "config": {**filtered_config, "n_prompt": n_prompt},
+                "success": True,
+                "tg_avg": result.get("tg_avg"),
+                "pp_avg": result.get("pp_avg"),
+                "pg_avg": result.get("pg_avg"),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "duration_sec": result.get("duration_sec", 0),
+                "timestamp": time.time(),
+                "test_type": "custom",
+                "optimization_target": "current_config_test",
+            }
+            
+            all_benchmark_results.append(benchmark_result)
         
         # Load existing cache to preserve historical results and optimal settings
         cache_key = self._generate_cache_key(model_path, hardware_info)
         cached_result = self._load_from_cache(cache_key, hardware_info)
         
         # Start with existing cached benchmark results (if any)
-        all_benchmark_results = []
         if cached_result and cached_result.get("benchmark_results"):
-            all_benchmark_results = cached_result["benchmark_results"].copy()
+            existing_configs = set()
+            for r in all_benchmark_results:
+                config_str = str(sorted(r.get("config", {}).items()))
+                existing_configs.add(config_str)
+            
+            for hist_result in cached_result["benchmark_results"]:
+                hist_config_str = str(sorted(hist_result.get("config", {}).items()))
+                if hist_config_str not in existing_configs:
+                    all_benchmark_results.append(hist_result)
         
         # Add the new single benchmark result
         all_benchmark_results.append(benchmark_result)
