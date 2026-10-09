@@ -865,7 +865,7 @@ class BenchmarkOptimizer:
             model_info["file_path"] = model_path
             model_info["ctx_size"] = 4096
         
-        log.info(f"Running single benchmark for {model_path} with config: {current_config}")
+        log.info(f"Running single benchmark for {model_path}")
         
         # Filter current_config to only include valid llama-bench parameters
         # llama-bench (regular) does NOT support: cache_reuse, cache_ram, swa_full, spec_type, spec_draft_n_max
@@ -905,6 +905,8 @@ class BenchmarkOptimizer:
         # Use longer timeout for single benchmark (max_duration_sec passed in, default 600s)
         filtered_config["timeout_sec"] = max_duration_sec
         filtered_config["repetitions"] = 3
+        
+        log.info(f"Running single benchmark for {model_path} with config: {filtered_config}")
         
         # Create benchmark config from filtered_config
         bench_config = BenchmarkConfig(
