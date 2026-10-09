@@ -541,9 +541,11 @@ class BenchmarkOptimizer:
                         f"(elapsed: {elapsed:.1f}s)")
                 break
                 
-            # Use very large timeout to effectively disable timeout for benchmarking
-            # This avoids timeout issues during initial development
-            timeout_sec = 600  # 10 minutes - effectively no timeout
+            # Handle timeout: 0 = no timeout (None), otherwise use max_duration_sec or 600s default
+            if max_duration_sec == 0:
+                timeout_sec = None  # No timeout
+            else:
+                timeout_sec = max_duration_sec if max_duration_sec > 0 else 600
             
             try:
                 log.info(f"Testing configuration {i+1}/{len(config_list)}: "
@@ -943,8 +945,11 @@ class BenchmarkOptimizer:
             if key not in filtered_config:
                 filtered_config[key] = default_val
         
-        # Use longer timeout for single benchmark (max_duration_sec passed in, default 600s)
-        filtered_config["timeout_sec"] = max_duration_sec
+        # Use timeout: 0 = no timeout (None), otherwise use max_duration_sec or 600s default
+        if max_duration_sec == 0:
+            filtered_config["timeout_sec"] = None
+        else:
+            filtered_config["timeout_sec"] = max_duration_sec if max_duration_sec > 0 else 600
         filtered_config["repetitions"] = 3
         
         # Sweep prompt sizes for agentic coding (large context)

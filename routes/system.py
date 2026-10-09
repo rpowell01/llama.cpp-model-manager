@@ -740,8 +740,8 @@ def api_benchmark_optimize():
     
     # Validate max_duration_sec - reject bool (since bool is subclass of int)
     max_duration_sec = data.get("max_duration_sec", config.BENCHMARK_MAX_DURATION)
-    if type(max_duration_sec) is not int or max_duration_sec < 10 or max_duration_sec > 3600:
-        return jsonify({"error": "max_duration_sec must be an integer between 10 and 3600"}), 400
+    if type(max_duration_sec) is not int or max_duration_sec < 0 or max_duration_sec > 3600:
+        return jsonify({"error": "max_duration_sec must be an integer between 0 and 3600 (0 = no timeout)"}), 400
     
     # Check if we're testing a specific current config
     test_current_config = data.get("test_current_config", False)

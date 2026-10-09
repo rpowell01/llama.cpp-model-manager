@@ -387,14 +387,34 @@ class TestSystemRoutes:
         }
         
         client = make_app().test_client()
+        
+        # Test too low (negative)
         response = client.post('/api/benchmark-optimize',
-            json={'model': 'test-model', 'max_duration_sec': 5},
+            json={'model': 'test-model', 'max_duration_sec': -1},
             content_type='application/json')
         
         assert response.status_code == 400
         data = response.get_json()
         assert 'error' in data
-        assert 'max_duration_sec must be an integer between 10 and 3600' in data['error']
+        assert 'max_duration_sec must be an integer between 0 and 3600' in data['error']
+        
+        # Test too high
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'max_duration_sec': 4000},
+            content_type='application/json')
+        
+        assert response.status_code == 400
+        data = response.get_json()
+        assert 'error' in data
+        assert 'max_duration_sec must be an integer between 0 and 3600' in data['error']
+        
+        # Test 0 is valid (no timeout)
+        response = client.post('/api/benchmark-optimize',
+            json={'model': 'test-model', 'max_duration_sec': 0},
+            content_type='application/json')
+        
+        # Should not return 400 (may return 500 due to mock but not 400 for validation)
+        assert response.status_code != 400
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
