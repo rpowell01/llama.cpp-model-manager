@@ -782,6 +782,9 @@ class BenchmarkOptimizer:
         
         log.info(f"Configurations: {len(config_list)} total, {len(cached_benchmark_results)} cached, {len(missing_configs)} missing")
         
+        # Track if we ran new benchmarks
+        new_benchmarks_run = len(missing_configs) > 0
+        
         # Run benchmark sweep ONLY for missing configurations
         new_benchmark_results = []
         if missing_configs:
@@ -839,12 +842,13 @@ class BenchmarkOptimizer:
             "model_info": model_info,
             "cache_key": cache_key,
             "optimization_target": optimization_target,
+            "new_benchmarks_run": new_benchmarks_run,
         }
         
         # Save to cache with all historical results
         self._save_to_cache(cache_key, result, hardware_info)
         
-        log.info(f"Optimization completed for {model_path} ({len(all_benchmark_results)} total benchmark results)")
+        log.info(f"Optimization completed for {model_path} ({len(all_benchmark_results)} total benchmark results, new_run: {new_benchmarks_run})")
         return result
 
     def run_single_benchmark(

@@ -495,6 +495,7 @@ class TestSystemRoutes:
             'model_info': {'file_size_gb': 4.5},
             'cache_key': 'test_cache_key',
             'optimization_target': 'balanced',
+            'new_benchmarks_run': True,
         }
         mock_optimizer_class.return_value = mock_optimizer
         
@@ -571,10 +572,14 @@ class TestSystemRoutes:
             'benchmark_results': [],
             'hardware_info': mock_hardware_info.return_value,
         }
+        # optimize() now handles caching internally - return cached result with new_benchmarks_run=False
         mock_optimizer.optimize.return_value = {
-            'optimal_settings': {'n_gpu_layers': 50, 'batch_size': 2048},
+            'optimal_settings': {'n_gpu_layers': 30, 'batch_size': 1024},
             'benchmark_results': [],
             'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
+            'new_benchmarks_run': False,
         }
         mock_optimizer_class.return_value = mock_optimizer
         
@@ -622,7 +627,10 @@ class TestSystemRoutes:
             'optimal_settings': {'n_gpu_layers': 0, 'batch_size': 512},
             'benchmark_results': [],
             'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
             'fallback_reason': 'BinaryNotFoundError: llama-bench not found',
+            'new_benchmarks_run': True,
         }
         mock_optimizer_class.return_value = mock_optimizer
         
@@ -724,6 +732,16 @@ class TestSystemRoutes:
             'hardware_info': mock_hardware_info.return_value,
             'fallback_reason': 'BinaryNotFoundError: llama-bench not found',
         }
+        # optimize() now handles caching internally
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 30, 'batch_size': 1024},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
+            'fallback_reason': 'BinaryNotFoundError: llama-bench not found',
+            'new_benchmarks_run': False,
+        }
         mock_optimizer_class.return_value = mock_optimizer
         
         client = make_app().test_client()
@@ -777,6 +795,7 @@ class TestSystemRoutes:
             'hardware_info': mock_hardware_info.return_value,
             'cache_key': 'test_cache_key',
             'optimization_target': 'throughput',
+            'new_benchmarks_run': True,
         }
         mock_optimizer_class.return_value = mock_optimizer
         
@@ -823,6 +842,7 @@ class TestSystemRoutes:
             'hardware_info': mock_hardware_info.return_value,
             'cache_key': 'test_cache_key',
             'optimization_target': 'latency',
+            'new_benchmarks_run': True,
         }
         mock_optimizer_class.return_value = mock_optimizer
         
@@ -1153,7 +1173,7 @@ class TestBenchmarkOptimizationPerformance:
         
         client = make_app().test_client()
         
-        # First request - cache miss
+        # First request - cache miss (new benchmarks run)
         mock_optimizer._load_from_cache.return_value = None
         mock_optimizer.optimize.return_value = {
             'optimal_settings': {'n_gpu_layers': 50},
@@ -1161,6 +1181,7 @@ class TestBenchmarkOptimizationPerformance:
             'hardware_info': mock_hardware_info.return_value,
             'cache_key': 'test_cache_key',
             'optimization_target': 'balanced',
+            'new_benchmarks_run': True,
         }
         start = time.time()
         response = client.post('/api/benchmark-optimize',
@@ -1170,11 +1191,19 @@ class TestBenchmarkOptimizationPerformance:
         assert response.status_code == 200
         assert response.get_json()['cached'] is False
         
-        # Second request - cache hit
+        # Second request - cache hit (no new benchmarks)
         mock_optimizer._load_from_cache.return_value = {
             'optimal_settings': {'n_gpu_layers': 30},
             'benchmark_results': [],
             'hardware_info': mock_hardware_info.return_value,
+        }
+        mock_optimizer.optimize.return_value = {
+            'optimal_settings': {'n_gpu_layers': 30},
+            'benchmark_results': [],
+            'hardware_info': mock_hardware_info.return_value,
+            'cache_key': 'test_cache_key',
+            'optimization_target': 'balanced',
+            'new_benchmarks_run': False,
         }
         start = time.time()
         response = client.post('/api/benchmark-optimize',
