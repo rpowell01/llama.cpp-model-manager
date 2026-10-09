@@ -290,8 +290,8 @@ async function renderPanelProperties(data, modelName) {
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
           <span>Max benchmark duration:</span>
-          <input type="number" id="max-duration-${modelSafeId}" value="300" min="30" max="3600" step="10" style="width: 70px;">
-          <span>seconds</span>
+          <input type="number" id="max-duration-${modelSafeId}" value="0" min="0" max="3600" step="10" style="width: 70px;">
+          <span>seconds (0 = no timeout)</span>
         </label>
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
           <span>Target:</span>
@@ -1115,7 +1115,10 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       // Build request body
       const requestBody = { model: modelName };
       if (useEmpirical) {
-        requestBody.max_duration_sec = parseInt(maxDurationInput.value, 10) || 60;
+        requestBody.max_duration_sec = parseInt(maxDurationInput.value, 10);
+        if (isNaN(requestBody.max_duration_sec)) {
+          requestBody.max_duration_sec = 0;
+        }
         requestBody.target = targetSelect.value || "balanced";
         
         // Check if "Run benchmark using currently defined property values" is checked
