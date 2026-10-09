@@ -534,16 +534,16 @@ class BenchmarkOptimizer:
                 f"(max {max_duration_sec}s)")
         
         for i, config in enumerate(config_list):
-            # Check if we've exceeded time limit
+            # Check if we've exceeded time limit (only when max_duration_sec > 0)
             elapsed = time.time() - start_time
-            if elapsed >= max_duration_sec:
+            if max_duration_sec > 0 and elapsed >= max_duration_sec:
                 log.info(f"Time limit reached after {len(results)} configurations "
                         f"(elapsed: {elapsed:.1f}s)")
                 break
-                
+            
             # Handle timeout: 0 = no timeout (None), otherwise use max_duration_sec or 600s default
             if max_duration_sec == 0:
-                timeout_sec = None  # No timeout
+                timeout_sec = None  # No timeout for individual benchmarks
             else:
                 timeout_sec = max_duration_sec if max_duration_sec > 0 else 600
             
@@ -624,7 +624,7 @@ class BenchmarkOptimizer:
                     "test_type": "automatic",
                     "optimization_target": optimization_target,
                 })
-                
+        
         log.info(f"Benchmark sweep completed: {len(results)} configurations tested "
                 f"(elapsed: {time.time() - start_time:.1f}s)")
         return results
