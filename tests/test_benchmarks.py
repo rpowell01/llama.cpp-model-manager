@@ -53,7 +53,7 @@ class TestBenchmarkConfig(unittest.TestCase):
         self.assertEqual(config.spec_type, "none")
         self.assertEqual(config.spec_draft_n_max, 8)
         self.assertEqual(config.repetitions, 3)
-        self.assertEqual(config.timeout_sec, 30)
+        self.assertIsNone(config.timeout_sec)
         self.assertEqual(config.output_format, "json")
 
     def test_custom_values(self) -> None:

@@ -72,13 +72,14 @@ class BenchmarkConfig:
     spec_type: str = "none"
     spec_draft_n_max: int = 8
 
-    # Prompt/Generation lengths (for -p/-n parameters)
+    from typing import Optional
+# Prompt/Generation lengths (for -p/-n parameters)
     n_prompt: int = 512  # Default prompt size
     n_gen: int = 128     # Default generation size
 
     # Benchmark-specific
     repetitions: int = 3
-    timeout_sec: int = 30
+    timeout_sec: Optional[int] = None  # None = no timeout
     output_format: str = "json"
 
     # Additional parameters (passed through to binary)
@@ -503,7 +504,7 @@ class BenchmarkRunner:
             cache_ram=config_dict.get("cache_ram", 8192),
             swa_full=config_dict.get("swa_full", False),
             repetitions=config_dict.get("repetitions", 3),
-            timeout_sec=config_dict.get("timeout_sec", 30),
+            timeout_sec=config_dict.get("timeout_sec", None),
             output_format=config_dict.get("output_format", "json"),
             extra_args=config_dict.get("extra_args", []),
             n_prompt=config_dict.get("n_prompt", 512),
