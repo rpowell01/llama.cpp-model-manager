@@ -860,9 +860,9 @@ class TestGenerateConfigCombinationsEdgeCases(unittest.TestCase):
         self.assertIn(35, gpu_layers_set)
         self.assertIn(99, gpu_layers_set)
         
-        # Cache type should be fp16 for high VRAM
+        # Cache type should be f16 for high VRAM
         for config in configs:
-            self.assertEqual(config.get("cache_type_k"), "fp16")
+            self.assertEqual(config.get("cache_type_k"), "f16")
 
     def test_small_model_no_speculative(self) -> None:
         """Test config generation for small model (< 6GB) disables speculative decoding."""

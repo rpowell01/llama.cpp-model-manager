@@ -354,7 +354,7 @@ class BenchmarkOptimizer:
         # Cache types
         cache_type_options = []
         if total_vram >= 16:
-            cache_type_options = [("fp16", "fp16")]
+            cache_type_options = [("f16", "f16")]
         elif total_vram >= 8:
             cache_type_options = [("q8_0", "q8_0"), ("q4_0", "q4_0")]
         else:
