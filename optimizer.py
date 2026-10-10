@@ -972,6 +972,30 @@ class BenchmarkOptimizer:
         # Combine cached + new results
         all_benchmark_results = cached_benchmark_results + new_benchmark_results
         
+        # Check if any successful cached results are missing phase 2 (batched_bench) data
+        # This can happen when phase 1 completed but phase 2 failed or wasn't run
+        missing_phase2_configs = []
+        for r in all_benchmark_results:
+            if r.get("success", False) and "batched_bench" not in r:
+                missing_phase2_configs.append(r.get("config", {}))
+        
+        # Run phase 2 for configs missing batched bench data
+        if missing_phase2_configs:
+            log.info(f"Phase 2: Running llama-batched-bench for {len(missing_phase2_configs)} configs missing phase 2 data")
+            try:
+                phase2_results = self._run_batched_bench_phase(
+                    model_path, 
+                    [r for r in all_benchmark_results if r.get("success", False) and "batched_bench" not in r],
+                    max_duration_sec, 
+                    optimization_target
+                )
+                # Merge phase 2 results into all_benchmark_results
+                for i, r in enumerate(all_benchmark_results):
+                    if r.get("success", False) and "batched_bench" not in r and i < len(phase2_results):
+                        r["batched_bench"] = phase2_results[i]
+            except Exception as e:
+                log.warning(f"Phase 2 (catch-up) failed: {e}")
+        
         # Select optimal configuration from ALL results (cached + new)
         optimal_config = self.select_optimal_config(
             all_benchmark_results, optimization_target
