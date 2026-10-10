@@ -196,12 +196,20 @@ class BenchmarkRunner:
         cmd.extend(["-b", str(config.batch_size)])
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
-
-        # Parameters ONLY supported by llama-batched-bench (and llama-server)
+        # Cache types (llama-bench uses -ctk/-ctv, batched uses --cache-type-k/v)
         if is_batched:
             cmd.extend(["--cache-type-k", config.cache_type_k])
             cmd.extend(["--cache-type-v", config.cache_type_v])
+        else:
+            cmd.extend(["-ctk", config.cache_type_k])
+            cmd.extend(["-ctv", config.cache_type_v])
+        # Flash attention (llama-bench uses -fa, batched uses --flash-attn)
+        if is_batched:
             cmd.extend(["--flash-attn", config.flash_attn])
+        else:
+            cmd.extend(["-fa", config.flash_attn])
+
+        if is_batched:
             # threads_batch (-tb) is a llama-server/llama-batched-bench parameter
             cmd.extend(["-tb", str(config.threads_batch)])
             # ctx_size (-c) is not supported by llama-bench
@@ -232,10 +240,15 @@ class BenchmarkRunner:
             if config.swa_full:
                 cmd.append("--swa-full")
         else:
-            # For llama-bench: use -p/--n-prompt and -n/--n-gen for prompt/gen lengths
+            # For llama-bench: use -p for n_prompt, -n for n_gen
             # NUMA is supported by both
             if config.numa:
                 cmd.extend(["--numa", config.numa_value])
+            # CPU affinity/mask (llama-bench uses -C for cpu-mask)
+            if config.cpu_affinity and config.cpu_affinity != "auto":
+                cmd.extend(["-C", config.cpu_affinity])
+            if config.cpu_strict:
+                cmd.extend(["--cpu-strict", "1"])
             # Prompt length (llama-bench uses -p for n_prompt)
             cmd.extend(["-p", str(config.n_prompt)])
         

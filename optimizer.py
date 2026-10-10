@@ -627,7 +627,119 @@ class BenchmarkOptimizer:
         
         log.info(f"Benchmark sweep completed: {len(results)} configurations tested "
                 f"(elapsed: {time.time() - start_time:.1f}s)")
+        
+        # Phase 2: Run llama-batched-bench for top configurations (if time permits)
+        # This measures multi-sequence/batched performance
+        if max_duration_sec == 0 or time.time() - start_time < max_duration_sec * 0.7:
+            # Run batched bench for top 3 configurations by score
+            try:
+                batched_results = self._run_batched_bench_phase(
+                    model_path, results, max_duration_sec, optimization_target
+                )
+                # Merge batched results into main results
+                for i, r in enumerate(results):
+                    if r.get("success", False) and i < len(batched_results):
+                        r["batched_bench"] = batched_results[i]
+            except Exception as e:
+                log.warning(f"Batched bench phase failed: {e}")
+        
         return results
+
+    def _run_batched_bench_phase(
+        self,
+        model_path: str,
+        llama_bench_results: List[Dict[str, Any]],
+        max_duration_sec: int,
+        optimization_target: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Run llama-batched-bench for top configurations from llama-bench phase.
+        
+        Args:
+            model_path: Path to model file
+            llama_bench_results: Results from llama-bench phase
+            max_duration_sec: Remaining time budget
+            optimization_target: Target metric for optimization
+            
+        Returns:
+            List of batched bench result dictionaries
+        """
+        # Sort results by score (composite of pp_avg and tg_avg based on optimization_target)
+        def score_func(r):
+            if not r.get("success", False):
+                return -1
+            if optimization_target == 'throughput':
+                return r.get("tg_avg", 0)
+            elif optimization_target == 'latency':
+                # For latency, lower is better - use inverse
+                tg = r.get("tg_avg", 0)
+                return 1000.0 / tg if tg > 0 else 0
+            else:  # balanced
+                return r.get("pp_avg", 0) * 0.3 + r.get("tg_avg", 0) * 0.7
+        
+        # Get top 3 successful configs
+        successful = [r for r in llama_bench_results if r.get("success", False)]
+        successful.sort(key=score_func, reverse=True)
+        top_configs = successful[:3]
+        
+        if not top_configs:
+            return []
+        
+        batched_results = []
+        runner = BenchmarkRunner()
+        start_time = time.time()
+        
+        for i, result in enumerate(top_configs):
+            # Check time budget
+            elapsed = time.time() - start_time
+            if max_duration_sec > 0 and elapsed >= max_duration_sec * 0.3:
+                log.info(f"Batched bench time budget exceeded after {i} configs")
+                break
+            
+            config = result.get("config", {})
+            
+            try:
+                log.info(f"Running llama-batched-bench {i+1}/{len(top_configs)}: "
+                        f"ngl={config.get('n_gpu_layers')}, batch={config.get('batch_size')}")
+                
+                # Run llama-batched-bench with multi-sequence parameters
+                bench_result = runner.run_llama_batched_bench(model_path, {
+                    "n_gpu_layers": config.get("n_gpu_layers", 99),
+                    "batch_size": config.get("batch_size", 4096),
+                    "ubatch_size": config.get("ubatch_size", 1024),
+                    "threads": config.get("threads", 16),
+                    "threads_batch": config.get("threads_batch", 16),
+                    "cache_type_k": config.get("cache_type_k", "q4_0"),
+                    "cache_type_v": config.get("cache_type_v", "q4_0"),
+                    "flash_attn": config.get("flash_attn", "auto"),
+                    "ctx_size": config.get("ctx_size", 4096),
+                    "parallel": config.get("parallel", 1),
+                    "n_prompt": config.get("n_prompt", 512),
+                    "n_gen": config.get("n_gen", 128),
+                    "repetitions": 2,
+                    "timeout_sec": 600,
+                })
+                
+                batched_results.append({
+                    "config": config,
+                    "success": True,
+                    "batched_throughput": bench_result.get("speed", 0),
+                    "max_throughput": bench_result.get("max_throughput", 0),
+                    "optimal_parallel": bench_result.get("optimal_parallel", 1),
+                    "speed_pp": bench_result.get("speed_pp", []),
+                    "speed_tg": bench_result.get("speed_tg", []),
+                    "timestamp": time.time(),
+                })
+                
+            except Exception as e:
+                log.warning(f"Batched bench {i+1} failed: {e}")
+                batched_results.append({
+                    "config": config,
+                    "success": False,
+                    "error": str(e),
+                })
+        
+        return batched_results
         
     def select_optimal_config(
         self, 
