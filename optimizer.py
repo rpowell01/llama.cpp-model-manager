@@ -919,11 +919,14 @@ class BenchmarkOptimizer:
             filtered = {k: v for k, v in config.items() if k in relevant_keys}
             return str(sorted(filtered.items()))
         
-        # Build set of cached config keys
+        # Build set of cached config keys (ONLY successful results count as valid)
         cached_config_keys = set()
         for r in cached_benchmark_results:
-            config_key = config_to_key(r.get("config", {}))
-            cached_config_keys.add(config_key)
+            if r.get("success", False):
+                config_key = config_to_key(r.get("config", {}))
+                cached_config_keys.add(config_key)
+            else:
+                log.debug(f"Skipping failed cached config: {config_to_key(r.get('config', {}))}")
         
         # Find missing configs
         missing_configs = []
