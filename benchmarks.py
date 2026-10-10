@@ -218,8 +218,8 @@ class BenchmarkRunner:
                 cmd.extend(["-p", str(config.parallel)])
             elif config.parallel == "auto":
                 cmd.append("--kv-unified")
-            # Prompt length for batched bench - use long form --n-prompt to avoid conflict with -p for parallel
-            cmd.extend(["--n-prompt", str(config.n_prompt)])
+            # Prompt length for batched bench - use -npp for number of prompt tokens
+            cmd.extend(["-npp", str(config.n_prompt)])
             # Speculative decoding
             if config.spec_type and config.spec_type != "none":
                 cmd.extend(["--spec-type", config.spec_type])
