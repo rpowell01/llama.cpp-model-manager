@@ -106,15 +106,18 @@ class BenchmarkOptimizer:
         """Get cache file path for a given key."""
         return self.cache_dir / f"{cache_key}.json"
         
-    def _generate_cache_key(self, model_path: str, hardware_info: Dict[str, Any]) -> str:
+    def _generate_cache_key(self, model_path: str, hardware_info: Dict[str, Any], 
+                           optimization_target: str = 'balanced') -> str:
         """
-        Generate cache key based on model and hardware fingerprint only.
-        Optimization parameters (target, duration) are NOT included so that
-        longer runs can incrementally build on shorter runs.
+        Generate cache key based on model, hardware fingerprint, and optimization target.
+        Duration (max_duration_sec) is NOT included so that longer runs can 
+        incrementally build on shorter runs. But optimization_target IS included
+        so different targets (balanced/throughput/latency) have separate caches.
         
         Args:
             model_path: Path to model file
             hardware_info: Hardware information dictionary
+            optimization_target: Target metric ('balanced', 'throughput', 'latency')
             
         Returns:
             MD5 hash string for cache key
@@ -147,8 +150,11 @@ class BenchmarkOptimizer:
             
         hw_fingerprint = "|".join(hw_fingerprint_parts)
         
-        # Combine model and hardware fingerprints (NO optimization parameters)
-        combined = f"{model_fingerprint}|{hw_fingerprint}"
+        # Include optimization target in cache key (but NOT duration)
+        opt_fingerprint = f"target:{optimization_target}"
+        
+        # Combine model, hardware, and optimization target fingerprints
+        combined = f"{model_fingerprint}|{hw_fingerprint}|{opt_fingerprint}"
         return hashlib.md5(combined.encode()).hexdigest()
         
     def _load_from_cache(self, cache_key: str, current_hw_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -630,18 +636,30 @@ class BenchmarkOptimizer:
         
         # Phase 2: Run llama-batched-bench for top configurations (if time permits)
         # This measures multi-sequence/batched performance
-        if max_duration_sec == 0 or time.time() - start_time < max_duration_sec * 0.7:
+        elapsed = time.time() - start_time
+        if max_duration_sec == 0:
+            log.info(f"Phase 2: No time limit (max_duration=0), running llama-batched-bench")
+        elif elapsed < max_duration_sec * 0.7:
+            log.info(f"Phase 2: Time budget OK ({elapsed:.1f}s < {max_duration_sec * 0.7:.1f}s), running llama-batched-bench")
+        else:
+            log.info(f"Phase 2: SKIPPED - time budget exceeded ({elapsed:.1f}s >= {max_duration_sec * 0.7:.1f}s)")
+        
+        if max_duration_sec == 0 or elapsed < max_duration_sec * 0.7:
             # Run batched bench for top 3 configurations by score
             try:
+                log.info(f"Phase 2: Starting llama-batched-bench for top configs")
                 batched_results = self._run_batched_bench_phase(
                     model_path, results, max_duration_sec, optimization_target
                 )
+                log.info(f"Phase 2: Completed llama-batched-bench, got {len(batched_results)} results")
                 # Merge batched results into main results
                 for i, r in enumerate(results):
                     if r.get("success", False) and i < len(batched_results):
                         r["batched_bench"] = batched_results[i]
             except Exception as e:
                 log.warning(f"Batched bench phase failed: {e}")
+        else:
+            log.info(f"Phase 2: Not running due to time constraints")
         
         return results
 
@@ -848,8 +866,8 @@ class BenchmarkOptimizer:
             model_info["file_path"] = model_path
             model_info["ctx_size"] = 4096
              
-        # Generate cache key (model + hardware only, no optimization params for incremental caching)
-        cache_key = self._generate_cache_key(model_path, hardware_info)
+        # Generate cache key (model + hardware + optimization target, NOT duration for incremental caching)
+        cache_key = self._generate_cache_key(model_path, hardware_info, optimization_target)
          
         # Try to load from cache first (but don't return early - we want incremental runs)
         cached_result = self._load_from_cache(cache_key, hardware_info)
@@ -1139,7 +1157,7 @@ class BenchmarkOptimizer:
             all_benchmark_results.append(benchmark_result)
         
         # Load existing cache to preserve historical results and optimal settings
-        cache_key = self._generate_cache_key(model_path, hardware_info)
+        cache_key = self._generate_cache_key(model_path, hardware_info, "current_config_test")
         cached_result = self._load_from_cache(cache_key, hardware_info)
         
         # Start with existing cached benchmark results (if any)
