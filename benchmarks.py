@@ -243,11 +243,15 @@ class BenchmarkRunner:
         
         # Generation length (supported by both) - use -n for n_gen
         cmd.extend(["-n", str(config.n_gen)])
-
-        # Output format
-        if config.output_format == "json":
-            cmd.extend(["--output", "json"])
-
+        
+        # Output format (llama-bench uses --output, batched bench uses --output-format)
+        if is_batched:
+            if config.output_format == "json":
+                cmd.extend(["--output-format", "jsonl"])
+        else:
+            if config.output_format == "json":
+                cmd.extend(["--output", "json"])
+        
         # Extra args
         cmd.extend(config.extra_args)
 

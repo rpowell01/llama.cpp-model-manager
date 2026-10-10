@@ -207,8 +207,8 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         )
 
         self.assertEqual(cmd[0], "/fake/dir/llama-batched-bench")
-        self.assertIn("--output", cmd)
-        self.assertIn("json", cmd)
+        self.assertIn("--output-format", cmd)
+        self.assertIn("jsonl", cmd)
 
     def test_build_command_with_numa(self) -> None:
         """Test command includes NUMA options."""
