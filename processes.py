@@ -610,11 +610,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["-ngl", str(gpu_layers)]
     
     cache_type_k = meta.get("cache_type_k", DEFAULTS["cache_type_k"])
-    if cache_type_k and cache_type_k != "fp16":
+    if cache_type_k and cache_type_k != "f16":
         cmd += ["--cache-type-k", cache_type_k]
     
     cache_type_v = meta.get("cache_type_v", DEFAULTS["cache_type_v"])
-    if cache_type_v and cache_type_v != "fp16":
+    if cache_type_v and cache_type_v != "f16":
         cmd += ["--cache-type-v", cache_type_v]
     
     # NUMA requires a value: distribute, isolate, or numactl
@@ -800,11 +800,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         # Draft model KV cache type parameters (for draft-* types)
         if has_draft_type:
             spec_draft_type_k = meta.get("spec_draft_type_k", DEFAULTS["spec_draft_type_k"])
-            if spec_draft_type_k and spec_draft_type_k != "fp16":
+            if spec_draft_type_k and spec_draft_type_k != "f16":
                 cmd += ["--spec-draft-type-k", spec_draft_type_k]
             
             spec_draft_type_v = meta.get("spec_draft_type_v", DEFAULTS["spec_draft_type_v"])
-            if spec_draft_type_v and spec_draft_type_v != "fp16":
+            if spec_draft_type_v and spec_draft_type_v != "f16":
                 cmd += ["--spec-draft-type-v", spec_draft_type_v]
 
     log.info(f"Build command for {model}: {cmd}")

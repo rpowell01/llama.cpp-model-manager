@@ -179,8 +179,8 @@ def add_model_entry(
     reasoning_preserve: bool = True,
     # CPU-only optimizations
     gpu_layers: int = 0,
-    cache_type_k: str = "fp16",
-    cache_type_v: str = "fp16",
+    cache_type_k: str = "f16",
+    cache_type_v: str = "f16",
     numa: bool = True,
     numa_value: str = "distribute",
     cpu_affinity: str = "auto",
@@ -217,8 +217,8 @@ def add_model_entry(
     spec_ngram_mod_n_min: int = 48,
     spec_ngram_mod_n_max: int = 64,
     # Draft model KV cache type
-    spec_draft_type_k: str = "fp16",
-    spec_draft_type_v: str = "fp16",
+    spec_draft_type_k: str = "f16",
+    spec_draft_type_v: str = "f16",
     # Warmup parameters
     warmup_enabled: bool = False,
     warmup_message: str = "Hello",

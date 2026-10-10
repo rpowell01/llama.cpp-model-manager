@@ -73,8 +73,8 @@ class Model:
     reasoning_preserve: bool = True
     # CPU-only optimizations
     gpu_layers: int = 0
-    cache_type_k: str = "fp16"
-    cache_type_v: str = "fp16"
+    cache_type_k: str = "f16"
+    cache_type_v: str = "f16"
     numa: bool = True
     numa_value: str = "distribute"
     cpu_affinity: str = "auto"
@@ -112,8 +112,8 @@ class Model:
     spec_ngram_mod_n_min: int = 48
     spec_ngram_mod_n_max: int = 64
     # Draft model KV cache type
-    spec_draft_type_k: str = "fp16"
-    spec_draft_type_v: str = "fp16"
+    spec_draft_type_k: str = "f16"
+    spec_draft_type_v: str = "f16"
     # Warmup parameters
     warmup_enabled: bool = False
     warmup_message: str = "Hello"
@@ -154,8 +154,8 @@ class Model:
             reasoning_preserve=data.get("reasoning_preserve", True),
             # CPU-only optimizations
             gpu_layers=data.get("gpu_layers", 0),
-            cache_type_k=data.get("cache_type_k", "fp16"),
-            cache_type_v=data.get("cache_type_v", "fp16"),
+            cache_type_k=data.get("cache_type_k", "f16"),
+            cache_type_v=data.get("cache_type_v", "f16"),
             numa=data.get("numa", True),
             numa_value=data.get("numa_value", "distribute"),
             cpu_affinity=data.get("cpu_affinity", "auto"),
@@ -193,8 +193,8 @@ class Model:
             spec_ngram_mod_n_min=data.get("spec_ngram_mod_n_min", 48),
             spec_ngram_mod_n_max=data.get("spec_ngram_mod_n_max", 64),
             # Draft model KV cache type
-            spec_draft_type_k=data.get("spec_draft_type_k", "fp16"),
-            spec_draft_type_v=data.get("spec_draft_type_v", "fp16"),
+            spec_draft_type_k=data.get("spec_draft_type_k", "f16"),
+            spec_draft_type_v=data.get("spec_draft_type_v", "f16"),
             # Warmup
             warmup_enabled=data.get("warmup_enabled", False),
             warmup_message=data.get("warmup_message", "Hello"),

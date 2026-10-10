@@ -578,10 +578,10 @@ def compute_optimal_settings(hardware_info, model_info=None):
     max_ctx_by_mem = int((mem_available * 0.6) * 1024)  # rough estimate
     settings["ctx_size"] = min(model_ctx, max(4096, max_ctx_by_mem))
     
-    # KV Cache types - use fp16 for quality on GPU, q4_0 for memory savings
+    # KV Cache types - use f16 for quality on GPU, q4_0 for memory savings
     if total_vram >= 16:
-        settings["cache_type_k"] = "fp16"
-        settings["cache_type_v"] = "fp16"
+        settings["cache_type_k"] = "f16"
+        settings["cache_type_v"] = "f16"
     elif total_vram >= 8:
         settings["cache_type_k"] = "q8_0"
         settings["cache_type_v"] = "q8_0"

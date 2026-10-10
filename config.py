@@ -159,8 +159,8 @@ DEFAULTS: dict[str, Any] = {
     "spec_ngram_mod_n_min": 48,
     "spec_ngram_mod_n_max": 64,
     # Draft model KV cache type
-    "spec_draft_type_k": "fp16",
-    "spec_draft_type_v": "fp16",
+    "spec_draft_type_k": "f16",
+    "spec_draft_type_v": "f16",
     # Intel/AMD GPU Options
     "sycl": False,
     "grp_attn": False,
