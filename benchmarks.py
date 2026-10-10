@@ -225,11 +225,7 @@ class BenchmarkRunner:
                 cmd.extend(["--spec-type", config.spec_type])
                 if config.spec_draft_n_max > 0:
                     cmd.extend(["--spec-draft-n-max", str(config.spec_draft_n_max)])
-            # Slot cache persistence
-            if config.cache_reuse > 0:
-                cmd.extend(["--cache-reuse", str(config.cache_reuse)])
-            if config.cache_ram > 0:
-                cmd.extend(["--cache-ram", str(config.cache_ram)])
+            # SWA full cache
             if config.swa_full:
                 cmd.append("--swa-full")
         else:
