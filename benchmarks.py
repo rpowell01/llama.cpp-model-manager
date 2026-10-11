@@ -196,12 +196,13 @@ class BenchmarkRunner:
         cmd.extend(["-b", str(config.batch_size)])
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
-        # Cache types - use long form for both (SYCL build may not support short forms)
-        # Note: Some builds (e.g., SYCL) may not support --cache-type-k/v for llama-bench
-        # Only add for batched bench which definitely supports them
+        # Cache types: llama-bench uses short forms -ctk/-ctv, batched-bench uses --cache-type-k/v
         if is_batched:
             cmd.extend(["--cache-type-k", config.cache_type_k])
             cmd.extend(["--cache-type-v", config.cache_type_v])
+        else:
+            cmd.extend(["-ctk", config.cache_type_k])
+            cmd.extend(["-ctv", config.cache_type_v])
         # Flash attention - use long form for both
         cmd.extend(["--flash-attn", config.flash_attn])
 

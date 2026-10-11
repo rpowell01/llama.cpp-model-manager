@@ -617,9 +617,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <div class="panel-grid">`;
     
     // KV Cache Type K dropdown
-    const kvCacheKVal = data.cache_type_k == null ? "fp16" : data.cache_type_k;
+    const kvCacheKVal = data.cache_type_k == null ? "f16" : data.cache_type_k;
     let kvCacheKSelect = `<select class="meta-input" data-field="cache_type_k">`;
-    ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+    ["f16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
       kvCacheKSelect += `<option value="${val}" ${kvCacheKVal === val ? "selected" : ""}>${val}</option>`;
     });
     kvCacheKSelect += `</select>`;
@@ -629,9 +629,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     </div>`;
     
     // KV Cache Type V dropdown
-    const kvCacheVVal = data.cache_type_v == null ? "fp16" : data.cache_type_v;
+    const kvCacheVVal = data.cache_type_v == null ? "f16" : data.cache_type_v;
     let kvCacheVSelect = `<select class="meta-input" data-field="cache_type_v">`;
-    ["fp16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
+    ["f16", "fp8", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "dq1_5", "dq2_5", "iq2_XXS", "iq2_xs", "iq3_xl", "xq4_0", "xq8_0", "xxq3_2", "xxq4_0", "yyxq3_2", "xxq4_0_sfp"].forEach((val) => {
       kvCacheVSelect += `<option value="${val}" ${kvCacheVVal === val ? "selected" : ""}>${val}</option>`;
     });
     kvCacheVSelect += `</select>`;
@@ -687,9 +687,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Ngram-mod N Max", "spec_ngram_mod_n_max", data.spec_ngram_mod_n_max, "number", 1, 0);
     
     // Draft model KV cache types
-    const draftKCacheVal = data.spec_draft_type_k == null ? "fp16" : data.spec_draft_type_k;
+    const draftKCacheVal = data.spec_draft_type_k == null ? "f16" : data.spec_draft_type_k;
     let draftKCacheSelect = `<select class="meta-input" data-field="spec_draft_type_k">`;
-    ["fp16", "q4_0", "q8_0"].forEach((val) => {
+    ["f16", "q4_0", "q8_0"].forEach((val) => {
       draftKCacheSelect += `<option value="${val}" ${draftKCacheVal === val ? "selected" : ""}>${val}</option>`;
     });
     draftKCacheSelect += `</select>`;
@@ -698,9 +698,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       <span class="value">${draftKCacheSelect}</span>
     </div>`;
     
-    const draftVCacheVal = data.spec_draft_type_v == null ? "fp16" : data.spec_draft_type_v;
+    const draftVCacheVal = data.spec_draft_type_v == null ? "f16" : data.spec_draft_type_v;
     let draftVCacheSelect = `<select class="meta-input" data-field="spec_draft_type_v">`;
-    ["fp16", "q4_0", "q8_0"].forEach((val) => {
+    ["f16", "q4_0", "q8_0"].forEach((val) => {
       draftVCacheSelect += `<option value="${val}" ${draftVCacheVal === val ? "selected" : ""}>${val}</option>`;
     });
     draftVCacheSelect += `</select>`;
