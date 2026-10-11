@@ -292,7 +292,7 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
         self.assertIn("--kv-unified", cmd)
 
     def test_build_command_parallel_int(self) -> None:
-        """Test command with parallel=int uses -p (batched bench only)."""
+        """Test command with parallel=int uses -np (batched bench only)."""
         config = BenchmarkConfig(
             model_path="/models/model.gguf",
             parallel=4,
@@ -304,7 +304,7 @@ class TestBenchmarkRunnerCommands(unittest.TestCase):
             is_batched=True,
         )
 
-        self.assertIn("-p", cmd)
+        self.assertIn("-np", cmd)
         self.assertIn("4", cmd)
 
     def test_build_command_prompt_size(self) -> None:

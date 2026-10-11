@@ -205,21 +205,35 @@ class BenchmarkRunner:
         if is_batched:
             # threads_batch (-tb) is a llama-server/llama-batched-bench parameter
             cmd.extend(["-tb", str(config.threads_batch)])
-            # ctx_size (-c) is not supported by llama-bench
-            # Use -p/--n-prompt and -n/--n-gen for prompt/gen lengths instead
-            # NUMA is supported by both but with different syntax
+            # Context size (-c) is required for batched bench
+            cmd.extend(["-c", str(config.ctx_size)])
             # CPU affinity/mask
             if config.cpu_affinity and config.cpu_affinity != "auto":
                 cmd.extend(["--cpu-affinity", config.cpu_affinity])
             if config.cpu_strict:
                 cmd.append("--cpu-strict")
-            # Parallel sequences (batched bench uses -p for parallel)
+            # Parallel sequences (batched bench uses -np for parallel)
             if isinstance(config.parallel, int) and config.parallel > 1:
-                cmd.extend(["-p", str(config.parallel)])
+                cmd.extend(["-np", str(config.parallel)])
             elif config.parallel == "auto":
                 cmd.append("--kv-unified")
-            # Prompt length for batched bench - use -npp for number of prompt tokens
-            cmd.extend(["-npp", str(config.n_prompt)])
+            # Batched bench uses comma-separated lists for sweep parameters
+            # n_prompt: comma-separated prompt sizes
+            if isinstance(config.n_prompt, list):
+                cmd.extend(["-npp", ",".join(str(x) for x in config.n_prompt)])
+            else:
+                cmd.extend(["-npp", str(config.n_prompt)])
+            # n_gen: comma-separated generation sizes
+            if isinstance(config.n_gen, list):
+                cmd.extend(["-ntg", ",".join(str(x) for x in config.n_gen)])
+            else:
+                cmd.extend(["-ntg", str(config.n_gen)])
+            # Parallel levels: comma-separated list
+            if isinstance(config.parallel, list):
+                cmd.extend(["-npl", ",".join(str(x) for x in config.parallel)])
+            # Prompt shared across parallel sequences
+            if getattr(config, "pps", False):
+                cmd.append("-pps")
             # Speculative decoding
             if config.spec_type and config.spec_type != "none":
                 cmd.extend(["--spec-type", config.spec_type])

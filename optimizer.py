@@ -672,6 +672,7 @@ class BenchmarkOptimizer:
     ) -> List[Dict[str, Any]]:
         """
         Run llama-batched-bench for top configurations from llama-bench phase.
+        Batched bench runs a full sweep with comma-separated parameters in one command.
         
         Args:
             model_path: Path to model file
@@ -703,58 +704,104 @@ class BenchmarkOptimizer:
         if not top_configs:
             return []
         
+        # Collect sweep parameters from top configs
+        n_prompt_values = sorted(set(c.get("config", {}).get("n_prompt", 512) for c in top_configs))
+        n_gen_values = sorted(set(c.get("config", {}).get("n_gen", 128) for c in top_configs))
+        parallel_values = sorted(set(c.get("config", {}).get("parallel", 1) for c in top_configs))
+        
+        # Use first config as base (they should have similar ngl, batch, etc.)
+        base_config = top_configs[0].get("config", {})
+        
+        log.info(f"Running llama-batched-bench sweep: "
+                f"ngl={base_config.get('n_gpu_layers')}, batch={base_config.get('batch_size')}, "
+                f"npp={n_prompt_values}, ntg={n_gen_values}, npl={parallel_values}")
+        
+        try:
+            runner = BenchmarkRunner()
+            bench_result = runner.run_llama_batched_bench(model_path, {
+                "n_gpu_layers": base_config.get("n_gpu_layers", 99),
+                "batch_size": base_config.get("batch_size", 4096),
+                "ubatch_size": base_config.get("ubatch_size", 1024),
+                "threads": base_config.get("threads", 16),
+                "threads_batch": base_config.get("threads_batch", 16),
+                "cache_type_k": base_config.get("cache_type_k", "q4_0"),
+                "cache_type_v": base_config.get("cache_type_v", "q4_0"),
+                "flash_attn": base_config.get("flash_attn", "auto"),
+                "ctx_size": base_config.get("ctx_size", 4096),
+                "parallel": parallel_values,  # List for sweep
+                "n_prompt": n_prompt_values,  # List for sweep
+                "n_gen": n_gen_values,        # List for sweep
+                "timeout_sec": 600,
+            })
+            
+            # Parse batched bench results and map back to individual configs
+            batched_results = self._parse_batched_bench_results(
+                bench_result, top_configs, n_prompt_values, n_gen_values, parallel_values
+            )
+            
+            return batched_results
+                
+        except Exception as e:
+            log.warning(f"Batched bench phase failed: {e}")
+            # Return empty results for each top config
+            return [{"config": c.get("config", {}), "success": False, "error": str(e)} for c in top_configs]
+
+    def _parse_batched_bench_results(
+        self,
+        bench_result: Dict[str, Any],
+        top_configs: List[Dict[str, Any]],
+        n_prompt_values: List[int],
+        n_gen_values: List[int],
+        parallel_values: List[int]
+    ) -> List[Dict[str, Any]]:
+        """
+        Parse batched bench results and map to individual configs.
+        
+        Batched bench returns results for all combinations of npp, ntg, npl.
+        We need to map these back to the original configs from phase 1.
+        """
         batched_results = []
-        runner = BenchmarkRunner()
-        start_time = time.time()
+        
+        # Extract per-parallel results if available
+        parallel_results = bench_result.get("parallel_results", [])
         
         for i, result in enumerate(top_configs):
-            # Check time budget
-            elapsed = time.time() - start_time
-            if max_duration_sec > 0 and elapsed >= max_duration_sec * 0.3:
-                log.info(f"Batched bench time budget exceeded after {i} configs")
-                break
-            
             config = result.get("config", {})
+            target_npp = config.get("n_prompt", 512)
+            target_ntg = config.get("n_gen", 128)
+            target_npl = config.get("parallel", 1)
             
-            try:
-                log.info(f"Running llama-batched-bench {i+1}/{len(top_configs)}: "
-                        f"ngl={config.get('n_gpu_layers')}, batch={config.get('batch_size')}")
-                
-                # Run llama-batched-bench with multi-sequence parameters
-                bench_result = runner.run_llama_batched_bench(model_path, {
-                    "n_gpu_layers": config.get("n_gpu_layers", 99),
-                    "batch_size": config.get("batch_size", 4096),
-                    "ubatch_size": config.get("ubatch_size", 1024),
-                    "threads": config.get("threads", 16),
-                    "threads_batch": config.get("threads_batch", 16),
-                    "cache_type_k": config.get("cache_type_k", "q4_0"),
-                    "cache_type_v": config.get("cache_type_v", "q4_0"),
-                    "flash_attn": config.get("flash_attn", "auto"),
-                    "ctx_size": config.get("ctx_size", 4096),
-                    "parallel": config.get("parallel", 1),
-                    "n_prompt": config.get("n_prompt", 512),
-                    "n_gen": config.get("n_gen", 128),
-                    "repetitions": 2,
-                    "timeout_sec": 600,
-                })
-                
+            # Find matching result from batched bench sweep
+            matched = None
+            for pr in parallel_results:
+                if (pr.get("n_prompt") == target_npp and 
+                    pr.get("n_gen") == target_ntg and
+                    pr.get("parallel") == target_npl):
+                    matched = pr
+                    break
+            
+            if matched:
                 batched_results.append({
                     "config": config,
                     "success": True,
-                    "batched_throughput": bench_result.get("speed", 0),
+                    "batched_throughput": matched.get("throughput", 0),
                     "max_throughput": bench_result.get("max_throughput", 0),
-                    "optimal_parallel": bench_result.get("optimal_parallel", 1),
+                    "optimal_parallel": bench_result.get("optimal_parallel", target_npl),
                     "speed_pp": bench_result.get("speed_pp", []),
                     "speed_tg": bench_result.get("speed_tg", []),
                     "timestamp": time.time(),
                 })
-                
-            except Exception as e:
-                log.warning(f"Batched bench {i+1} failed: {e}")
+            else:
+                # No exact match, use overall metrics
                 batched_results.append({
                     "config": config,
-                    "success": False,
-                    "error": str(e),
+                    "success": True,
+                    "batched_throughput": bench_result.get("speed", bench_result.get("throughput", 0)),
+                    "max_throughput": bench_result.get("max_throughput", 0),
+                    "optimal_parallel": bench_result.get("optimal_parallel", target_npl),
+                    "speed_pp": bench_result.get("speed_pp", []),
+                    "speed_tg": bench_result.get("speed_tg", []),
+                    "timestamp": time.time(),
                 })
         
         return batched_results
