@@ -589,6 +589,15 @@ class BenchmarkRunner:
         if not parsed_objects:
             return {}
         
+        # For batched bench with JSONL output (multiple lines, one per parallel level),
+        # combine per-parallel results into single aggregated result
+        if is_batched and len(parsed_objects) > 1:
+            # Check if objects look like per-parallel results (have "parallel" key)
+            parallel_results = [obj for obj in parsed_objects if "parallel" in obj]
+            if len(parallel_results) == len(parsed_objects) and parallel_results:
+                # All objects are per-parallel results - combine them
+                return BenchmarkRunner._combine_batched_parallel_results(parallel_results)
+        
         # Aggregate metrics from all parsed objects
         aggregated = {}
         for obj in parsed_objects:
@@ -602,6 +611,52 @@ class BenchmarkRunner:
                     aggregated[k] = v
         
         return aggregated
+
+    @staticmethod
+    def _combine_batched_parallel_results(parallel_results: list[dict[str, Any]]) -> dict[str, Any]:
+        """Combine per-parallel JSONL results into aggregated batched bench metrics.
+        
+        Input format (JSONL from llama-batched-bench):
+        {"pp": 128, "tg": 128, "pl": 1, "speed_pp": 547.45, "speed_tg": 36.53, "speed": 68.50, ...}
+        
+        Output format: aggregated metrics with batch_throughput, pp_avg, tg_avg, etc.
+        """
+        if not parallel_results:
+            return {}
+        
+        # Sort by parallel level (pl)
+        parallel_results.sort(key=lambda x: x.get("pl", 0))
+        
+        # Find the result with maximum total speed (optimal parallel level)
+        best = max(parallel_results, key=lambda x: x.get("speed", 0))
+        
+        # Build combined result
+        # Use the optimal parallel level's metrics as the primary result
+        combined = {
+            "throughput": best.get("speed", 0),
+            "results": [
+                {
+                    "parallel": r.get("pl", 0),
+                    "throughput": r.get("speed", 0),
+                    "latency_p50": r.get("t_pp", 0) * 1000 if r.get("t_pp") else 0,
+                    "latency_p99": 0,
+                }
+                for r in parallel_results
+            ],
+        }
+        
+        # Copy latency metrics from best result
+        if "t_pp" in best:
+            combined["latency_p50"] = best["t_pp"] * 1000  # Convert to ms
+        
+        # Copy other fields from best result
+        for key in ["n_kv_max", "n_batch", "n_ubatch", "flash_attn", "is_pp_shared", 
+                    "n_gpu_layers", "n_threads", "n_threads_batch"]:
+            if key in best:
+                combined[key] = best[key]
+        
+        # Parse the combined result using existing logic
+        return BenchmarkRunner._parse_batched_json(combined)
 
     @staticmethod
     def _parse_regular_json(data: dict[str, Any]) -> dict[str, Any]:
@@ -653,11 +708,15 @@ class BenchmarkRunner:
 
     @staticmethod
     def _parse_batched_json(data: dict[str, Any]) -> dict[str, Any]:
-        """Parse JSON output from llama-batched-bench."""
+        """Parse JSON output from llama-batched-bench.
+        
+        Handles two formats:
+        1. JSONL output (one line per parallel level) - combined by _combine_batched_parallel_results
+        2. Aggregated JSON with "throughput" and "results" fields
+        """
         metrics = {}
 
-        # llama-batched-bench JSON output structure
-        # Contains batch throughput at different parallel levels
+        # Format 1: Aggregated JSON with "throughput" and "results" fields (legacy/combined format)
         if "throughput" in data:
             metrics["batch_throughput"] = data["throughput"]  # tokens/sec
         if "latency_p50" in data:
@@ -685,6 +744,27 @@ class BenchmarkRunner:
         for key in ["n_sequences", "n_tokens", "batch_size"]:
             if key in data:
                 metrics[key] = data[key]
+        
+        # Format 2: JSONL single line format (llama-batched-bench actual output)
+        # Keys: pp, tg, pl, speed_pp, speed_tg, speed, t_pp, t_tg, t, n_kv, etc.
+        if "speed" in data and "pl" in data:
+            # This is a single parallel level result
+            metrics["batch_throughput"] = data.get("speed", 0)  # Total speed (all tokens/sec)
+            metrics["pp_avg"] = data.get("speed_pp", 0)        # Prompt processing speed
+            metrics["tg_avg"] = data.get("speed_tg", 0)        # Text generation speed
+            
+            # Latency (convert from seconds to ms if needed)
+            if "t_pp" in data:
+                metrics["latency_p50"] = data["t_pp"] * 1000  # Convert to ms
+            if "t_tg" in data:
+                # Approximate generation latency per token
+                pass
+            
+            # Store parallel level info
+            metrics["parallel"] = data.get("pl", 1)
+            metrics["n_prompt"] = data.get("pp", 0)
+            metrics["n_gen"] = data.get("tg", 0)
+            metrics["n_kv"] = data.get("n_kv", 0)
 
         return metrics
 
