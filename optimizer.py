@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -857,20 +858,31 @@ class BenchmarkOptimizer:
             if ctx not in ctx_sizes:
                 ctx_sizes.append(ctx)
         
-        # Batch sizes - filter by available memory
+        # Batch sizes to test - focus on practical sizes for agentic coding (large context)
+        # Filter by estimated VRAM: batch * ctx * 2 bytes * num_layers ≈ VRAM needed
+        # For 32 layers, head_dim=128, n_kv_heads=8: KV per token = 2 * 128 * 8 = 2048 bytes
+        # Total KV = batch * ctx * 2048 bytes (for non-shared prompt) or ctx * 2048 + batch * ctx * 2048 (shared)
+        # We'll use a conservative estimate: batch * ctx * 4 KB = GB
         batch_sizes = [8192, 16384, 32768]
         filtered_batch = []
         for bs in batch_sizes:
-            # Rough estimate: batch * ctx * 2 bytes (KV cache) / 1e9 = GB
+            # Conservative VRAM estimate: batch * ctx * 4 KB (covers KV cache for all layers)
             for ctx in ctx_sizes:
-                est_gb = (bs * ctx * 2) / 1e9
-                if est_gb <= total_vram * 0.8 if total_vram > 0 else est_gb <= mem_total * 0.5:
-                    if bs not in filtered_batch:
-                        filtered_batch.append(bs)
-                    break
-        batch_sizes = filtered_batch or [8192]
+                est_gb = (bs * ctx * 4) / 1e9
+                if total_vram > 0:
+                    if est_gb <= total_vram * 0.7:  # Leave headroom for model weights
+                        if bs not in filtered_batch:
+                            filtered_batch.append(bs)
+                        break
+                else:
+                    # No GPU - use system RAM
+                    if est_gb <= mem_total * 0.3:
+                        if bs not in filtered_batch:
+                            filtered_batch.append(bs)
+                        break
+        batch_sizes = filtered_batch or [4096]  # Fallback to smaller batch
         
-        # Threads to test
+        # Threads to test (user specified 12 and 16)
         threads_options = [12, 16]
         threads_options = [t for t in threads_options if t <= cpu_logical]
         
@@ -884,41 +896,61 @@ class BenchmarkOptimizer:
             "n_gpu_layers": 99,
             "ubatch_size": 4096,
             "flash_attn": "auto",
-            "threads_batch": 16,  # Fixed, same as threads
         }
         
         # Native sweep parameters for batched-bench
+        # User's use case: ~30k context, so npp up to 32768
         sweep_npp = [8192, 16384, 32768]
         sweep_ntg = [128, 256, 512]
         sweep_npl = [1, 4]  # auto (kv-unified) handled separately
         
-        # Filter sweep params by context size
+        # Filter sweep params by max context size
         sweep_npp = [p for p in sweep_npp if p <= max(ctx_sizes)]
         
-        # Build run configurations
+        # Build FOCUSED run configurations (~10-15 runs)
+        # Strategy: Test each ctx_size with a few representative batch/thread/cache combos
         run_configs = []
+        
         for ctx in ctx_sizes:
-            for batch in batch_sizes:
-                for threads in threads_options:
-                    for cache_k, cache_v in cache_types:
-                        # Skip if batch > ctx
-                        if batch > ctx:
-                            continue
-                        # Skip if estimated VRAM exceeds limit
-                        if total_vram > 0:
-                            est_gb = (batch * ctx * 2) / 1e9
-                            if est_gb > total_vram * 0.9:
-                                continue
-                        config = {
-                            **fixed_params,
-                            "ctx_size": ctx,
-                            "batch_size": batch,
-                            "threads": threads,
-                            "threads_batch": threads,
-                            "cache_type_k": cache_k,
-                            "cache_type_v": cache_v,
-                        }
-                        run_configs.append(config)
+            # For each context size, test a focused set of combinations
+            # Prioritize: max batch that fits, then half batch
+            valid_batches = [b for b in batch_sizes if b <= ctx]
+            if not valid_batches:
+                continue
+            
+            max_batch = max(valid_batches)
+            mid_batch = valid_batches[len(valid_batches) // 2] if len(valid_batches) > 1 else max_batch
+            
+            # Representative combinations per ctx size
+            ctx_configs = [
+                # 1. Max batch, 16 threads, f16 cache (best performance)
+                {"batch_size": max_batch, "threads": 16, "cache_type_k": "f16", "cache_type_v": "f16"},
+                # 2. Max batch, 16 threads, q4_0 cache (memory efficient)
+                {"batch_size": max_batch, "threads": 16, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
+                # 3. Mid batch, 16 threads, f16 cache
+                {"batch_size": mid_batch, "threads": 16, "cache_type_k": "f16", "cache_type_v": "f16"},
+                # 4. Mid batch, 12 threads, f16 cache (test thread scaling)
+                {"batch_size": mid_batch, "threads": 12, "cache_type_k": "f16", "cache_type_v": "f16"},
+            ]
+            
+            # Add q8_0 for high VRAM
+            if total_vram >= 16:
+                ctx_configs.append({"batch_size": max_batch, "threads": 16, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
+            
+            # Add configs for this ctx_size
+            for combo in ctx_configs:
+                if combo["threads"] > cpu_logical:
+                    continue
+                config = {
+                    **fixed_params,
+                    "ctx_size": ctx,
+                    "batch_size": combo["batch_size"],
+                    "threads": combo["threads"],
+                    "threads_batch": combo["threads"],
+                    "cache_type_k": combo["cache_type_k"],
+                    "cache_type_v": combo["cache_type_v"],
+                }
+                run_configs.append(config)
         
         # Deduplicate
         seen = set()
@@ -932,7 +964,7 @@ class BenchmarkOptimizer:
         run_configs = unique_configs
         log.info(f"Deep sweep: {len(run_configs)} batched-bench runs planned")
         
-        # Run batched-bench for each config
+        # Run batched-bench for each config with per-run sweep parameters
         all_results = []
         runner = BenchmarkRunner()
         start_time = time.time()
@@ -942,16 +974,40 @@ class BenchmarkOptimizer:
                 log.info(f"Deep sweep time limit reached ({max_duration_sec}s), stopping")
                 break
             
+            ctx = config["ctx_size"]
+            batch = config["batch_size"]
+            
+            # Filter sweep parameters per run to ensure KV cache fits in context
+            # For llama-batched-bench: n_kv = batch * (npp + ntg) * npl (prompt not shared)
+            # or n_kv = npp + batch * ntg * npl (prompt shared, -pps)
+            # We'll use conservative estimate without -pps
+            
+            # Max npp for this ctx and batch (with npl=4, ntg=128 minimum)
+            max_npp = max(512, (ctx // (batch * 4)) - 512) if batch > 0 else ctx
+            max_npp = min(max_npp, ctx)  # Can't exceed context
+            
+            # Filter sweep params for this run
+            run_npp = [p for p in sweep_npp if p <= max_npp]
+            run_ntg = [p for p in sweep_ntg if p <= 512]  # Keep reasonable generation sizes
+            run_npl = [p for p in sweep_npl if p <= 4]
+            
+            if not run_npp:
+                run_npp = [min(512, ctx)]
+            if not run_ntg:
+                run_ntg = [128]
+            if not run_npl:
+                run_npl = [1]
+            
             log.info(f"Deep sweep run {i+1}/{len(run_configs)}: "
-                    f"ctx={config['ctx_size']}, batch={config['batch_size']}, "
-                    f"threads={config['threads']}, cache={config['cache_type_k']}")
+                    f"ctx={ctx}, batch={batch}, threads={config['threads']}, cache={config['cache_type_k']}, "
+                    f"sweep: npp={run_npp}, ntg={run_ntg}, npl={run_npl}")
             
             try:
                 result = runner.run_llama_batched_bench(model_path, {
                     **config,
-                    "n_prompt": sweep_npp,
-                    "n_gen": sweep_ntg,
-                    "parallel": sweep_npl,
+                    "n_prompt": run_npp,
+                    "n_gen": run_ntg,
+                    "parallel": run_npl,
                     "timeout_sec": 600,
                 })
                 
@@ -1020,11 +1076,47 @@ class BenchmarkOptimizer:
         return summary
     
     def _get_model_max_context(self, model_path: str, hardware_info: Dict[str, Any]) -> int:
-        """Extract max context size from GGUF model metadata using llama-cli --dump-gguf."""
-        import subprocess
+        """Extract max context size from GGUF model metadata.
+        
+        Tries in order:
+        1. Python gguf library (most reliable, no binary needed)
+        2. llama-cli --dump-gguf (if supported by build)
+        3. Filename parsing
+        4. File-size heuristic
+        """
         import re
         
-        # Try to read context length from GGUF metadata using llama-cli
+        # Method 1: Try Python gguf library (most reliable)
+        try:
+            import gguf
+            reader = gguf.GGUFReader(model_path)
+            # Look for context length fields
+            context_fields = [
+                "context_length",
+                "llama.context_length",
+                "qwen.context_length",
+                "rope.max_position_embeddings",
+            ]
+            for field in context_fields:
+                for tensor in reader.tensors:
+                    if tensor.name == field:
+                        ctx = int(tensor.data[0])
+                        if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                            log.info(f"Found model max context from GGUF metadata (python): {ctx} (field: {field})")
+                            return ctx
+                # Also check metadata fields
+                if hasattr(reader, 'fields') and field in reader.fields:
+                    ctx = int(reader.fields[field].parts[0][0])
+                    if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                        log.info(f"Found model max context from GGUF metadata (python): {ctx} (field: {field})")
+                        return ctx
+            log.warning(f"Could not find context_length in GGUF metadata via python library")
+        except ImportError:
+            log.debug("gguf Python library not available")
+        except Exception as e:
+            log.warning(f"Failed to read GGUF metadata via python: {e}")
+        
+        # Method 2: Try llama-cli --dump-gguf
         if LLAMA_CLI and Path(LLAMA_CLI).exists():
             try:
                 # Run llama-cli with --dump-gguf to get all metadata
@@ -1048,7 +1140,6 @@ class BenchmarkOptimizer:
                 if result.returncode == 0:
                     output = result.stdout
                     # Parse for context length fields
-                    # Look for: context_length, qwen.context_length, llama.context_length, rope.max_position_embeddings
                     patterns = [
                         r'context_length\s*=\s*(\d+)',
                         r'llama\.context_length\s*=\s*(\d+)',
@@ -1073,7 +1164,7 @@ class BenchmarkOptimizer:
             except Exception as e:
                 log.warning(f"Failed to run llama-cli --dump-gguf: {e}")
         
-        # Fallback: try to extract from filename
+        # Method 3: Fallback - try to extract from filename
         filename = os.path.basename(model_path).lower()
         
         # Pattern: 32k, 64k, 128k, 256k, etc.
@@ -1088,7 +1179,7 @@ class BenchmarkOptimizer:
             if val in [4096, 8192, 16384, 32768, 65536, 131072, 262144]:
                 return val
         
-        # Default based on common model sizes
+        # Method 4: Default based on common model sizes
         file_size_gb = 0
         try:
             file_size_gb = os.path.getsize(model_path) / (1024**3)
