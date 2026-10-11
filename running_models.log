@@ -396,3 +396,9 @@
 {"time": "2026-10-07T16:02:38Z", "action": "start", "model": "Phi-3-mini-4k-instruct-q4", "port": 11000, "pid": 38712, "status": "running"}
 {"time": "2026-10-08T15:30:20Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 45060, "status": "running"}
 {"time": "2026-10-08T22:09:32Z", "action": "start", "model": "Phi-3-mini-4k-instruct-q4", "port": 11000, "pid": 39240, "status": "running"}
+{"time": "2026-10-11T04:19:58Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 37396, "status": "running"}
+{"time": "2026-10-11T15:32:07Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 39044, "status": "running"}
+{"time": "2026-10-11T21:34:38Z", "action": "download", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 0, "pid": null, "status": "completed (4623524448 bytes)"}
+{"time": "2026-10-11T22:23:29Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 221596, "status": "exited_early"}
+{"time": "2026-10-11T22:30:14Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 222272, "status": "exited_early"}
+{"time": "2026-10-11T22:32:52Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 222726, "status": "exited_early"}
