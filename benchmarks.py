@@ -197,12 +197,15 @@ class BenchmarkRunner:
         cmd.extend(["-ub", str(config.ubatch_size)])
         cmd.extend(["-t", str(config.threads)])
         # Cache types: llama-bench uses short forms -ctk/-ctv, batched-bench uses --cache-type-k/v
+        # Normalize cache type: accept both "fp16" and "f16" (some models saved with old name)
+        cache_k = "f16" if config.cache_type_k == "fp16" else config.cache_type_k
+        cache_v = "f16" if config.cache_type_v == "fp16" else config.cache_type_v
         if is_batched:
-            cmd.extend(["--cache-type-k", config.cache_type_k])
-            cmd.extend(["--cache-type-v", config.cache_type_v])
+            cmd.extend(["--cache-type-k", cache_k])
+            cmd.extend(["--cache-type-v", cache_v])
         else:
-            cmd.extend(["-ctk", config.cache_type_k])
-            cmd.extend(["-ctv", config.cache_type_v])
+            cmd.extend(["-ctk", cache_k])
+            cmd.extend(["-ctv", cache_v])
         # Flash attention - use long form for both
         cmd.extend(["--flash-attn", config.flash_attn])
 
