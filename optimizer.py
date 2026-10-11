@@ -806,6 +806,253 @@ class BenchmarkOptimizer:
         
         return batched_results
         
+    def deep_sweep(
+        self,
+        model_path: str,
+        max_duration_sec: int = 0,  # 0 = no limit
+        optimization_target: str = 'throughput',
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Run a focused deep sweep using llama-batched-bench native sweep capability.
+        
+        Designed for agentic coding use case (~30k context):
+        - Tests ctx_size at max, max/2, max/4 of model's max context
+        - Tests batch_size [8192, 16384, 32768] (filtered by available memory)
+        - Tests threads [12, 16]
+        - Tests cache_type [f16, q4_0]
+        - Uses native batched-bench sweep for npp, ntg, npl
+        
+        Args:
+            model_path: Path to model file
+            max_duration_sec: Max time (0 = unlimited)
+            optimization_target: Target metric for selecting best result
+            progress_callback: Optional callback(run_idx, total_runs, config, result)
+            
+        Returns:
+            Dictionary with all sweep results and best configuration
+        """
+        import os
+        import time
+        
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        
+        # Get hardware info
+        hardware_info = get_hardware_info()
+        total_vram = hardware_info.get("total_gpu_vram_gb", 0)
+        cpu_logical = hardware_info.get("cpu_count_logical", 16)
+        cpu_physical = hardware_info.get("cpu_count_physical", 8)
+        mem_total = hardware_info.get("memory_total_gb", 32)
+        
+        # Get model max context size
+        model_ctx = self._get_model_max_context(model_path, hardware_info)
+        log.info(f"Model max context size: {model_ctx}")
+        
+        # Context sizes to test: max, max/2, max/4 (minimum 4096)
+        ctx_sizes = []
+        for divisor in [1, 2, 4]:
+            ctx = max(4096, model_ctx // divisor)
+            if ctx not in ctx_sizes:
+                ctx_sizes.append(ctx)
+        
+        # Batch sizes - filter by available memory
+        batch_sizes = [8192, 16384, 32768]
+        filtered_batch = []
+        for bs in batch_sizes:
+            # Rough estimate: batch * ctx * 2 bytes (KV cache) / 1e9 = GB
+            for ctx in ctx_sizes:
+                est_gb = (bs * ctx * 2) / 1e9
+                if est_gb <= total_vram * 0.8 if total_vram > 0 else est_gb <= mem_total * 0.5:
+                    if bs not in filtered_batch:
+                        filtered_batch.append(bs)
+                    break
+        batch_sizes = filtered_batch or [8192]
+        
+        # Threads to test
+        threads_options = [12, 16]
+        threads_options = [t for t in threads_options if t <= cpu_logical]
+        
+        # Cache types to test
+        cache_types = [("f16", "f16"), ("q4_0", "q4_0")]
+        if total_vram >= 16:
+            cache_types.insert(0, ("q8_0", "q8_0"))  # Add q8_0 for high VRAM
+        
+        # Fixed parameters
+        fixed_params = {
+            "n_gpu_layers": 99,
+            "ubatch_size": 4096,
+            "flash_attn": "auto",
+            "threads_batch": 16,  # Fixed, same as threads
+        }
+        
+        # Native sweep parameters for batched-bench
+        sweep_npp = [8192, 16384, 32768]
+        sweep_ntg = [128, 256, 512]
+        sweep_npl = [1, 4]  # auto (kv-unified) handled separately
+        
+        # Filter sweep params by context size
+        sweep_npp = [p for p in sweep_npp if p <= max(ctx_sizes)]
+        
+        # Build run configurations
+        run_configs = []
+        for ctx in ctx_sizes:
+            for batch in batch_sizes:
+                for threads in threads_options:
+                    for cache_k, cache_v in cache_types:
+                        # Skip if batch > ctx
+                        if batch > ctx:
+                            continue
+                        # Skip if estimated VRAM exceeds limit
+                        if total_vram > 0:
+                            est_gb = (batch * ctx * 2) / 1e9
+                            if est_gb > total_vram * 0.9:
+                                continue
+                        config = {
+                            **fixed_params,
+                            "ctx_size": ctx,
+                            "batch_size": batch,
+                            "threads": threads,
+                            "threads_batch": threads,
+                            "cache_type_k": cache_k,
+                            "cache_type_v": cache_v,
+                        }
+                        run_configs.append(config)
+        
+        # Deduplicate
+        seen = set()
+        unique_configs = []
+        for config in run_configs:
+            key = tuple(sorted(config.items()))
+            if key not in seen:
+                seen.add(key)
+                unique_configs.append(config)
+        
+        run_configs = unique_configs
+        log.info(f"Deep sweep: {len(run_configs)} batched-bench runs planned")
+        
+        # Run batched-bench for each config
+        all_results = []
+        runner = BenchmarkRunner()
+        start_time = time.time()
+        
+        for i, config in enumerate(run_configs):
+            if max_duration_sec > 0 and (time.time() - start_time) >= max_duration_sec:
+                log.info(f"Deep sweep time limit reached ({max_duration_sec}s), stopping")
+                break
+            
+            log.info(f"Deep sweep run {i+1}/{len(run_configs)}: "
+                    f"ctx={config['ctx_size']}, batch={config['batch_size']}, "
+                    f"threads={config['threads']}, cache={config['cache_type_k']}")
+            
+            try:
+                result = runner.run_llama_batched_bench(model_path, {
+                    **config,
+                    "n_prompt": sweep_npp,
+                    "n_gen": sweep_ntg,
+                    "parallel": sweep_npl,
+                    "timeout_sec": 600,
+                })
+                
+                # Result contains aggregated metrics from sweep
+                run_result = {
+                    "config": config,
+                    "success": True,
+                    "batched_throughput": result.get("batch_throughput", 0),
+                    "pp_avg": result.get("pp_avg", 0),
+                    "tg_avg": result.get("tg_avg", 0),
+                    "latency_p50": result.get("latency_p50"),
+                    "parallel_results": result.get("parallel_results", []),
+                    "timestamp": time.time(),
+                }
+                all_results.append(run_result)
+                
+                if progress_callback:
+                    progress_callback(i+1, len(run_configs), config, run_result)
+                    
+            except Exception as e:
+                log.warning(f"Deep sweep run {i+1} failed: {e}")
+                all_results.append({
+                    "config": config,
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": time.time(),
+                })
+        
+        # Find best result by optimization target
+        successful = [r for r in all_results if r.get("success", False)]
+        best_config = {}
+        best_score = -1
+        
+        if successful:
+            if optimization_target == 'throughput':
+                best_result = max(successful, key=lambda x: x.get("batched_throughput", 0))
+            elif optimization_target == 'latency':
+                best_result = min(successful, key=lambda x: x.get("latency_p50", float('inf')))
+            else:  # balanced
+                best_result = max(successful, key=lambda x: 
+                    (x.get("pp_avg", 0) * x.get("batched_throughput", 0)) ** 0.5 
+                    if x.get("pp_avg", 0) > 0 and x.get("batched_throughput", 0) > 0 else 0)
+            
+            best_config = best_result.get("config", {})
+            best_score = best_result.get("batched_throughput", 0)
+        
+        # Prepare summary
+        elapsed = time.time() - start_time
+        summary = {
+            "model_path": model_path,
+            "model_max_context": model_ctx,
+            "total_runs": len(run_configs),
+            "completed_runs": len([r for r in all_results if r.get("success", False)]),
+            "failed_runs": len([r for r in all_results if not r.get("success", False)]),
+            "elapsed_sec": elapsed,
+            "optimization_target": optimization_target,
+            "best_config": best_config,
+            "best_score": best_score,
+            "all_results": all_results,
+        }
+        
+        log.info(f"Deep sweep completed in {elapsed:.1f}s: "
+                f"{summary['completed_runs']}/{summary['total_runs']} successful, "
+                f"best: {best_config} (score: {best_score:.1f})")
+        
+        return summary
+    
+    def _get_model_max_context(self, model_path: str, hardware_info: Dict[str, Any]) -> int:
+        """Extract max context size from model filename or metadata."""
+        import re
+        
+        # Try to extract from filename (e.g., "model-32k.gguf", "model-128k.gguf")
+        filename = os.path.basename(model_path).lower()
+        
+        # Pattern: 32k, 64k, 128k, 256k, etc.
+        match = re.search(r'(\d+)k', filename)
+        if match:
+            return int(match.group(1)) * 1024
+        
+        # Pattern: 32768, 65536, 131072
+        match = re.search(r'(\d{5,})', filename)
+        if match:
+            val = int(match.group(1))
+            if val in [4096, 8192, 16384, 32768, 65536, 131072, 262144]:
+                return val
+        
+        # Default based on common model sizes
+        file_size_gb = 0
+        try:
+            file_size_gb = os.path.getsize(model_path) / (1024**3)
+        except OSError:
+            pass
+        
+        if file_size_gb >= 15:  # 70B+
+            return 131072
+        elif file_size_gb >= 8:  # 30B+
+            return 65536
+        elif file_size_gb >= 4:  # 9B-14B
+            return 32768
+        else:
+            return 32768  # Default
+
     def select_optimal_config(
         self, 
         results: List[Dict[str, Any]], 

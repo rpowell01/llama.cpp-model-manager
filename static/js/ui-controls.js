@@ -285,6 +285,9 @@ async function renderPanelProperties(data, modelName) {
       <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
         📊 View Historical Benchmark Results
       </button>
+      <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        🔬 Deep Sweep (Batched Bench)
+      </button>
     </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
@@ -1061,6 +1064,14 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     });
   }
 
+  // Attach deep sweep button listener
+  const deepSweepBtn = document.getElementById(`deep-sweep-${modelSafeId}`);
+  if (deepSweepBtn) {
+    deepSweepBtn.addEventListener("click", async () => {
+      await runDeepSweep(modelName, modelSafeId, content);
+    });
+  }
+
   // Shared optimization logic
   async function runOptimization(modelName, modelSafeId, content, useEmpirical) {
     const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
@@ -1370,6 +1381,274 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         btn.textContent = "📊 View Historical Benchmark Results";
       }
     }
+  }
+
+  // Deep sweep using llama-batched-bench native sweep capability
+  async function runDeepSweep(modelName, modelSafeId, content) {
+    const btn = document.getElementById(`deep-sweep-${modelSafeId}`);
+    const statusEl = document.getElementById(`optimize-status-${modelSafeId}`);
+    const progressContainer = document.getElementById(`optimize-progress-${modelSafeId}`);
+    const progressText = document.getElementById(`optimize-progress-text-${modelSafeId}`);
+    const progressBarContainer = document.getElementById(`optimize-progress-bar-container-${modelSafeId}`);
+    const progressBar = document.getElementById(`optimize-progress-bar-${modelSafeId}`);
+    const detailsEl = document.getElementById(`optimize-details-${modelSafeId}`);
+    const cancelBtn = document.getElementById(`optimize-cancel-${modelSafeId}`);
+    const maxDurationInput = document.getElementById(`max-duration-${modelSafeId}`);
+    const targetSelect = document.getElementById(`optimize-target-${modelSafeId}`);
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "🔬 Deep Sweep Running…";
+    }
+
+    if (statusEl) {
+      statusEl.textContent = "";
+      statusEl.style.color = "var(--muted)";
+    }
+
+    // Show progress UI
+    progressContainer.style.display = "block";
+    progressBarContainer.style.display = "block";
+    detailsEl.style.display = "block";
+    progressText.textContent = "Initializing deep sweep...";
+    progressBar.style.width = "0%";
+    detailsEl.textContent = "";
+
+    // Create abort controller for cancellation
+    const abortController = new AbortController();
+    let isCancelled = false;
+
+    // Setup cancel button
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        isCancelled = true;
+        abortController.abort();
+        progressText.textContent = "Cancelling...";
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = "Cancelling...";
+      };
+    }
+
+    let progressInterval = null;
+    const startTime = Date.now();
+
+    try {
+      // Build request body
+      const requestBody = {
+        model: modelName,
+        max_duration_sec: parseInt(maxDurationInput.value, 10) || 0,
+        target: targetSelect.value || "throughput",
+      };
+
+      const fetchPromise = fetch("/api/benchmark-deep-sweep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal: abortController.signal,
+      });
+
+      // Progress polling for deep sweep
+      let progressIntervalMs = 2000;
+      let lastCompleted = 0;
+
+      progressInterval = setInterval(() => {
+        if (isCancelled) return;
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        progressText.textContent = `Running deep sweep... (${elapsed}s elapsed)`;
+        detailsEl.textContent = "Each run tests 27 combinations (npp × ntg × npl) via llama-batched-bench native sweep";
+        // Estimate progress - deep sweep takes ~2-5 min per run
+        // We can't know exact progress without server-side reporting
+      }, progressIntervalMs);
+
+      const response = await fetchPromise;
+
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Deep sweep failed");
+      }
+
+      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      progressBar.style.width = "100%";
+      progressText.textContent = "Deep sweep complete!";
+      detailsEl.textContent = `Completed ${result.completed_runs}/${result.total_runs} runs in ${elapsedSec}s`;
+
+      // Build status message
+      const bestConfig = result.best_config || {};
+      const bestScore = result.best_score || 0;
+      const throughputStr = bestScore > 0 ? `Best throughput: ${bestScore.toFixed(1)} tok/s` : "";
+      const configStr = bestConfig ? 
+        ` (ctx=${bestConfig.ctx_size}, batch=${bestConfig.batch_size}, threads=${bestConfig.threads}, cache=${bestConfig.cache_type_k})` : "";
+
+      let statusMsg = `Deep sweep complete! ${throughputStr}${configStr}. ` +
+        `${result.completed_runs}/${result.total_runs} successful. Duration: ${elapsedSec}s.`;
+
+      if (statusEl) {
+        statusEl.textContent = statusMsg;
+        statusEl.style.color = result.failed_runs > 0 ? "var(--orange)" : "var(--green)";
+      }
+
+      // Show summary with option to view details
+      const viewDetails = confirm(
+        `${statusMsg}\n\nClick OK to view detailed sweep results, or Cancel to continue.`
+      );
+      if (viewDetails) {
+        showDeepSweepResultsModal(result);
+      }
+
+    } catch (err) {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+
+      console.error("Deep sweep failed", err);
+
+      if (err.name === "AbortError" || isCancelled) {
+        if (statusEl) {
+          statusEl.textContent = "Deep sweep cancelled by user";
+          statusEl.style.color = "var(--orange)";
+        }
+        progressText.textContent = "Cancelled";
+        detailsEl.textContent = "";
+      } else {
+        if (statusEl) {
+          statusEl.textContent = `Error: ${err.message}`;
+          statusEl.style.color = "var(--red)";
+        }
+        progressText.textContent = `Error: ${err.message}`;
+        detailsEl.textContent = "";
+        alert(`Deep sweep failed: ${err.message}`);
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🔬 Deep Sweep (Batched Bench)";
+      }
+      progressContainer.style.display = "none";
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = "Cancel";
+    }
+  }
+
+  // Modal to display deep sweep results
+  function showDeepSweepResultsModal(result) {
+    // Remove existing modal if any
+    const existingModal = document.getElementById("deep-sweep-results-modal");
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    const modal = document.createElement("div");
+    modal.id = "deep-sweep-results-modal";
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+    `;
+
+    const allResults = result.all_results || [];
+    const successfulResults = allResults.filter(r => r.success);
+    const failedResults = allResults.filter(r => !r.success);
+
+    // Sort by batched_throughput descending
+    successfulResults.sort((a, b) => (b.batched_throughput || 0) - (a.batched_throughput || 0));
+
+    const resultsHtml = successfulResults.length > 0 ? `
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 1rem;">
+        <thead>
+          <tr style="background: var(--surface2);">
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Rank</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Throughput (tok/s)</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">PP Avg</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">TG Avg</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Latency P50 (ms)</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Ctx Size</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Batch</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Threads</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Cache</th>
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Parallel Sweep</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${successfulResults.map((r, idx) => {
+            const c = r.config || {};
+            const pr = r.parallel_results || [];
+            const sweepInfo = pr.length > 0 ? 
+              pr.map(p => `pl=${p.parallel}:${p.throughput?.toFixed(0) || 0}`).join(", ") :
+              "N/A";
+            const isBest = idx === 0;
+            const rowStyle = isBest ? "background: rgba(0,200,0,0.1); font-weight: bold;" : "";
+            return `
+            <tr style="${rowStyle}">
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${isBest ? "🥇 1" : idx + 1}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.batched_throughput || 0).toFixed(1)}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.pp_avg || 0).toFixed(1)}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.tg_avg || 0).toFixed(1)}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${r.latency_p50 ? r.latency_p50.toFixed(1) : "N/A"}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.ctx_size || "N/A"}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.batch_size || "N/A"}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.threads || "N/A"}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.cache_type_k || "N/A"}</td>
+              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${sweepInfo}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    ` : "<p>No successful results.</p>";
+
+    const failedHtml = failedResults.length > 0 ? `
+      <div style="margin-top: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px;">
+        <strong>Failed runs (${failedResults.length}):</strong>
+        <ul style="margin: 0.5rem 0; font-size: 0.8rem;">
+          ${failedResults.map(r => `<li>${r.config?.ctx_size || "?"}ctx/${r.config?.batch_size || "?"}b/${r.config?.threads || "?"}t/${r.config?.cache_type_k || "?"} - ${r.error || "Unknown error"}</li>`).join("")}
+        </ul>
+      </div>
+    ` : "";
+
+    modal.innerHTML = `
+      <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2 style="margin: 0;">Deep Sweep Results: ${result.model || "Model"}</h2>
+          <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+        </div>
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+          <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
+          <strong>Target:</strong> ${result.optimization_target || "N/A"} |
+          <strong>Total runs:</strong> ${result.total_runs} | 
+          <strong>Successful:</strong> ${result.completed_runs} | 
+          <strong>Failed:</strong> ${result.failed_runs} | 
+          <strong>Elapsed:</strong> ${result.elapsed_sec ? result.elapsed_sec.toFixed(1) + "s" : "N/A"}
+        </div>
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+          <strong>Best configuration:</strong>
+          <pre style="margin: 0.5rem 0; font-size: 0.75rem;">${JSON.stringify(result.best_config || {}, null, 2)}</pre>
+        </div>
+        ${resultsHtml}
+        ${failedHtml}
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on backdrop click
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e) => {
+      if (e.key === "Escape") {
+        modal.remove();
+        document.removeEventListener("keydown", handleEscape);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
   }
 
   // Modal to display benchmark results

@@ -887,6 +887,128 @@ def api_benchmark_optimize():
         return jsonify({"error": f"Optimization failed: {str(e)}"}), 500
 
 
+# Deep sweep endpoint
+@system_bp.route("/api/benchmark-deep-sweep", methods=["POST"])
+def api_benchmark_deep_sweep():
+    """
+    Run a focused deep sweep using llama-batched-bench native sweep capability.
+    
+    Designed for agentic coding use case (large context ~30k):
+    - Tests ctx_size at max, max/2, max/4 of model's max context
+    - Tests batch_size [8192, 16384, 32768] (filtered by available memory)
+    - Tests threads [12, 16]
+    - Tests cache_type [f16, q4_0, q8_0]
+    - Uses native batched-bench sweep for npp, ntg, npl
+    
+    Request body:
+        {
+            "model": "string",
+            "max_duration_sec": int,
+            "target": "throughput"|"latency"|"balanced"
+        }
+    
+    Response:
+        {
+            "model_path": "string",
+            "model_max_context": int,
+            "total_runs": int,
+            "completed_runs": int,
+            "failed_runs": int,
+            "elapsed_sec": float,
+            "optimization_target": "string",
+            "best_config": {...},
+            "best_score": float,
+            "all_results": [...]
+        }
+    """
+    from flask import request
+    import time as time_module
+    from optimizer import BenchmarkOptimizer
+    import config
+    
+    if not config.BENCHMARK_ENABLED:
+        return jsonify({"error": "Benchmark optimization is disabled. Set BENCHMARK_ENABLED=true to enable."}), 403
+    
+    data = request.get_json(force=True) or {}
+    
+    model_name_raw = data.get("model")
+    if model_name_raw is None:
+        return jsonify({"error": "Missing model name"}), 400
+    try:
+        model_name = str(model_name_raw).strip()
+    except Exception:
+        return jsonify({"error": "Model name must be a string"}), 400
+    
+    if not model_name:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    target_raw = data.get("target", "throughput")
+    try:
+        target = str(target_raw).lower()
+    except Exception:
+        return jsonify({"error": "Target must be a string"}), 400
+    
+    if target not in ("throughput", "latency", "balanced"):
+        return jsonify({"error": f"Invalid target '{target}'. Must be 'throughput', 'latency', or 'balanced'"}), 400
+    
+    max_duration_sec = data.get("max_duration_sec", 0)
+    if type(max_duration_sec) is not int or max_duration_sec < 0 or max_duration_sec > 7200:
+        return jsonify({"error": "max_duration_sec must be an integer between 0 and 7200 (0 = no timeout)"}), 400
+    
+    models = get_models()
+    model_info = models.get(model_name)
+    
+    if not model_info:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    
+    model_path_str = model_info.get("model_path", "")
+    if not model_path_str:
+        return jsonify({"error": f"Model '{model_name}' has no associated file path"}), 400
+    
+    try:
+        from config import resolve_model_path
+        model_path = resolve_model_path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"error": f"Model file not found: {model_path}"}), 404
+    except Exception as e:
+        log.exception(f"Failed to resolve model path for '{model_name}'")
+        return jsonify({"error": f"Failed to resolve model path: {e}"}), 500
+    
+    try:
+        start_time = time_module.time()
+        
+        log.info(f"Starting deep sweep for model '{model_name}' (target: {target}, max_duration: {max_duration_sec}s)")
+        
+        optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
+        
+        result = optimizer.deep_sweep(
+            str(model_path),
+            max_duration_sec=max_duration_sec,
+            optimization_target=target,
+        )
+        
+        duration_sec = time_module.time() - start_time
+        
+        response = {
+            **result,
+            "model": model_name,
+            "duration_sec": round(duration_sec, 2),
+        }
+        
+        log.info(f"Deep sweep completed for '{model_name}' in {duration_sec:.2f}s: "
+                f"{result['completed_runs']}/{result['total_runs']} successful, "
+                f"best: {result['best_config']}")
+        
+        return jsonify(response)
+        
+    except FileNotFoundError as e:
+        log.exception(f"Model file not found for '{model_name}'")
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        log.exception(f"Deep sweep failed for '{model_name}'")
+        return jsonify({"error": f"Deep sweep failed: {str(e)}"}), 500
+
+
 @system_bp.route("/api/benchmark-history", methods=["POST"])
 def api_benchmark_history():
     """
