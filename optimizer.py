@@ -1090,27 +1090,25 @@ class BenchmarkOptimizer:
         try:
             import gguf
             reader = gguf.GGUFReader(model_path)
-            # Look for context length fields
-            context_fields = [
+            # All metadata lives in reader.metadata_kv (dict-like)
+            meta = reader.metadata_kv
+            
+            # Keys to check in order of preference
+            context_keys = [
                 "context_length",
                 "llama.context_length",
                 "qwen.context_length",
                 "rope.max_position_embeddings",
             ]
-            for field in context_fields:
-                for tensor in reader.tensors:
-                    if tensor.name == field:
-                        ctx = int(tensor.data[0])
-                        if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
-                            log.info(f"Found model max context from GGUF metadata (python): {ctx} (field: {field})")
-                            return ctx
-                # Also check metadata fields
-                if hasattr(reader, 'fields') and field in reader.fields:
-                    ctx = int(reader.fields[field].parts[0][0])
+            
+            for key in context_keys:
+                if key in meta:
+                    ctx = int(meta[key])
                     if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
-                        log.info(f"Found model max context from GGUF metadata (python): {ctx} (field: {field})")
+                        log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
                         return ctx
-            log.warning(f"Could not find context_length in GGUF metadata via python library")
+            
+            log.warning(f"Could not find context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
         except ImportError:
             log.debug("gguf Python library not available")
         except Exception as e:
