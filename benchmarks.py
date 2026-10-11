@@ -207,6 +207,8 @@ class BenchmarkRunner:
             cmd.extend(["-tb", str(config.threads_batch)])
             # Context size (-c) is required for batched bench
             cmd.extend(["-c", str(config.ctx_size)])
+            # Load mode - mmap+mlock for better performance
+            cmd.extend(["--load-mode", "mmap+mlock"])
             # CPU affinity/mask
             if config.cpu_affinity and config.cpu_affinity != "auto":
                 cmd.extend(["--cpu-affinity", config.cpu_affinity])
