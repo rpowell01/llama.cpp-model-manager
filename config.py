@@ -273,6 +273,26 @@ if LLAMA_BENCH is None or LLAMA_BATCHED_BENCH is None:
         LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
         LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# llama-cli binary location (for GGUF metadata inspection)
+# ──────────────────────────────────────────────────────────────────────────────
+LLAMA_CLI = None
+
+# Check for LLAMA_SERVER_DIR environment variable first (highest priority)
+if llama_server_dir_env:
+    LLAMA_CLI = _find_bench_binary(bench_dir, "llama-cli")
+
+# Fallback to searching in BASE_DIR
+if LLAMA_CLI is None:
+    if WINDOWS:
+        LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
+    elif WSL:
+        # On WSL, prefer Windows binary for better compatibility
+        LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
+    else:
+        # On Linux, check for native binary first
+        LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
+
 PYTHON = sys.executable
 
 

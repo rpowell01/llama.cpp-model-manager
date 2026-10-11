@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from benchmarks import BenchmarkRunner, BenchmarkConfig, BenchmarkError
 from routes.system import compute_optimal_settings, get_hardware_info
+from config import LLAMA_CLI, WSL
 
 log = logging.getLogger("llamaweb.optimizer")
 
@@ -1019,10 +1020,60 @@ class BenchmarkOptimizer:
         return summary
     
     def _get_model_max_context(self, model_path: str, hardware_info: Dict[str, Any]) -> int:
-        """Extract max context size from model filename or metadata."""
+        """Extract max context size from GGUF model metadata using llama-cli --dump-gguf."""
+        import subprocess
         import re
         
-        # Try to extract from filename (e.g., "model-32k.gguf", "model-128k.gguf")
+        # Try to read context length from GGUF metadata using llama-cli
+        if LLAMA_CLI and Path(LLAMA_CLI).exists():
+            try:
+                # Run llama-cli with --dump-gguf to get all metadata
+                cmd = [str(LLAMA_CLI), "-m", model_path, "--dump-gguf"]
+                log.debug(f"Running llama-cli to dump GGUF metadata: {' '.join(cmd)}")
+                
+                # Use binary's directory as working directory for Windows binaries on WSL
+                cwd = None
+                if WSL and str(LLAMA_CLI).endswith('.exe'):
+                    cwd = Path(LLAMA_CLI).parent
+                
+                result = subprocess.run(
+                    cmd,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                
+                if result.returncode == 0:
+                    output = result.stdout
+                    # Parse for context length fields
+                    # Look for: context_length, qwen.context_length, llama.context_length, rope.max_position_embeddings
+                    patterns = [
+                        r'context_length\s*=\s*(\d+)',
+                        r'llama\.context_length\s*=\s*(\d+)',
+                        r'qwen\.context_length\s*=\s*(\d+)',
+                        r'rope\.max_position_embeddings\s*=\s*(\d+)',
+                    ]
+                    
+                    for pattern in patterns:
+                        match = re.search(pattern, output, re.IGNORECASE)
+                        if match:
+                            ctx = int(match.group(1))
+                            if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                                log.info(f"Found model max context from GGUF metadata: {ctx} (pattern: {pattern})")
+                                return ctx
+                    
+                    log.warning(f"Could not find context_length in GGUF metadata output")
+                else:
+                    log.warning(f"llama-cli --dump-gguf failed: {result.stderr}")
+                    
+            except subprocess.TimeoutExpired:
+                log.warning(f"llama-cli --dump-gguf timed out")
+            except Exception as e:
+                log.warning(f"Failed to run llama-cli --dump-gguf: {e}")
+        
+        # Fallback: try to extract from filename
         filename = os.path.basename(model_path).lower()
         
         # Pattern: 32k, 64k, 128k, 256k, etc.
