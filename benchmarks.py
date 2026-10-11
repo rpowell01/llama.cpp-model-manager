@@ -256,7 +256,8 @@ class BenchmarkRunner:
             cmd.extend(["-p", str(config.n_prompt)])
         
         # Generation length (supported by both) - use -n for n_gen
-        cmd.extend(["-n", str(config.n_gen)])
+        if not is_batched:
+            cmd.extend(["-n", str(config.n_gen)])
         
         # Output format (llama-bench uses --output, batched bench uses --output-format)
         if is_batched:
