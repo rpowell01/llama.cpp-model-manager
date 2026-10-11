@@ -18,6 +18,11 @@ log = getLogger("llamaweb")
 
 downloads_bp = Blueprint("downloads", __name__)
 
+def _normalize_model_name(name: str) -> str:
+    """Normalize model name to match storage format: lowercase, spaces to hyphens."""
+    return name.strip().lower().replace(" ", "-")
+
+
 @downloads_bp.route("/api/download", methods=["POST"])
 def api_download():
     data = request.get_json(force=True) or {}
@@ -34,8 +39,11 @@ def api_download():
 
     models = get_models()
 
-    if force and model in models:
-        meta = models[model]
+    # Normalize model name to match how it was stored during add-model
+    normalized_model = _normalize_model_name(model)
+
+    if force and normalized_model in models:
+        meta = models[normalized_model]
         existing_filename = meta.get("filename", "")
         url_filename = url.split("/")[-1] if "/" in url else ""
 
@@ -101,10 +109,10 @@ def api_download():
             start_download(new_model_name, url, expected_size, force=True)
             return jsonify({"status": "download started", "model": new_model_name, "is_variant": True})
 
-    if model not in models:
+    if normalized_model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-    meta = models[model]
+    meta = models[normalized_model]
     # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
     model_path_str = meta.get("model_path", "")
     target = resolve_model_path(model_path_str)
