@@ -229,6 +229,9 @@ def add_model_entry(
     swa_full: bool = False,
     # Chat template
     chat_template_file: str = "",
+    # Custom HTTP Header for Kilo Code Config
+    custom_header_key: str = "",
+    custom_header_value: str = "",
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -319,6 +322,9 @@ def add_model_entry(
             "swa_full": swa_full,
             # Chat template
             "chat_template_file": chat_template_file,
+            # Custom HTTP Header for Kilo Code Config
+            "custom_header_key": custom_header_key,
+            "custom_header_value": custom_header_value,
             # User rating fields
             "comment": "",
             "rating_speed": 0,
