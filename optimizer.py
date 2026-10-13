@@ -1295,15 +1295,18 @@ class BenchmarkOptimizer:
                         pass
             
             if meta is not None:
-                # INFO: Log raw metadata for context_length keys so we can see what the GGUF library returns
-                for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
-                    if k in meta:
-                        v = meta[k]
-                        log.info(f"GGUF raw {k}: {v!r} (type: {type(v).__name__})")
-                        if hasattr(v, 'value'):
-                            log.info(f"  .value = {v.value!r} (type: {type(v.value).__name__})")
-                        if hasattr(v, 'parts') and v.parts:
-                            log.info(f"  .parts[-1].data = {v.parts[-1].data!r} (len={len(v.parts[-1].data)})")
+                # INFO: Log raw metadata for ALL context_length keys so we can see what the GGUF library returns
+                context_keys_to_log = [k for k in meta.keys() if 'context_length' in k.lower() or 'max_position_embeddings' in k.lower()]
+                for k in context_keys_to_log:
+                    v = meta[k]
+                    log.info(f"GGUF raw {k}: {v!r} (type: {type(v).__name__})")
+                    if hasattr(v, 'value'):
+                        log.info(f"  .value = {v.value!r} (type: {type(v.value).__name__})")
+                    if hasattr(v, 'parts') and v.parts:
+                        log.info(f"  .parts[-1].data = {v.parts[-1].data!r} (len={len(v.parts[-1].data) if hasattr(v.parts[-1], 'data') and hasattr(v.parts[-1].data, '__len__') else 'N/A'})")
+                        # Also log all parts for debugging
+                        for i, part in enumerate(v.parts):
+                            log.info(f"    parts[{i}] = {part!r} (type: {type(part).__name__})")
                 
                 # Convert ReaderField values to primitive types if needed
                 def convert_value(v):
@@ -1417,10 +1420,10 @@ class BenchmarkOptimizer:
                         except (ValueError, TypeError):
                             pass
                 
-                # INFO: Log converted metadata for context keys
-                for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
-                    if k in meta:
-                        log.info(f"GGUF converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
+                # INFO: Log converted metadata for all context keys
+                context_keys_to_log = [k for k in meta.keys() if 'context_length' in k.lower() or 'max_position_embeddings' in k.lower()]
+                for k in context_keys_to_log:
+                    log.info(f"GGUF converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
                 
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
@@ -1428,6 +1431,7 @@ class BenchmarkOptimizer:
                     "context_length",
                     "llama.context_length",
                     "qwen.context_length",
+                    "qwen35.context_length",  # Qwen 3.5 uses this prefix
                     "phi3.context_length",
                     "mistral.context_length",
                     "gemma.context_length",
