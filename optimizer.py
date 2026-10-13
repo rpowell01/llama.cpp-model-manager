@@ -1262,11 +1262,17 @@ class BenchmarkOptimizer:
                     if hasattr(v, 'parts') and v.parts:
                         data = v.parts[-1].data
                         if isinstance(data, bytes):
-                            try:
-                                return int.from_bytes(data, byteorder='little', signed=False)
-                            except Exception:
-                                # If conversion fails, return raw bytes for debugging
-                                return data
+                            # Try different byte orders and sizes
+                            for byteorder in ('little', 'big'):
+                                for size in (2, 4, 8):
+                                    if len(data) >= size:
+                                        try:
+                                            return int.from_bytes(data[:size], byteorder=byteorder, signed=False)
+                                        except Exception:
+                                            continue
+                            # If all conversions fail, log and return raw for debugging
+                            log.debug(f"Could not convert bytes {data!r} to int")
+                            return data
                         return data
                     return v
                 
@@ -1296,11 +1302,13 @@ class BenchmarkOptimizer:
                             if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
                                 log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
                                 return ctx
+                            else:
+                                log.debug(f"Key {key} has value {ctx} which is not a standard context size")
                         except (ValueError, TypeError) as e:
                             log.debug(f"Could not convert {key}={meta[key]!r} to int: {e}")
                             continue
                 
-                log.warning(f"Could not find context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
+                log.warning(f"Could not find valid context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
             else:
                 log.warning("Could not access GGUF metadata - unknown gguf library API")
         except ImportError:
