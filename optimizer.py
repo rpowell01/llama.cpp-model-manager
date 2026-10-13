@@ -1309,27 +1309,90 @@ class BenchmarkOptimizer:
                 def convert_value(v):
                     """Convert a ReaderField or similar object to a primitive Python value."""
                     if hasattr(v, 'value'):
-                        return v.value
-                    if hasattr(v, 'parts') and v.parts:
-                        data = v.parts[-1].data
-                        if isinstance(data, bytes):
-                            # Try different byte orders and sizes
+                        val = v.value
+                        # If value is memoryview/bytes, try to convert
+                        if hasattr(val, 'tobytes'):
+                            val = val.tobytes()
+                        if isinstance(val, (bytes, bytearray)) and len(val) >= 2:
                             for byteorder in ('little', 'big'):
                                 for size in (2, 4, 8):
-                                    if len(data) >= size:
+                                    if len(val) >= size:
                                         try:
-                                            return int.from_bytes(data[:size], byteorder=byteorder, signed=False)
+                                            return int.from_bytes(val[:size], byteorder=byteorder, signed=False)
                                         except Exception:
                                             continue
-                            # If all conversions fail, log and return raw for debugging
-                            log.debug(f"Could not convert bytes {data!r} to int")
-                            return data
-                        return data
+                        return val
+                    if hasattr(v, 'parts') and v.parts:
+                        # The gguf library stores values in parts array
+                        # parts[0] = offset, parts[1] = key name, parts[2] = type info, parts[3] = value (as memmap/array)
+                        # Try to get the last part which should contain the actual value
+                        for part in reversed(v.parts):
+                            # Handle numpy memmap/array - extract scalar value
+                            try:
+                                import numpy as np
+                                if isinstance(part, (np.ndarray, np.memmap)):
+                                    # If it's a 1-element array, return the scalar
+                                    if part.size == 1:
+                                        return int(part.item())
+                                    elif part.size > 1:
+                                        # For multi-element, try first element
+                                        return int(part.flat[0])
+                            except ImportError:
+                                pass
+                            # Handle objects with .item() method (numpy scalars)
+                            if hasattr(part, 'item'):
+                                try:
+                                    return int(part.item())
+                                except (ValueError, TypeError):
+                                    pass
+                            # Handle objects with __int__
+                            if hasattr(part, '__int__'):
+                                try:
+                                    return int(part)
+                                except (ValueError, TypeError):
+                                    pass
+                            # Handle bytes
+                            if hasattr(part, 'tobytes'):
+                                data = part.tobytes()
+                                if isinstance(data, (bytes, bytearray)) and len(data) >= 2:
+                                    for byteorder in ('little', 'big'):
+                                        for size in (2, 4, 8):
+                                            if len(data) >= size:
+                                                try:
+                                                    return int.from_bytes(data[:size], byteorder=byteorder, signed=False)
+                                                except Exception:
+                                                    continue
+                            # Handle .data attribute
+                            if hasattr(part, 'data'):
+                                data = part.data
+                                if isinstance(data, (bytes, bytearray)) and len(data) >= 2:
+                                    for byteorder in ('little', 'big'):
+                                        for size in (2, 4, 8):
+                                            if len(data) >= size:
+                                                try:
+                                                    return int.from_bytes(data[:size], byteorder=byteorder, signed=False)
+                                                except Exception:
+                                                    continue
+                        # Fallback: try last part's data
+                        last_part = v.parts[-1]
+                        if hasattr(last_part, 'data'):
+                            data = last_part.data
+                            if isinstance(data, (bytes, bytearray)) and len(data) >= 2:
+                                for byteorder in ('little', 'big'):
+                                    for size in (2, 4, 8):
+                                        if len(data) >= size:
+                                            try:
+                                                return int.from_bytes(data[:size], byteorder=byteorder, signed=False)
+                                            except Exception:
+                                                continue
                     # Handle numpy integers and other numeric types
                     try:
                         import numpy as np
                         if isinstance(v, (np.integer, np.floating)):
                             return int(v)
+                        if isinstance(v, (np.ndarray, np.memmap)):
+                            if v.size == 1:
+                                return int(v.item())
                     except ImportError:
                         pass
                     # Handle any object with __int__ method
