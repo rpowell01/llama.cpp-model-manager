@@ -1315,9 +1315,34 @@ class BenchmarkOptimizer:
                             log.debug(f"Could not convert bytes {data!r} to int")
                             return data
                         return data
+                    # Handle numpy integers and other numeric types
+                    try:
+                        import numpy as np
+                        if isinstance(v, (np.integer, np.floating)):
+                            return int(v)
+                    except ImportError:
+                        pass
+                    # Handle any object with __int__ method
+                    if hasattr(v, '__int__'):
+                        try:
+                            return int(v)
+                        except (ValueError, TypeError):
+                            pass
                     return v
                 
+                # Apply conversion to all metadata values, handling various GGUF library formats
                 meta = {k: convert_value(v) for k, v in meta.items()}
+                
+                # Additional pass: try to convert string values to int if they look like numbers
+                for k, v in meta.items():
+                    if isinstance(v, str) and v.isdigit():
+                        meta[k] = int(v)
+                    elif isinstance(v, str):
+                        # Try to parse as int, ignoring any non-numeric prefix/suffix
+                        try:
+                            meta[k] = int(float(v))
+                        except (ValueError, TypeError):
+                            pass
                 
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
@@ -1340,11 +1365,16 @@ class BenchmarkOptimizer:
                     if key in meta:
                         try:
                             ctx = int(meta[key])
-                            if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                            # Accept any reasonable context size (powers of 2 between 512 and 1M)
+                            if ctx >= 512 and ctx <= 1048576 and (ctx & (ctx - 1)) == 0:
+                                log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
+                                return ctx
+                            elif ctx >= 512 and ctx <= 1048576:
+                                # Also accept non-power-of-2 values in reasonable range
                                 log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
                                 return ctx
                             else:
-                                log.debug(f"Key {key} has value {ctx} which is not a standard context size")
+                                log.debug(f"Key {key} has value {ctx} which is outside reasonable range (512-1048576)")
                         except (ValueError, TypeError) as e:
                             log.debug(f"Could not convert {key}={meta[key]!r} to int: {e}")
                             continue
