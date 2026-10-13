@@ -1197,7 +1197,7 @@ def api_benchmark_cancel():
         }
     """
     from flask import request
-    from optimizer import BenchmarkOptimizer
+    from optimizer import BenchmarkOptimizer, _get_running_optimizer
     import config
     
     data = request.get_json(force=True) or {}
@@ -1240,9 +1240,13 @@ def api_benchmark_cancel():
         log.exception(f"Failed to resolve model path for '{model_name}'")
         return jsonify({"success": False, "message": f"Failed to resolve model path: {e}"}), 500
     
-    # Create optimizer and cancel
+    # Look up the running optimizer for this model
     try:
-        optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
+        optimizer = _get_running_optimizer(str(model_path))
+        if optimizer is None:
+            log.warning(f"No running benchmark found for model '{model_name}' at path '{model_path}'")
+            return jsonify({"success": False, "message": f"No running benchmark found for '{model_name}'"}), 404
+        
         # Call the cancel method which will terminate the running process
         optimizer.cancel()
         

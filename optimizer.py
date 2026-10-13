@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -22,6 +23,39 @@ from routes.system import compute_optimal_settings, get_hardware_info
 from config import LLAMA_CLI, WSL
 
 log = logging.getLogger("llamaweb.optimizer")
+
+# Global registry of running benchmark optimizers, keyed by model path
+# This allows the cancel endpoint to find and cancel the running optimizer
+_running_optimizers: Dict[str, 'BenchmarkOptimizer'] = {}
+_running_optimizers_lock = threading.Lock()
+
+
+def _get_running_optimizer(model_path: str) -> Optional['BenchmarkOptimizer']:
+    """Get the running optimizer for a model path, if any."""
+    global _running_optimizers
+    # Normalize path for consistent lookup
+    normalized_path = str(Path(model_path).resolve())
+    with _running_optimizers_lock:
+        return _running_optimizers.get(normalized_path)
+
+
+def _register_optimizer(model_path: str, optimizer: 'BenchmarkOptimizer') -> None:
+    """Register a running optimizer for a model path."""
+    global _running_optimizers
+    normalized_path = str(Path(model_path).resolve())
+    with _running_optimizers_lock:
+        _running_optimizers[normalized_path] = optimizer
+    log.debug(f"Registered optimizer for model: {normalized_path}")
+
+
+def _unregister_optimizer(model_path: str) -> None:
+    """Unregister a running optimizer for a model path."""
+    global _running_optimizers
+    normalized_path = str(Path(model_path).resolve())
+    with _running_optimizers_lock:
+        if normalized_path in _running_optimizers:
+            del _running_optimizers[normalized_path]
+    log.debug(f"Unregistered optimizer for model: {normalized_path}")
 
 
 class BenchmarkOptimizer:
@@ -885,328 +919,335 @@ class BenchmarkOptimizer:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
         
-        # Get hardware info
-        hardware_info = get_hardware_info()
-        
-        # Extract model info for cache key and config generation
-        model_info = {}
+# Register this optimizer instance for cancellation support
+        _register_optimizer(model_path, self)
         try:
-            model_stat = os.stat(model_path)
-            model_info["file_size_gb"] = round(model_stat.st_size / (1024**3), 2)
-            model_info["file_path"] = model_path
-            model_info["ctx_size"] = 4096  # default, will be updated after getting max context
-        except OSError:
-            model_info["file_size_gb"] = 0
-            model_info["file_path"] = model_path
-            model_info["ctx_size"] = 4096
-        total_vram = hardware_info.get("total_gpu_vram_gb", 0)
-        cpu_logical = hardware_info.get("cpu_count_logical", 16)
-        cpu_physical = hardware_info.get("cpu_count_physical", 8)
-        mem_total = hardware_info.get("memory_total_gb", 32)
-        
-        # Get model max context size
-        model_ctx = self._get_model_max_context(model_path, hardware_info)
-        log.info(f"Model max context size: {model_ctx}")
-        
-        # Update model_info with actual context size
-        model_info["ctx_size"] = model_ctx
-        
-        # Context sizes to test: max, max/2, max/4 (minimum 4096)
-        ctx_sizes = []
-        for divisor in [1, 2, 4]:
-            ctx = max(4096, model_ctx // divisor)
-            if ctx not in ctx_sizes:
-                ctx_sizes.append(ctx)
-        
-        # Batch sizes to test - focus on practical sizes for agentic coding (large context)
-        # Filter by estimated VRAM: batch * ctx * 2 bytes * num_layers ≈ VRAM needed
-        # For 32 layers, head_dim=128, n_kv_heads=8: KV per token = 2 * 128 * 8 = 2048 bytes
-        # Total KV = batch * ctx * 2048 bytes (for non-shared prompt) or ctx * 2048 + batch * ctx * 2048 (shared)
-        # We'll use a conservative estimate: batch * ctx * 4 KB = GB
-        batch_sizes = [8192, 16384, 32768]
-        max_ctx = max(ctx_sizes)
-        filtered_batch = []
-        for bs in batch_sizes:
-            # Batch size must fit within context size
-            if bs > max_ctx:
-                continue
-            # Conservative VRAM estimate: batch * ctx * 4 KB (covers KV cache for all layers)
-            for ctx in ctx_sizes:
-                est_gb = (bs * ctx * 4) / 1e9
-                if total_vram > 0:
-                    if est_gb <= total_vram * 0.7:  # Leave headroom for model weights
-                        if bs not in filtered_batch:
-                            filtered_batch.append(bs)
-                        break
-                else:
-                    # No GPU - use system RAM
-                    if est_gb <= mem_total * 0.3:
-                        if bs not in filtered_batch:
-                            filtered_batch.append(bs)
-                        break
-        # Fallback batch size proportional to context size
-        # For small context models, use smaller batch sizes
-        max_ctx = max(ctx_sizes)
-        if max_ctx <= 4096:
-            fallback_batch = 1024
-        elif max_ctx <= 8192:
-            fallback_batch = 2048
-        elif max_ctx <= 16384:
-            fallback_batch = 4096
-        else:
-            fallback_batch = 8192
-        batch_sizes = filtered_batch or [fallback_batch]  # Fallback to smaller batch
-        
-        # Threads to test - adapt to available CPUs
-        # Use a range of thread counts up to cpu_logical
-        if cpu_logical >= 16:
-            threads_options = [cpu_logical, cpu_logical // 2, 12]
-        elif cpu_logical >= 8:
-            threads_options = [cpu_logical, cpu_logical // 2]
-        else:
-            threads_options = [cpu_logical]
-        threads_options = [t for t in threads_options if t > 0 and t <= cpu_logical]
-        threads_options = list(dict.fromkeys(threads_options))  # Deduplicate while preserving order
-        
-        # Cache types to test
-        cache_types = [("f16", "f16"), ("q4_0", "q4_0")]
-        if total_vram >= 16:
-            cache_types.insert(0, ("q8_0", "q8_0"))  # Add q8_0 for high VRAM
-        
-        # Fixed parameters - adapt ubatch_size to batch sizes
-        # ubatch_size should be <= batch_size
-        max_batch = max(batch_sizes) if batch_sizes else 4096
-        ubatch_size = min(4096, max_batch)
-        fixed_params = {
-            "n_gpu_layers": 99,
-            "ubatch_size": ubatch_size,
-            "flash_attn": "auto",
-        }
-        
-        # Native sweep parameters for batched-bench
-        # Adjust npp based on model's max context
-        max_ctx = max(ctx_sizes)
-        if max_ctx >= 32768:
-            sweep_npp = [8192, 16384, 32768]
-        elif max_ctx >= 16384:
-            sweep_npp = [4096, 8192, 16384]
-        elif max_ctx >= 8192:
-            sweep_npp = [2048, 4096, 8192]
-        else:
-            sweep_npp = [1024, 2048, 4096]
-        sweep_ntg = [128, 256, 512]
-        sweep_npl = [1, 4]  # auto (kv-unified) handled separately
-        
-        # Filter sweep params by max context size
-        sweep_npp = [p for p in sweep_npp if p <= max(ctx_sizes)]
-        
-        # Build FOCUSED run configurations (~10-15 runs)
-        # Strategy: Test each ctx_size with a few representative batch/thread/cache combos
-        run_configs = []
-        
-        for ctx in ctx_sizes:
-            # For each context size, test a focused set of combinations
-            # Prioritize: max batch that fits, then half batch
-            valid_batches = [b for b in batch_sizes if b <= ctx]
-            if not valid_batches:
-                continue
+            # Get hardware info
+            hardware_info = get_hardware_info()
             
-            max_batch = max(valid_batches)
-            mid_batch = valid_batches[len(valid_batches) // 2] if len(valid_batches) > 1 else max_batch
-            
-            # Representative combinations per ctx size - use adaptive thread counts
-            primary_threads = threads_options[0] if threads_options else cpu_logical
-            secondary_threads = threads_options[1] if len(threads_options) > 1 else primary_threads
-            
-            ctx_configs = [
-                # 1. Max batch, primary threads, f16 cache (best performance)
-                {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-                # 2. Max batch, primary threads, q4_0 cache (memory efficient)
-                {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
-                # 3. Mid batch, primary threads, f16 cache
-                {"batch_size": mid_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-                # 4. Mid batch, secondary threads, f16 cache (test thread scaling)
-                {"batch_size": mid_batch, "threads": secondary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-            ]
-            
-            # Add q8_0 for high VRAM
-            if total_vram >= 16:
-                ctx_configs.append({"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
-            
-            # Add configs for this ctx_size
-            for combo in ctx_configs:
-                if combo["threads"] > cpu_logical:
-                    continue
-                config = {
-                    **fixed_params,
-                    "ctx_size": ctx,
-                    "batch_size": combo["batch_size"],
-                    "threads": combo["threads"],
-                    "threads_batch": combo["threads"],
-                    "cache_type_k": combo["cache_type_k"],
-                    "cache_type_v": combo["cache_type_v"],
-                }
-                run_configs.append(config)
-        
-        # Deduplicate
-        seen = set()
-        unique_configs = []
-        for config in run_configs:
-            key = tuple(sorted(config.items()))
-            if key not in seen:
-                seen.add(key)
-                unique_configs.append(config)
-        
-        run_configs = unique_configs
-        log.info(f"Deep sweep: {len(run_configs)} batched-bench runs planned")
-        
-        # Reset cancellation flag at start
-        self._cancel_requested = False
-        
-        # Run batched-bench for each config with per-run sweep parameters
-        all_results = []
-        start_time = time.time()
-        
-        def cancel_callback():
-            """Callback to signal cancellation to the runner."""
-            self._cancel_requested = True
-        
-        for i, config in enumerate(run_configs):
-            # Check for cancellation before starting
-            if self._cancel_requested:
-                log.info(f"Deep sweep cancelled before run {i+1}")
-                break
-            
-            if max_duration_sec > 0 and (time.time() - start_time) >= max_duration_sec:
-                log.info(f"Deep sweep time limit reached ({max_duration_sec}s), stopping")
-                break
-            
-            ctx = config["ctx_size"]
-            batch = config["batch_size"]
-            
-            # Filter sweep parameters per run to ensure KV cache fits in context
-            # For llama-batched-bench: n_kv = batch * (npp + ntg) * npl (prompt not shared)
-            # or n_kv = npp + batch * ntg * npl (prompt shared, -pps)
-            # We'll use conservative estimate without -pps
-            
-            # Max npp for this ctx and batch (with npl=4, ntg=128 minimum)
-            max_npp = max(512, (ctx // (batch * 4)) - 512) if batch > 0 else ctx
-            max_npp = min(max_npp, ctx)  # Can't exceed context
-            
-            # Filter sweep params for this run
-            run_npp = [p for p in sweep_npp if p <= max_npp]
-            run_ntg = [p for p in sweep_ntg if p <= 512]  # Keep reasonable generation sizes
-            run_npl = [p for p in sweep_npl if p <= 4]
-            
-            if not run_npp:
-                run_npp = [min(512, ctx)]
-            if not run_ntg:
-                run_ntg = [128]
-            if not run_npl:
-                run_npl = [1]
-            
-            log.info(f"Deep sweep run {i+1}/{len(run_configs)}: "
-                    f"ctx={ctx}, batch={batch}, threads={config['threads']}, cache={config['cache_type_k']}, "
-                    f"sweep: npp={run_npp}, ntg={run_ntg}, npl={run_npl}")
-            
-            # Create runner with cancellation support
-            runner = BenchmarkRunner(cancel_callback=cancel_callback)
-            self._active_runner = runner
+            # Extract model info for cache key and config generation
+            model_info = {}
             try:
-                result = runner.run_llama_batched_bench(model_path, {
-                    **config,
-                    "n_prompt": run_npp,
-                    "n_gen": run_ntg,
-                    "parallel": run_npl,
-                    "timeout_sec": 600,
-                })
-            except Exception as e:
-                self._active_runner = None
-                log.warning(f"Deep sweep run {i+1} failed: {e}")
-                all_results.append({
-                    "config": config,
-                    "success": False,
-                    "error": str(e),
-                    "timestamp": time.time(),
-                })
-                continue
-            finally:
-                self._active_runner = None
+                model_stat = os.stat(model_path)
+                model_info["file_size_gb"] = round(model_stat.st_size / (1024**3), 2)
+                model_info["file_path"] = model_path
+                model_info["ctx_size"] = 4096  # default, will be updated after getting max context
+            except OSError:
+                model_info["file_size_gb"] = 0
+                model_info["file_path"] = model_path
+                model_info["ctx_size"] = 4096
             
-            # Check if cancelled during run
-            if self._cancel_requested:
-                log.info(f"Deep sweep run {i+1} cancelled during execution")
-                break
+            total_vram = hardware_info.get("total_gpu_vram_gb", 0)
+            cpu_logical = hardware_info.get("cpu_count_logical", 16)
+            cpu_physical = hardware_info.get("cpu_count_physical", 8)
+            mem_total = hardware_info.get("memory_total_gb", 32)
             
-            # Result contains aggregated metrics from sweep
-            run_result = {
-                "config": config,
-                "success": True,
-                "batched_throughput": result.get("batch_throughput", 0),
-                "pp_avg": result.get("pp_avg", 0),
-                "tg_avg": result.get("tg_avg", 0),
-                "latency_p50": result.get("latency_p50"),
-                "parallel_results": result.get("parallel_results", []),
-                "timestamp": time.time(),
+            # Get model max context size
+            model_ctx = self._get_model_max_context(model_path, hardware_info)
+            log.info(f"Model max context size: {model_ctx}")
+            
+            # Update model_info with actual context size
+            model_info["ctx_size"] = model_ctx
+            
+            # Context sizes to test: max, max/2, max/4 (minimum 4096)
+            ctx_sizes = []
+            for divisor in [1, 2, 4]:
+                ctx = max(4096, model_ctx // divisor)
+                if ctx not in ctx_sizes:
+                    ctx_sizes.append(ctx)
+            
+            # Batch sizes to test - focus on practical sizes for agentic coding (large context)
+            # Filter by estimated VRAM: batch * ctx * 2 bytes * num_layers ≈ VRAM needed
+            # For 32 layers, head_dim=128, n_kv_heads=8: KV per token = 2 * 128 * 8 = 2048 bytes
+            # Total KV = batch * ctx * 2048 bytes (for non-shared prompt) or ctx * 2048 + batch * ctx * 2048 (shared)
+            # We'll use a conservative estimate: batch * ctx * 4 KB = GB
+            batch_sizes = [8192, 16384, 32768]
+            max_ctx = max(ctx_sizes)
+            filtered_batch = []
+            for bs in batch_sizes:
+                # Batch size must fit within context size
+                if bs > max_ctx:
+                    continue
+                # Conservative VRAM estimate: batch * ctx * 4 KB (covers KV cache for all layers)
+                for ctx in ctx_sizes:
+                    est_gb = (bs * ctx * 4) / 1e9
+                    if total_vram > 0:
+                        if est_gb <= total_vram * 0.7:  # Leave headroom for model weights
+                            if bs not in filtered_batch:
+                                filtered_batch.append(bs)
+                            break
+                    else:
+                        # No GPU - use system RAM
+                        if est_gb <= mem_total * 0.3:
+                            if bs not in filtered_batch:
+                                filtered_batch.append(bs)
+                            break
+            # Fallback batch size proportional to context size
+            # For small context models, use smaller batch sizes
+            max_ctx = max(ctx_sizes)
+            if max_ctx <= 4096:
+                fallback_batch = 1024
+            elif max_ctx <= 8192:
+                fallback_batch = 2048
+            elif max_ctx <= 16384:
+                fallback_batch = 4096
+            else:
+                fallback_batch = 8192
+            batch_sizes = filtered_batch or [fallback_batch]  # Fallback to smaller batch
+            
+            # Threads to test - adapt to available CPUs
+            # Use a range of thread counts up to cpu_logical
+            if cpu_logical >= 16:
+                threads_options = [cpu_logical, cpu_logical // 2, 12]
+            elif cpu_logical >= 8:
+                threads_options = [cpu_logical, cpu_logical // 2]
+            else:
+                threads_options = [cpu_logical]
+            threads_options = [t for t in threads_options if t > 0 and t <= cpu_logical]
+            threads_options = list(dict.fromkeys(threads_options))  # Deduplicate while preserving order
+            
+            # Cache types to test
+            cache_types = [("f16", "f16"), ("q4_0", "q4_0")]
+            if total_vram >= 16:
+                cache_types.insert(0, ("q8_0", "q8_0"))  # Add q8_0 for high VRAM
+            
+            # Fixed parameters - adapt ubatch_size to batch sizes
+            # ubatch_size should be <= batch_size
+            max_batch = max(batch_sizes) if batch_sizes else 4096
+            ubatch_size = min(4096, max_batch)
+            fixed_params = {
+                "n_gpu_layers": 99,
+                "ubatch_size": ubatch_size,
+                "flash_attn": "auto",
             }
-            all_results.append(run_result)
             
-            if progress_callback:
-                progress_callback(i+1, len(run_configs), config, run_result)
-        
-        # Find best result by optimization target
-        successful = [r for r in all_results if r.get("success", False)]
-        best_config = {}
-        best_score = -1
-        
-        if successful:
-            if optimization_target == 'throughput':
-                best_result = max(successful, key=lambda x: x.get("batched_throughput", 0))
-            elif optimization_target == 'latency':
-                best_result = min(successful, key=lambda x: x.get("latency_p50", float('inf')))
-            else:  # balanced
-                best_result = max(successful, key=lambda x: 
-                    (x.get("pp_avg", 0) * x.get("batched_throughput", 0)) ** 0.5 
-                    if x.get("pp_avg", 0) > 0 and x.get("batched_throughput", 0) > 0 else 0)
+            # Native sweep parameters for batched-bench
+            # Adjust npp based on model's max context
+            max_ctx = max(ctx_sizes)
+            if max_ctx >= 32768:
+                sweep_npp = [8192, 16384, 32768]
+            elif max_ctx >= 16384:
+                sweep_npp = [4096, 8192, 16384]
+            elif max_ctx >= 8192:
+                sweep_npp = [2048, 4096, 8192]
+            else:
+                sweep_npp = [1024, 2048, 4096]
+            sweep_ntg = [128, 256, 512]
+            sweep_npl = [1, 4]  # auto (kv-unified) handled separately
             
-            best_config = best_result.get("config", {})
-            best_score = best_result.get("batched_throughput", 0)
-        
-        # Prepare summary
-        elapsed = time.time() - start_time
-        summary = {
-            "model_path": model_path,
-            "model_max_context": model_ctx,
-            "total_runs": len(run_configs),
-            "completed_runs": len([r for r in all_results if r.get("success", False)]),
-            "failed_runs": len([r for r in all_results if not r.get("success", False)]),
-            "elapsed_sec": elapsed,
-            "optimization_target": optimization_target,
-            "best_config": best_config,
-            "best_score": best_score,
-            "all_results": all_results,
-        }
-        
-        log.info(f"Deep sweep completed in {elapsed:.1f}s: "
-                f"{summary['completed_runs']}/{summary['total_runs']} successful, "
-                f"best: {best_config} (score: {best_score:.1f})")
-        
-        # Save results to cache so they persist for later UI display
-        cache_result = {
-            "optimal_settings": best_config,
-            "benchmark_results": all_results,
-            "hardware_info": hardware_info,
-            "model_info": model_info,
-            "cache_key": self._generate_cache_key(model_path, hardware_info, optimization_target),
-            "optimization_target": optimization_target,
-        }
-        self._save_to_cache(
-            self._generate_cache_key(model_path, hardware_info, optimization_target),
-            cache_result,
-            hardware_info
-        )
-        
-        return summary
+            # Filter sweep params by max context size
+            sweep_npp = [p for p in sweep_npp if p <= max(ctx_sizes)]
+            
+            # Build FOCUSED run configurations (~10-15 runs)
+            # Strategy: Test each ctx_size with a few representative batch/thread/cache combos
+            run_configs = []
+            
+            for ctx in ctx_sizes:
+                # For each context size, test a focused set of combinations
+                # Prioritize: max batch that fits, then half batch
+                valid_batches = [b for b in batch_sizes if b <= ctx]
+                if not valid_batches:
+                    continue
+                
+                max_batch = max(valid_batches)
+                mid_batch = valid_batches[len(valid_batches) // 2] if len(valid_batches) > 1 else max_batch
+                
+                # Representative combinations per ctx size - use adaptive thread counts
+                primary_threads = threads_options[0] if threads_options else cpu_logical
+                secondary_threads = threads_options[1] if len(threads_options) > 1 else primary_threads
+                
+                ctx_configs = [
+                    # 1. Max batch, primary threads, f16 cache (best performance)
+                    {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                    # 2. Max batch, primary threads, q4_0 cache (memory efficient)
+                    {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
+                    # 3. Mid batch, primary threads, f16 cache
+                    {"batch_size": mid_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                    # 4. Mid batch, secondary threads, f16 cache (test thread scaling)
+                    {"batch_size": mid_batch, "threads": secondary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                ]
+                
+                # Add q8_0 for high VRAM
+                if total_vram >= 16:
+                    ctx_configs.append({"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
+                
+                # Add configs for this ctx_size
+                for combo in ctx_configs:
+                    if combo["threads"] > cpu_logical:
+                        continue
+                    config = {
+                        **fixed_params,
+                        "ctx_size": ctx,
+                        "batch_size": combo["batch_size"],
+                        "threads": combo["threads"],
+                        "threads_batch": combo["threads"],
+                        "cache_type_k": combo["cache_type_k"],
+                        "cache_type_v": combo["cache_type_v"],
+                    }
+                    run_configs.append(config)
+            
+            # Deduplicate
+            seen = set()
+            unique_configs = []
+            for config in run_configs:
+                key = tuple(sorted(config.items()))
+                if key not in seen:
+                    seen.add(key)
+                    unique_configs.append(config)
+            
+            run_configs = unique_configs
+            log.info(f"Deep sweep: {len(run_configs)} batched-bench runs planned")
+            
+            # Reset cancellation flag at start
+            self._cancel_requested = False
+            
+            # Run batched-bench for each config with per-run sweep parameters
+            all_results = []
+            start_time = time.time()
+            
+            def cancel_callback():
+                """Callback to signal cancellation to the runner."""
+                self._cancel_requested = True
+            
+            for i, config in enumerate(run_configs):
+                # Check for cancellation before starting
+                if self._cancel_requested:
+                    log.info(f"Deep sweep cancelled before run {i+1}")
+                    break
+                
+                if max_duration_sec > 0 and (time.time() - start_time) >= max_duration_sec:
+                    log.info(f"Deep sweep time limit reached ({max_duration_sec}s), stopping")
+                    break
+                
+                ctx = config["ctx_size"]
+                batch = config["batch_size"]
+                
+                # Filter sweep parameters per run to ensure KV cache fits in context
+                # For llama-batched-bench: n_kv = batch * (npp + ntg) * npl (prompt not shared)
+                # or n_kv = npp + batch * ntg * npl (prompt shared, -pps)
+                # We'll use conservative estimate without -pps
+                
+                # Max npp for this ctx and batch (with npl=4, ntg=128 minimum)
+                max_npp = max(512, (ctx // (batch * 4)) - 512) if batch > 0 else ctx
+                max_npp = min(max_npp, ctx)  # Can't exceed context
+                
+                # Filter sweep params for this run
+                run_npp = [p for p in sweep_npp if p <= max_npp]
+                run_ntg = [p for p in sweep_ntg if p <= 512]  # Keep reasonable generation sizes
+                run_npl = [p for p in sweep_npl if p <= 4]
+                
+                if not run_npp:
+                    run_npp = [min(512, ctx)]
+                if not run_ntg:
+                    run_ntg = [128]
+                if not run_npl:
+                    run_npl = [1]
+                
+                log.info(f"Deep sweep run {i+1}/{len(run_configs)}: "
+                        f"ctx={ctx}, batch={batch}, threads={config['threads']}, cache={config['cache_type_k']}, "
+                        f"sweep: npp={run_npp}, ntg={run_ntg}, npl={run_npl}")
+                
+                # Create runner with cancellation support
+                runner = BenchmarkRunner(cancel_callback=cancel_callback)
+                self._active_runner = runner
+                try:
+                    result = runner.run_llama_batched_bench(model_path, {
+                        **config,
+                        "n_prompt": run_npp,
+                        "n_gen": run_ntg,
+                        "parallel": run_npl,
+                        "timeout_sec": 600,
+                    })
+                except Exception as e:
+                    self._active_runner = None
+                    log.warning(f"Deep sweep run {i+1} failed: {e}")
+                    all_results.append({
+                        "config": config,
+                        "success": False,
+                        "error": str(e),
+                        "timestamp": time.time(),
+                    })
+                    continue
+                finally:
+                    self._active_runner = None
+                
+                # Check if cancelled during run
+                if self._cancel_requested:
+                    log.info(f"Deep sweep run {i+1} cancelled during execution")
+                    break
+                
+                # Result contains aggregated metrics from sweep
+                run_result = {
+                    "config": config,
+                    "success": True,
+                    "batched_throughput": result.get("batch_throughput", 0),
+                    "pp_avg": result.get("pp_avg", 0),
+                    "tg_avg": result.get("tg_avg", 0),
+                    "latency_p50": result.get("latency_p50"),
+                    "parallel_results": result.get("parallel_results", []),
+                    "timestamp": time.time(),
+                }
+                all_results.append(run_result)
+                
+                if progress_callback:
+                    progress_callback(i+1, len(run_configs), config, run_result)
+            
+            # Find best result by optimization target
+            successful = [r for r in all_results if r.get("success", False)]
+            best_config = {}
+            best_score = -1
+            
+            if successful:
+                if optimization_target == 'throughput':
+                    best_result = max(successful, key=lambda x: x.get("batched_throughput", 0))
+                elif optimization_target == 'latency':
+                    best_result = min(successful, key=lambda x: x.get("latency_p50", float('inf')))
+                else:  # balanced
+                    best_result = max(successful, key=lambda x: 
+                        (x.get("pp_avg", 0) * x.get("batched_throughput", 0)) ** 0.5 
+                        if x.get("pp_avg", 0) > 0 and x.get("batched_throughput", 0) > 0 else 0)
+                
+                best_config = best_result.get("config", {})
+                best_score = best_result.get("batched_throughput", 0)
+            
+            # Prepare summary
+            elapsed = time.time() - start_time
+            summary = {
+                "model_path": model_path,
+                "model_max_context": model_ctx,
+                "total_runs": len(run_configs),
+                "completed_runs": len([r for r in all_results if r.get("success", False)]),
+                "failed_runs": len([r for r in all_results if not r.get("success", False)]),
+                "elapsed_sec": elapsed,
+                "optimization_target": optimization_target,
+                "best_config": best_config,
+                "best_score": best_score,
+                "all_results": all_results,
+            }
+            
+            log.info(f"Deep sweep completed in {elapsed:.1f}s: "
+                    f"{summary['completed_runs']}/{summary['total_runs']} successful, "
+                    f"best: {best_config} (score: {best_score:.1f})")
+            
+            # Save results to cache so they persist for later UI display
+            cache_result = {
+                "optimal_settings": best_config,
+                "benchmark_results": all_results,
+                "hardware_info": hardware_info,
+                "model_info": model_info,
+                "cache_key": self._generate_cache_key(model_path, hardware_info, optimization_target),
+                "optimization_target": optimization_target,
+            }
+            self._save_to_cache(
+                self._generate_cache_key(model_path, hardware_info, optimization_target),
+                cache_result,
+                hardware_info
+            )
+            
+            return summary
+        finally:
+            # Unregister this optimizer instance
+            _unregister_optimizer(model_path)
     
     def _get_model_max_context(self, model_path: str, hardware_info: Dict[str, Any]) -> int:
         """Extract max context size from GGUF model metadata.
@@ -1484,7 +1525,12 @@ class BenchmarkOptimizer:
         """
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
-             
+        
+# Unregister any stale optimizer for this model (in case previous run crashed)
+        _unregister_optimizer(model_path)
+        # Register this optimizer instance for cancellation support
+        _register_optimizer(model_path, self)
+        
         # Get hardware and model info (call once and reuse)
         hardware_info = get_hardware_info()
          
@@ -1501,7 +1547,7 @@ class BenchmarkOptimizer:
             model_info["file_size_gb"] = 0
             model_info["file_path"] = model_path
             model_info["ctx_size"] = 4096
-             
+         
         # Generate cache key (model + hardware + optimization target, NOT duration for incremental caching)
         cache_key = self._generate_cache_key(model_path, hardware_info, optimization_target)
          
@@ -1538,6 +1584,7 @@ class BenchmarkOptimizer:
             self._save_to_cache(cache_key, result, hardware_info)
             
             log.info(f"Optimization completed for {model_path} (via fallback: no configurations)")
+            _unregister_optimizer(model_path)
             return result
          
         # Find which configs from config_list are missing from cached results
@@ -1603,6 +1650,7 @@ class BenchmarkOptimizer:
                     }
                     self._save_to_cache(cache_key, result, hardware_info)
                     log.info(f"Optimization completed for {model_path} (via fallback)")
+                    _unregister_optimizer(model_path)
                     return result
         
         # Combine cached + new results
@@ -1636,7 +1684,7 @@ class BenchmarkOptimizer:
         optimal_config = self.select_optimal_config(
             all_benchmark_results, optimization_target
         )
-
+        
         # If no successful results, fall back to heuristic settings
         successful_results = [r for r in all_benchmark_results if r.get("success", False)]
         if not optimal_config or not successful_results:
@@ -1663,6 +1711,7 @@ class BenchmarkOptimizer:
         self._save_to_cache(cache_key, result, hardware_info)
         
         log.info(f"Optimization completed for {model_path} ({len(all_benchmark_results)} total benchmark results, new_run: {new_benchmarks_run})")
+        _unregister_optimizer(model_path)
         return result
 
     def run_single_benchmark(
@@ -1684,7 +1733,12 @@ class BenchmarkOptimizer:
         """
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
-            
+        
+        # Unregister any stale optimizer for this model (in case previous run crashed)
+        _unregister_optimizer(model_path)
+        # Register this optimizer instance for cancellation support
+        _register_optimizer(model_path, self)
+        
         # Get hardware and model info
         hardware_info = get_hardware_info()
         model_info = {}
@@ -1889,6 +1943,7 @@ class BenchmarkOptimizer:
         }
         self._save_to_cache(cache_key, result_to_cache, hardware_info)
         
+        _unregister_optimizer(model_path)
         return {
             "optimal_settings": optimal_settings,
             "benchmark_results": all_benchmark_results,
