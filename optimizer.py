@@ -1295,16 +1295,15 @@ class BenchmarkOptimizer:
                         pass
             
             if meta is not None:
-                # DEBUG: Log raw metadata before conversion
-                log.debug(f"Raw GGUF metadata keys: {list(meta.keys())}")
+                # INFO: Log raw metadata for context_length keys so we can see what the GGUF library returns
                 for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
                     if k in meta:
                         v = meta[k]
-                        log.debug(f"  Raw {k}: {v!r} (type: {type(v).__name__})")
+                        log.info(f"GGUF raw {k}: {v!r} (type: {type(v).__name__})")
                         if hasattr(v, 'value'):
-                            log.debug(f"    .value = {v.value!r}")
+                            log.info(f"  .value = {v.value!r} (type: {type(v.value).__name__})")
                         if hasattr(v, 'parts') and v.parts:
-                            log.debug(f"    .parts[-1].data = {v.parts[-1].data!r}")
+                            log.info(f"  .parts[-1].data = {v.parts[-1].data!r} (len={len(v.parts[-1].data)})")
                 
                 # Convert ReaderField values to primitive types if needed
                 def convert_value(v):
@@ -1355,10 +1354,10 @@ class BenchmarkOptimizer:
                         except (ValueError, TypeError):
                             pass
                 
-                # DEBUG: Log converted metadata for context keys
+                # INFO: Log converted metadata for context keys
                 for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
                     if k in meta:
-                        log.debug(f"  Converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
+                        log.info(f"GGUF converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
                 
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
