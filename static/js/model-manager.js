@@ -426,7 +426,8 @@ async function act(model, verb) {
   }
 }
 
-// Expose metrics functions globally for tooltip use
+// Expose metrics functions and act globally for tooltip and panel use
 window.fetchModelMetrics = fetchModelMetrics;
 window.formatMetricsTooltip = formatMetricsTooltip;
+window.act = act;
 

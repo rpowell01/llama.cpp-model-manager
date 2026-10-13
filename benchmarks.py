@@ -281,6 +281,75 @@ class BenchmarkRunner:
 
         return cmd
 
+    def __init__(
+        self,
+        llama_server_dir: str | Path | None = None,
+        cancel_callback=None,
+    ) -> None:
+        """
+        Initialize BenchmarkRunner.
+
+        Args:
+            llama_server_dir: Directory containing llama.cpp binaries.
+                If None, uses LLAMA_SERVER_DIR env var or config.BASE_DIR.
+            cancel_callback: Optional callback function to signal cancellation.
+                Called with (binary_name, rep) when cancellation is requested.
+        """
+        self._llama_server_dir = self._resolve_server_dir(llama_server_dir)
+        # Use pre-resolved binaries from config (handles WSL/Windows path conversion)
+        self._bench_binary = LLAMA_BENCH
+        self._batched_bench_binary = LLAMA_BATCHED_BENCH
+        
+        # Store cancel callback for process termination
+        self._cancel_callback = cancel_callback
+        
+        # Log what we found
+        if self._bench_binary:
+            log.info(f"Found llama-bench: {self._bench_binary}")
+        else:
+            log.warning("llama-bench not found")
+        if self._batched_bench_binary:
+            log.info(f"Found llama-batched-bench: {self._batched_bench_binary}")
+        else:
+            log.warning("llama-batched-bench not found")
+
+    def cancel(self) -> None:
+        """
+        Signal cancellation of any running benchmark process.
+        
+        This method:
+        1. Calls the cancel_callback if provided
+        2. Terminates any active subprocess
+        """
+        if self._cancel_callback:
+            self._cancel_callback()
+        
+        # Note: The actual subprocess termination is handled in _run_benchmark
+        # via the _active_process attribute and _cancel() method
+        log.info("Cancellation requested for benchmark")
+
+    def _cancel(self) -> None:
+        """
+        Internal method to cancel the currently running benchmark process.
+        
+        Terminates the active subprocess if one is running.
+        """
+        if hasattr(self, '_active_process') and self._active_process is not None:
+            try:
+                if self._active_process.poll() is None:  # Still running
+                    self._active_process.terminate()
+                    log.info(f"Terminated benchmark process: {self._active_process.pid}")
+                    try:
+                        self._active_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self._active_process.kill()
+                        self._active_process.wait()
+                        log.warning("Benchmark process killed (force)")
+            except Exception as e:
+                log.error(f"Failed to cancel process: {e}")
+            finally:
+                self._active_process = None
+
     def _run_benchmark(
         self,
         binary: Path | None,
@@ -321,12 +390,18 @@ class BenchmarkRunner:
         total_duration = 0.0
         raw_outputs: list[str] = []
         last_error: str | None = None
+        cancelled = False
 
         # Run multiple repetitions
         for rep in range(config.repetitions):
             log.info(f"Starting repetition {rep + 1}/{config.repetitions}")
             rep_start = time.time()
 
+            # Check for cancellation before starting
+            if cancelled:
+                log.info(f"Skipping repetition {rep + 1} due to cancellation")
+                break
+            
             try:
                 # Use binary's directory as working directory for Windows binaries on WSL
                 # Running from WSL temp directory breaks SYCL/Level Zero initialization
@@ -337,20 +412,45 @@ class BenchmarkRunner:
                 else:
                     cwd = None
                 
-                result = subprocess.run(
+                # Use Popen for cancellation support
+                self._active_process = subprocess.Popen(
                     cmd,
                     cwd=cwd,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=config.timeout_sec,
-                    check=False,
                 )
-
+                
+                # Wait for process or cancellation
+                try:
+                    completed = self._active_process.wait(timeout=config.timeout_sec)
+                except subprocess.TimeoutExpired:
+                    error_msg = f"Benchmark timed out after {config.timeout_sec}s"
+                    log.error(f"Repetition {rep + 1}: {error_msg}")
+                    last_error = error_msg
+                    self._active_process.kill()
+                    self._active_process.wait()
+                    cancelled = True
+                    continue
+                
+                # Check for cancellation
+                if cancelled:
+                    log.info(f"Repetition {rep + 1} cancelled before completion")
+                    continue
+                
+                result = self._active_process
                 rep_duration = time.time() - rep_start
                 total_duration += rep_duration
 
-                stdout = result.stdout.strip()
-                stderr = result.stderr.strip()
+                # Read stdout and stderr (TextIOWrapper objects when text=True, or strings in mocks)
+                if hasattr(result.stdout, 'read'):
+                    stdout = result.stdout.read().strip()
+                else:
+                    stdout = result.stdout.strip() if result.stdout else ""
+                if hasattr(result.stderr, 'read'):
+                    stderr = result.stderr.read().strip()
+                else:
+                    stderr = result.stderr.strip() if result.stderr else ""
                 raw_outputs.append(stdout)
 
                 if result.returncode != 0:
@@ -371,6 +471,11 @@ class BenchmarkRunner:
                 except (json.JSONDecodeError, ValueError) as e:
                     log.error(f"Failed to parse output from repetition {rep + 1}: {e}")
                     last_error = str(e)
+
+            except OSError as e:
+                error_msg = f"Benchmark execution error: {e}"
+                log.error(f"Repetition {rep + 1}: {error_msg}")
+                last_error = error_msg
 
             except subprocess.TimeoutExpired:
                 error_msg = f"Benchmark timed out after {config.timeout_sec}s"

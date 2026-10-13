@@ -276,17 +276,17 @@ async function renderPanelProperties(data, modelName) {
       <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
         ■ Stop
       </button>
-      <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        🔧 Optimize Settings (Empirical Benchmarks)
-      </button>
       <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
         ⚡ Quick Optimize (Heuristics)
       </button>
-      <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        📊 View Historical Benchmark Results
+      <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        🔧 Optimize Settings (Empirical Benchmarks)
       </button>
       <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
         🔬 Deep Sweep (Batched Bench)
+      </button>
+      <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
+        📊 View Historical Benchmark Results
       </button>
     </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
@@ -1110,12 +1110,32 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
 
     // Setup cancel button
     if (cancelBtn) {
-      cancelBtn.onclick = () => {
+      cancelBtn.onclick = async () => {
         isCancelled = true;
-        abortController.abort();
         progressText.textContent = "Cancelling...";
         cancelBtn.disabled = true;
         cancelBtn.textContent = "Cancelling...";
+        
+        // Signal cancellation to the server
+        try {
+          const resp = await fetch("/api/benchmark-cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: modelName }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) {
+              log("Benchmark cancelled on server");
+            } else {
+              log("Failed to cancel benchmark on server: " + data.message);
+            }
+          } else {
+            log("Failed to cancel benchmark: " + (await resp.text()));
+          }
+        } catch (err) {
+          log("Error cancelling benchmark: " + err);
+        }
       };
     }
 
@@ -1420,12 +1440,32 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
 
     // Setup cancel button
     if (cancelBtn) {
-      cancelBtn.onclick = () => {
+      cancelBtn.onclick = async () => {
         isCancelled = true;
-        abortController.abort();
         progressText.textContent = "Cancelling...";
         cancelBtn.disabled = true;
         cancelBtn.textContent = "Cancelling...";
+        
+        // Signal cancellation to the server
+        try {
+          const resp = await fetch("/api/benchmark-cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: modelName }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) {
+              log("Benchmark cancelled on server");
+            } else {
+              log("Failed to cancel benchmark on server: " + data.message);
+            }
+          } else {
+            log("Failed to cancel benchmark: " + (await resp.text()));
+          }
+        } catch (err) {
+          log("Error cancelling benchmark: " + err);
+        }
       };
     }
 
@@ -1785,62 +1825,17 @@ const results = result.benchmark_results || [];
   // Attach start model button listener
   const startBtn = document.getElementById(`start-model-${modelSafeId}`);
   if (startBtn) {
-    startBtn.addEventListener("click", async () => {
-      startBtn.disabled = true;
-      startBtn.textContent = "▶ Starting…";
-      
-      try {
-        const resp = await fetch("/api/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: modelName }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) {
-          throw new Error(result.error || "Failed to start model");
-        }
-        
-        // Refresh the panel after starting
-        selectModel(modelName);
-      } catch (err) {
-        console.error("Start failed", err);
-        alert(`Start failed: ${err.message}`);
-      } finally {
-        startBtn.disabled = false;
-        startBtn.textContent = "▶ Start";
-      }
+    startBtn.addEventListener("click", () => {
+      act(modelName, 'start');
     });
   }
 
   // Attach stop model button listener
   const stopBtn = document.getElementById(`stop-model-${modelSafeId}`);
   if (stopBtn) {
-    stopBtn.addEventListener("click", async () => {
+    stopBtn.addEventListener("click", () => {
       if (!confirm(`Stop model "${modelName}"?`)) return;
-      
-      stopBtn.disabled = true;
-      stopBtn.textContent = "■ Stopping…";
-      
-      try {
-        const resp = await fetch("/api/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: modelName }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) {
-          throw new Error(result.error || "Failed to stop model");
-        }
-        
-        // Refresh the panel after stopping
-        selectModel(modelName);
-      } catch (err) {
-        console.error("Stop failed", err);
-        alert(`Stop failed: ${err.message}`);
-      } finally {
-        stopBtn.disabled = false;
-        stopBtn.textContent = "■ Stop";
-      }
+      act(modelName, 'stop');
     });
   }
 

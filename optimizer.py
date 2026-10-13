@@ -58,6 +58,10 @@ class BenchmarkOptimizer:
             self.cache_dir = Path(tempfile.gettempdir()) / "llama-web-benchmarks"
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._benchmark_runner = BenchmarkRunner()
+          
+        # Cancellation support for running benchmarks
+        self._cancel_callback: Optional[Callable[[], None]] = None
+        self._cancel_requested = False
          
     def _sanitize_hardware_info(self, hardware_info: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1661,7 +1665,86 @@ class BenchmarkOptimizer:
             "cache_key": cache_key,
             "optimization_target": "current_config_test",
         }
+        
+    def cancel(self) -> None:
+        """
+        Signal cancellation of any running benchmark process.
+        
+        This method:
+        1. Calls the cancel_callback if provided
+        2. Terminates any active subprocess in the benchmark runner
+        
+        Note: This is called when the user clicks Cancel in the UI.
+        It signals cancellation to the currently running benchmark.
+        """
+        if self._cancel_callback:
+            self._cancel_callback()
+        
+        # Signal cancellation to the benchmark runner
+        if hasattr(self, '_runner') and self._runner is not None:
+            try:
+                self._runner.cancel()
+            except Exception as e:
+                log.error(f"Failed to cancel benchmark runner: {e}")
+        
+        log.info("Cancellation requested for benchmark optimization")
 
+    def _run_benchmark_with_cancellation(
+        self,
+        model_path: str,
+        config: BenchmarkConfig,
+        is_batched: bool = False,
+    ) -> BenchmarkResult:
+        """
+        Run a benchmark with cancellation support.
+        
+        This wraps _run_benchmark to support cancellation via a callback.
+        
+        Args:
+            model_path: Path to model file
+            config: Benchmark configuration
+            is_batched: Whether this is llama-batched-bench
+            
+        Returns:
+            BenchmarkResult with metrics or error
+        """
+        def cancel_callback():
+            """Callback to signal cancellation."""
+            self._cancel_requested = True
+        
+        self._cancel_requested = False
+        self._runner = BenchmarkRunner(cancel_callback=cancel_callback)
+        
+        try:
+            result = self._runner._run_benchmark(
+                self._runner._bench_binary if not is_batched else self._runner._batched_bench_binary,
+                config,
+                is_batched,
+            )
+        except BinaryNotFoundError as e:
+            log.error(f"Benchmark binary not found: {e}")
+            result = BenchmarkResult(success=False, error=str(e), command=[])
+        except Exception as e:
+            log.error(f"Failed to run benchmark: {e}")
+            result = BenchmarkResult(success=False, error=str(e), command=[])
+        
+        # If cancelled, return a cancelled result
+        if self._cancel_requested:
+            result.success = False
+            result.error = "Cancelled by user"
+            result.raw_output = ""
+        
+        return result
+
+    def _runner_cancel(self) -> None:
+        """
+        Internal method to cancel the current benchmark runner.
+        """
+        if hasattr(self, '_runner') and self._runner is not None:
+            try:
+                self._runner.cancel()
+            except Exception as e:
+                log.error(f"Failed to cancel benchmark runner: {e}")
 
 # Convenience function for direct usage
 def optimize_model(

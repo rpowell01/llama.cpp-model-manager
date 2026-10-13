@@ -1177,3 +1177,78 @@ def api_shutdown():
         os._exit(0)
     threading.Thread(target=shutdown, daemon=True).start()
     return jsonify({"status": "shutdown", "models_stopped": results if 'results' in locals() else {}})
+
+
+# Cancel optimization endpoint
+@system_bp.route("/api/benchmark-cancel", methods=["POST"])
+def api_benchmark_cancel():
+    """
+    Cancel a currently running benchmark optimization.
+    
+    Request body:
+        {
+            "model": "string"  # Required: model name to cancel
+        }
+    
+    Response:
+        {
+            "success": bool,
+            "message": "string"
+        }
+    """
+    from flask import request
+    from optimizer import BenchmarkOptimizer
+    import config
+    
+    data = request.get_json(force=True) or {}
+    
+    # Validate model name
+    model_name_raw = data.get("model")
+    if model_name_raw is None:
+        return jsonify({"success": False, "message": "Missing model name"}), 400
+    try:
+        model_name = str(model_name_raw).strip()
+    except Exception:
+        return jsonify({"success": False, "message": "Model name must be a string"}), 400
+    
+    if not model_name:
+        return jsonify({"success": False, "message": "Missing model name"}), 400
+    
+    # Check if benchmark optimization is enabled
+    if not config.BENCHMARK_ENABLED:
+        return jsonify({"success": False, "message": "Benchmark optimization is disabled"}), 403
+    
+    # Get models to find model path
+    models = get_models()
+    model_info = models.get(model_name)
+    
+    if not model_info:
+        return jsonify({"success": False, "message": f"Unknown model '{model_name}'"}), 404
+    
+    # Get model path
+    model_path_str = model_info.get("model_path", "")
+    if not model_path_str:
+        return jsonify({"success": False, "message": f"Model '{model_name}' has no associated file path"}), 400
+    
+    # Resolve model path
+    try:
+        from config import resolve_model_path
+        model_path = resolve_model_path(model_path_str)
+        if not model_path.exists():
+            return jsonify({"success": False, "message": f"Model file not found: {model_path}"}), 404
+    except Exception as e:
+        log.exception(f"Failed to resolve model path for '{model_name}'")
+        return jsonify({"success": False, "message": f"Failed to resolve model path: {e}"}), 500
+    
+    # Create optimizer and cancel
+    try:
+        optimizer = BenchmarkOptimizer(config.BENCHMARK_CACHE_DIR)
+        # Call the cancel method which will terminate the running process
+        optimizer.cancel()
+        
+        log.info(f"Cancelled benchmark optimization for model '{model_name}'")
+        
+        return jsonify({"success": True, "message": f"Cancelled benchmark for '{model_name}'"})
+    except Exception as e:
+        log.exception(f"Failed to cancel benchmark for '{model_name}'")
+        return jsonify({"success": False, "message": f"Failed to cancel: {str(e)}"}), 500

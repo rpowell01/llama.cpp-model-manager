@@ -402,3 +402,15 @@
 {"time": "2026-10-11T22:23:29Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 221596, "status": "exited_early"}
 {"time": "2026-10-11T22:30:14Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 222272, "status": "exited_early"}
 {"time": "2026-10-11T22:32:52Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 222726, "status": "exited_early"}
+{"time": "2026-10-11T22:44:09Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 32988, "status": "running"}
+{"time": "2026-10-11T22:47:59Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 224955, "status": "exited_early"}
+{"time": "2026-10-11T22:53:25Z", "action": "download", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 0, "pid": null, "status": "completed (4623524448 bytes)"}
+{"time": "2026-10-11T22:54:56Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 225650, "status": "exited_early"}
+{"time": "2026-10-11T22:57:10Z", "action": "start", "model": "qwen3.5-9b-super-coder.q3-k-m", "port": 11007, "pid": 226072, "status": "exited_early"}
+{"time": "2026-10-12T00:31:49Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 26756, "status": "running"}
+{"time": "2026-10-12T01:12:59Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 13823, "status": "exited_early"}
+{"time": "2026-10-12T01:14:54Z", "action": "start", "model": "jackod-9b-coder-mtp-gguf", "port": 11004, "pid": 14413, "status": "exited_early"}
+{"time": "2026-10-12T16:23:28Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 30580, "status": "running"}
+{"time": "2026-10-12T17:45:34Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 18552, "status": "running"}
+{"time": "2026-10-12T19:41:34Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 25612, "status": "running"}
+{"time": "2026-10-13T01:36:43Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 18880, "status": "running"}
