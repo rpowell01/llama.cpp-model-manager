@@ -1295,6 +1295,17 @@ class BenchmarkOptimizer:
                         pass
             
             if meta is not None:
+                # DEBUG: Log raw metadata before conversion
+                log.debug(f"Raw GGUF metadata keys: {list(meta.keys())}")
+                for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
+                    if k in meta:
+                        v = meta[k]
+                        log.debug(f"  Raw {k}: {v!r} (type: {type(v).__name__})")
+                        if hasattr(v, 'value'):
+                            log.debug(f"    .value = {v.value!r}")
+                        if hasattr(v, 'parts') and v.parts:
+                            log.debug(f"    .parts[-1].data = {v.parts[-1].data!r}")
+                
                 # Convert ReaderField values to primitive types if needed
                 def convert_value(v):
                     """Convert a ReaderField or similar object to a primitive Python value."""
@@ -1343,6 +1354,11 @@ class BenchmarkOptimizer:
                             meta[k] = int(float(v))
                         except (ValueError, TypeError):
                             pass
+                
+                # DEBUG: Log converted metadata for context keys
+                for k in ["phi3.context_length", "context_length", "llama.context_length", "rope.max_position_embeddings"]:
+                    if k in meta:
+                        log.debug(f"  Converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
                 
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
