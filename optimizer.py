@@ -1179,7 +1179,12 @@ class BenchmarkOptimizer:
                             if hasattr(val, 'value'):
                                 meta[key] = val.value
                             elif hasattr(val, 'parts') and val.parts:
-                                meta[key] = val.parts[-1].data
+                                data = val.parts[-1].data
+                                # Convert bytes to int if needed (little-endian)
+                                if isinstance(data, bytes):
+                                    meta[key] = int.from_bytes(data, byteorder='little', signed=False)
+                                else:
+                                    meta[key] = data
                             else:
                                 meta[key] = val
                     except Exception:
@@ -1187,7 +1192,7 @@ class BenchmarkOptimizer:
             
             if meta is not None:
                 # Convert ReaderField values to primitive types if needed
-                meta = {k: (v.value if hasattr(v, 'value') else (v.parts[-1].data if hasattr(v, 'parts') and v.parts else v)) for k, v in meta.items()}
+                meta = {k: (v.value if hasattr(v, 'value') else (int.from_bytes(v.parts[-1].data, byteorder='little', signed=False) if hasattr(v, 'parts') and v.parts and isinstance(v.parts[-1].data, bytes) else v.parts[-1].data if hasattr(v, 'parts') and v.parts else v)) for k, v in meta.items()}
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
                 context_keys = [
