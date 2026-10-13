@@ -1426,22 +1426,24 @@ class BenchmarkOptimizer:
                     log.info(f"GGUF converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
                 
                 # Keys to check in order of preference
-                # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
+                # First check standard/generic keys, then dynamically find any architecture-specific context_length keys
                 context_keys = [
                     "context_length",
                     "llama.context_length",
-                    "qwen.context_length",
-                    "qwen35.context_length",  # Qwen 3.5 uses this prefix
-                    "phi3.context_length",
-                    "mistral.context_length",
-                    "gemma.context_length",
-                    "falcon.context_length",
-                    "mpt.context_length",
-                    "baichuan.context_length",
-                    "internlm.context_length",
-                    "yarn.context_length",
                     "rope.max_position_embeddings",
                 ]
+                # Add any architecture-specific context_length keys found in metadata
+                arch_context_keys = [k for k in meta.keys() if k.endswith('.context_length')]
+                # Prioritize known architectures, then add others
+                known_prefixes = ['qwen', 'qwen35', 'phi3', 'mistral', 'gemma', 'falcon', 'mpt', 'baichuan', 'internlm', 'yarn', 'spark']
+                for prefix in known_prefixes:
+                    key = f"{prefix}.context_length"
+                    if key in arch_context_keys and key not in context_keys:
+                        context_keys.append(key)
+                # Add any remaining architecture-specific keys
+                for key in arch_context_keys:
+                    if key not in context_keys:
+                        context_keys.append(key)
                 
                 for key in context_keys:
                     if key in meta:
