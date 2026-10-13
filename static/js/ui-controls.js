@@ -1845,7 +1845,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         </div>
       `;
     }
-  }
+    
     modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         modal.remove();
