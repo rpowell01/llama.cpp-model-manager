@@ -303,6 +303,9 @@ class BenchmarkRunner:
         # Store cancel callback for process termination
         self._cancel_callback = cancel_callback
         
+        # Cancellation flag set by cancel_callback
+        self._cancelled = False
+        
         # Log what we found
         if self._bench_binary:
             log.info(f"Found llama-bench: {self._bench_binary}")
@@ -318,14 +321,18 @@ class BenchmarkRunner:
         Signal cancellation of any running benchmark process.
         
         This method:
-        1. Calls the cancel_callback if provided
-        2. Terminates any active subprocess
+        1. Sets the internal cancellation flag
+        2. Calls the cancel_callback if provided
+        3. Terminates any active subprocess
         """
+        self._cancelled = True
+        
         if self._cancel_callback:
             self._cancel_callback()
         
-        # Note: The actual subprocess termination is handled in _run_benchmark
-        # via the _active_process attribute and _cancel() method
+        # Terminate the active subprocess immediately
+        self._cancel()
+        
         log.info("Cancellation requested for benchmark")
 
     def _cancel(self) -> None:
@@ -390,7 +397,9 @@ class BenchmarkRunner:
         total_duration = 0.0
         raw_outputs: list[str] = []
         last_error: str | None = None
-        cancelled = False
+
+        # Reset cancellation flag at start
+        self._cancelled = False
 
         # Run multiple repetitions
         for rep in range(config.repetitions):
@@ -398,7 +407,7 @@ class BenchmarkRunner:
             rep_start = time.time()
 
             # Check for cancellation before starting
-            if cancelled:
+            if self._cancelled:
                 log.info(f"Skipping repetition {rep + 1} due to cancellation")
                 break
             
@@ -430,11 +439,11 @@ class BenchmarkRunner:
                     last_error = error_msg
                     self._active_process.kill()
                     self._active_process.wait()
-                    cancelled = True
+                    self._cancelled = True
                     continue
                 
                 # Check for cancellation
-                if cancelled:
+                if self._cancelled:
                     log.info(f"Repetition {rep + 1} cancelled before completion")
                     continue
                 
