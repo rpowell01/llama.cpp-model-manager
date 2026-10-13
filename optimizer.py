@@ -846,6 +846,18 @@ class BenchmarkOptimizer:
         
         # Get hardware info
         hardware_info = get_hardware_info()
+        
+        # Extract model info for cache key and config generation
+        model_info = {}
+        try:
+            model_stat = os.stat(model_path)
+            model_info["file_size_gb"] = round(model_stat.st_size / (1024**3), 2)
+            model_info["file_path"] = model_path
+            model_info["ctx_size"] = 4096  # default, will be updated after getting max context
+        except OSError:
+            model_info["file_size_gb"] = 0
+            model_info["file_path"] = model_path
+            model_info["ctx_size"] = 4096
         total_vram = hardware_info.get("total_gpu_vram_gb", 0)
         cpu_logical = hardware_info.get("cpu_count_logical", 16)
         cpu_physical = hardware_info.get("cpu_count_physical", 8)
@@ -854,6 +866,9 @@ class BenchmarkOptimizer:
         # Get model max context size
         model_ctx = self._get_model_max_context(model_path, hardware_info)
         log.info(f"Model max context size: {model_ctx}")
+        
+        # Update model_info with actual context size
+        model_info["ctx_size"] = model_ctx
         
         # Context sizes to test: max, max/2, max/4 (minimum 4096)
         ctx_sizes = []
@@ -1162,10 +1177,19 @@ class BenchmarkOptimizer:
             
             if meta is not None:
                 # Keys to check in order of preference
+                # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
                 context_keys = [
                     "context_length",
                     "llama.context_length",
                     "qwen.context_length",
+                    "phi3.context_length",
+                    "mistral.context_length",
+                    "gemma.context_length",
+                    "falcon.context_length",
+                    "mpt.context_length",
+                    "baichuan.context_length",
+                    "internlm.context_length",
+                    "yarn.context_length",
                     "rope.max_position_embeddings",
                 ]
                 
