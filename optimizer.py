@@ -1419,12 +1419,7 @@ class BenchmarkOptimizer:
                             meta[k] = int(float(v))
                         except (ValueError, TypeError):
                             pass
-                
-                # INFO: Log converted metadata for all context keys
-                context_keys_to_log = [k for k in meta.keys() if 'context_length' in k.lower() or 'max_position_embeddings' in k.lower()]
-                for k in context_keys_to_log:
-                    log.info(f"GGUF converted {k}: {meta[k]!r} (type: {type(meta[k]).__name__})")
-                
+                 
                 # Keys to check in order of preference
                 # First check standard/generic keys, then dynamically find any architecture-specific context_length keys
                 context_keys = [
