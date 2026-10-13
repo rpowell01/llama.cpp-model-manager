@@ -15,7 +15,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from benchmarks import BenchmarkRunner, BenchmarkConfig, BenchmarkError
 from routes.system import compute_optimal_settings, get_hardware_info
@@ -62,6 +62,7 @@ class BenchmarkOptimizer:
         # Cancellation support for running benchmarks
         self._cancel_callback: Optional[Callable[[], None]] = None
         self._cancel_requested = False
+        self._active_runner: Optional[BenchmarkRunner] = None
          
     def _sanitize_hardware_info(self, hardware_info: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -542,10 +543,22 @@ class BenchmarkOptimizer:
         results = []
         start_time = time.time()
         
+        # Reset cancellation flag at start
+        self._cancel_requested = False
+        
         log.info(f"Starting benchmark sweep with {len(config_list)} configurations "
                 f"(max {max_duration_sec}s)")
         
+        def cancel_callback():
+            """Callback to signal cancellation to the runner."""
+            self._cancel_requested = True
+        
         for i, config in enumerate(config_list):
+            # Check for cancellation before starting
+            if self._cancel_requested:
+                log.info(f"Benchmark sweep cancelled before configuration {i+1}")
+                break
+            
             # Check if we've exceeded time limit (only when max_duration_sec > 0)
             elapsed = time.time() - start_time
             if max_duration_sec > 0 and elapsed >= max_duration_sec:
@@ -559,33 +572,34 @@ class BenchmarkOptimizer:
             else:
                 timeout_sec = max_duration_sec if max_duration_sec > 0 else 600
             
+            log.info(f"Testing configuration {i+1}/{len(config_list)}: "
+                    f"ngl={config.get('n_gpu_layers')}, "
+                    f"batch={config.get('batch_size')}, "
+                    f"threads={config.get('threads')}, "
+                    f"timeout={timeout_sec}s")
+            
+            # Create benchmark config
+            bench_config = BenchmarkConfig(
+                model_path=model_path,
+                n_gpu_layers=config.get("n_gpu_layers", 99),
+                batch_size=config.get("batch_size", 4096),
+                ubatch_size=config.get("ubatch_size", 1024),
+                threads=config.get("threads", 16),
+                threads_batch=config.get("threads_batch", 16),
+                cache_type_k=config.get("cache_type_k", "q4_0"),
+                cache_type_v=config.get("cache_type_v", "q4_0"),
+                flash_attn=config.get("flash_attn", "auto"),
+                ctx_size=config.get("ctx_size", 128000),
+                n_prompt=config.get("n_prompt", 512),
+                n_gen=config.get("n_gen", 128),
+                repetitions=2,  # Fewer repetitions for sweep speed
+                timeout_sec=timeout_sec,
+            )
+            
+            # Run llama-bench (single sequence) for sweep with cancellation support
+            runner = BenchmarkRunner(cancel_callback=cancel_callback)
+            self._active_runner = runner
             try:
-                log.info(f"Testing configuration {i+1}/{len(config_list)}: "
-                        f"ngl={config.get('n_gpu_layers')}, "
-                        f"batch={config.get('batch_size')}, "
-                        f"threads={config.get('threads')}, "
-                        f"timeout={timeout_sec}s")
-                
-                # Create benchmark config
-                bench_config = BenchmarkConfig(
-                    model_path=model_path,
-                    n_gpu_layers=config.get("n_gpu_layers", 99),
-                    batch_size=config.get("batch_size", 4096),
-                    ubatch_size=config.get("ubatch_size", 1024),
-                    threads=config.get("threads", 16),
-                    threads_batch=config.get("threads_batch", 16),
-                    cache_type_k=config.get("cache_type_k", "q4_0"),
-                    cache_type_v=config.get("cache_type_v", "q4_0"),
-                    flash_attn=config.get("flash_attn", "auto"),
-                    ctx_size=config.get("ctx_size", 128000),
-                    n_prompt=config.get("n_prompt", 512),
-                    n_gen=config.get("n_gen", 128),
-                    repetitions=2,  # Fewer repetitions for sweep speed
-                    timeout_sec=timeout_sec,
-                )
-                
-                # Run llama-bench (single sequence) for sweep
-                runner = BenchmarkRunner()
                 result = runner.run_llama_bench(model_path, {
                     "n_gpu_layers": bench_config.n_gpu_layers,
                     "batch_size": bench_config.batch_size,
@@ -601,29 +615,8 @@ class BenchmarkOptimizer:
                     "repetitions": bench_config.repetitions,
                     "timeout_sec": bench_config.timeout_sec,
                 })
-                
-                # Extract key metrics for optimization
-                result_dict = {
-                    "config": config,
-                    "metrics": result,
-                    "success": True,
-                    "pp_avg": result.get("pp_avg", 0),
-                    "tg_avg": result.get("tg_avg", 0),
-                    "latency_p50": result.get("latency_p50"),
-                    "latency_p90": result.get("latency_p90"),
-                    "latency_p99": result.get("latency_p99"),
-                    "timestamp": time.time(),
-                    "test_type": "automatic",
-                    "optimization_target": optimization_target,
-                    # For optimization, we'll use a combined score later
-                }
-                
-                results.append(result_dict)
-                log.info(f"Configuration {i+1} completed: "
-                        f"pp_avg={result_dict['pp_avg']:.1f}, "
-                        f"tg_avg={result_dict['tg_avg']:.1f}")
-                        
             except Exception as e:
+                self._active_runner = None
                 log.warning(f"Configuration {i+1} failed: {e}")
                 # Add failed result for completeness
                 results.append({
@@ -636,6 +629,35 @@ class BenchmarkOptimizer:
                     "test_type": "automatic",
                     "optimization_target": optimization_target,
                 })
+                continue
+            finally:
+                self._active_runner = None
+            
+            # Check if cancelled during run
+            if self._cancel_requested:
+                log.info(f"Configuration {i+1} cancelled during execution")
+                break
+            
+            # Extract key metrics for optimization
+            result_dict = {
+                "config": config,
+                "metrics": result,
+                "success": True,
+                "pp_avg": result.get("pp_avg", 0),
+                "tg_avg": result.get("tg_avg", 0),
+                "latency_p50": result.get("latency_p50"),
+                "latency_p90": result.get("latency_p90"),
+                "latency_p99": result.get("latency_p99"),
+                "timestamp": time.time(),
+                "test_type": "automatic",
+                "optimization_target": optimization_target,
+                # For optimization, we'll use a combined score later
+            }
+            
+            results.append(result_dict)
+            log.info(f"Configuration {i+1} completed: "
+                    f"pp_avg={result_dict['pp_avg']:.1f}, "
+                    f"tg_avg={result_dict['tg_avg']:.1f}")
         
         log.info(f"Benchmark sweep completed: {len(results)} configurations tested "
                 f"(elapsed: {time.time() - start_time:.1f}s)")
@@ -689,6 +711,11 @@ class BenchmarkOptimizer:
         Returns:
             List of batched bench result dictionaries
         """
+        # Check for cancellation before starting phase 2
+        if self._cancel_requested:
+            log.info("Batched bench phase cancelled before starting")
+            return []
+        
         # Sort results by score (composite of pp_avg and tg_avg based on optimization_target)
         def score_func(r):
             if not r.get("success", False):
@@ -722,23 +749,36 @@ class BenchmarkOptimizer:
                 f"ngl={base_config.get('n_gpu_layers')}, batch={base_config.get('batch_size')}, "
                 f"npp={n_prompt_values}, ntg={n_gen_values}, npl={parallel_values}")
         
+        def cancel_callback():
+            """Callback to signal cancellation to the runner."""
+            self._cancel_requested = True
+        
         try:
-            runner = BenchmarkRunner()
-            bench_result = runner.run_llama_batched_bench(model_path, {
-                "n_gpu_layers": base_config.get("n_gpu_layers", 99),
-                "batch_size": base_config.get("batch_size", 4096),
-                "ubatch_size": base_config.get("ubatch_size", 1024),
-                "threads": base_config.get("threads", 16),
-                "threads_batch": base_config.get("threads_batch", 16),
-                "cache_type_k": base_config.get("cache_type_k", "q4_0"),
-                "cache_type_v": base_config.get("cache_type_v", "q4_0"),
-                "flash_attn": base_config.get("flash_attn", "auto"),
-                "ctx_size": base_config.get("ctx_size", 4096),
-                "parallel": parallel_values,  # List for sweep
-                "n_prompt": n_prompt_values,  # List for sweep
-                "n_gen": n_gen_values,        # List for sweep
-                "timeout_sec": 600,
-            })
+            runner = BenchmarkRunner(cancel_callback=cancel_callback)
+            self._active_runner = runner
+            try:
+                bench_result = runner.run_llama_batched_bench(model_path, {
+                    "n_gpu_layers": base_config.get("n_gpu_layers", 99),
+                    "batch_size": base_config.get("batch_size", 4096),
+                    "ubatch_size": base_config.get("ubatch_size", 1024),
+                    "threads": base_config.get("threads", 16),
+                    "threads_batch": base_config.get("threads_batch", 16),
+                    "cache_type_k": base_config.get("cache_type_k", "q4_0"),
+                    "cache_type_v": base_config.get("cache_type_v", "q4_0"),
+                    "flash_attn": base_config.get("flash_attn", "auto"),
+                    "ctx_size": base_config.get("ctx_size", 4096),
+                    "parallel": parallel_values,  # List for sweep
+                    "n_prompt": n_prompt_values,  # List for sweep
+                    "n_gen": n_gen_values,        # List for sweep
+                    "timeout_sec": 600,
+                })
+            finally:
+                self._active_runner = None
+            
+            # Check if cancelled during run
+            if self._cancel_requested:
+                log.info("Batched bench phase cancelled during execution")
+                return []
             
             # Parse batched bench results and map back to individual configs
             batched_results = self._parse_batched_bench_results(
@@ -748,6 +788,7 @@ class BenchmarkOptimizer:
             return batched_results
                 
         except Exception as e:
+            self._active_runner = None
             log.warning(f"Batched bench phase failed: {e}")
             # Return empty results for each top config
             return [{"config": c.get("config", {}), "success": False, "error": str(e)} for c in top_configs]
@@ -1019,12 +1060,23 @@ class BenchmarkOptimizer:
         run_configs = unique_configs
         log.info(f"Deep sweep: {len(run_configs)} batched-bench runs planned")
         
+        # Reset cancellation flag at start
+        self._cancel_requested = False
+        
         # Run batched-bench for each config with per-run sweep parameters
         all_results = []
-        runner = BenchmarkRunner()
         start_time = time.time()
         
+        def cancel_callback():
+            """Callback to signal cancellation to the runner."""
+            self._cancel_requested = True
+        
         for i, config in enumerate(run_configs):
+            # Check for cancellation before starting
+            if self._cancel_requested:
+                log.info(f"Deep sweep cancelled before run {i+1}")
+                break
+            
             if max_duration_sec > 0 and (time.time() - start_time) >= max_duration_sec:
                 log.info(f"Deep sweep time limit reached ({max_duration_sec}s), stopping")
                 break
@@ -1057,6 +1109,9 @@ class BenchmarkOptimizer:
                     f"ctx={ctx}, batch={batch}, threads={config['threads']}, cache={config['cache_type_k']}, "
                     f"sweep: npp={run_npp}, ntg={run_ntg}, npl={run_npl}")
             
+            # Create runner with cancellation support
+            runner = BenchmarkRunner(cancel_callback=cancel_callback)
+            self._active_runner = runner
             try:
                 result = runner.run_llama_batched_bench(model_path, {
                     **config,
@@ -1065,24 +1120,8 @@ class BenchmarkOptimizer:
                     "parallel": run_npl,
                     "timeout_sec": 600,
                 })
-                
-                # Result contains aggregated metrics from sweep
-                run_result = {
-                    "config": config,
-                    "success": True,
-                    "batched_throughput": result.get("batch_throughput", 0),
-                    "pp_avg": result.get("pp_avg", 0),
-                    "tg_avg": result.get("tg_avg", 0),
-                    "latency_p50": result.get("latency_p50"),
-                    "parallel_results": result.get("parallel_results", []),
-                    "timestamp": time.time(),
-                }
-                all_results.append(run_result)
-                
-                if progress_callback:
-                    progress_callback(i+1, len(run_configs), config, run_result)
-                    
             except Exception as e:
+                self._active_runner = None
                 log.warning(f"Deep sweep run {i+1} failed: {e}")
                 all_results.append({
                     "config": config,
@@ -1090,6 +1129,30 @@ class BenchmarkOptimizer:
                     "error": str(e),
                     "timestamp": time.time(),
                 })
+                continue
+            finally:
+                self._active_runner = None
+            
+            # Check if cancelled during run
+            if self._cancel_requested:
+                log.info(f"Deep sweep run {i+1} cancelled during execution")
+                break
+            
+            # Result contains aggregated metrics from sweep
+            run_result = {
+                "config": config,
+                "success": True,
+                "batched_throughput": result.get("batch_throughput", 0),
+                "pp_avg": result.get("pp_avg", 0),
+                "tg_avg": result.get("tg_avg", 0),
+                "latency_p50": result.get("latency_p50"),
+                "parallel_results": result.get("parallel_results", []),
+                "timestamp": time.time(),
+            }
+            all_results.append(run_result)
+            
+            if progress_callback:
+                progress_callback(i+1, len(run_configs), config, run_result)
         
         # Find best result by optimization target
         successful = [r for r in all_results if r.get("success", False)]
@@ -1609,6 +1672,9 @@ class BenchmarkOptimizer:
         
         log.info(f"Running single benchmark for {model_path}")
         
+        # Reset cancellation flag at start
+        self._cancel_requested = False
+        
         # Filter current_config to only include valid llama-bench parameters
         # llama-bench (regular) does NOT support: cache_reuse, cache_ram, swa_full, spec_type, spec_draft_n_max
         # Those are only for llama-batched-bench / llama-server
@@ -1665,8 +1731,17 @@ class BenchmarkOptimizer:
         
         all_benchmark_results = []
         
+        def cancel_callback():
+            """Callback to signal cancellation to the runner."""
+            self._cancel_requested = True
+        
         # Run benchmark for each prompt size
         for n_prompt in prompt_sizes:
+            # Check for cancellation before starting
+            if self._cancel_requested:
+                log.info(f"Single benchmark cancelled before prompt size {n_prompt}")
+                break
+            
             bench_config = BenchmarkConfig(
                 model_path=model_path,
                 n_gpu_layers=filtered_config["n_gpu_layers"],
@@ -1689,27 +1764,48 @@ class BenchmarkOptimizer:
                 parallel=filtered_config.get("parallel", 1),
             )
             
-            runner = BenchmarkRunner()
-            result = runner.run_llama_bench(model_path, {
-                "n_gpu_layers": bench_config.n_gpu_layers,
-                "batch_size": bench_config.batch_size,
-                "ubatch_size": bench_config.ubatch_size,
-                "threads": bench_config.threads,
-                "threads_batch": bench_config.threads_batch,
-                "cache_type_k": bench_config.cache_type_k,
-                "cache_type_v": bench_config.cache_type_v,
-                "flash_attn": bench_config.flash_attn,
-                "ctx_size": bench_config.ctx_size,
-                "n_prompt": bench_config.n_prompt,
-                "n_gen": bench_config.n_gen,
-                "repetitions": bench_config.repetitions,
-                "timeout_sec": bench_config.timeout_sec,
-                "numa": bench_config.numa,
-                "numa_value": bench_config.numa_value,
-                "cpu_affinity": bench_config.cpu_affinity,
-                "cpu_strict": bench_config.cpu_strict,
-                "parallel": bench_config.parallel,
-            })
+            runner = BenchmarkRunner(cancel_callback=cancel_callback)
+            self._active_runner = runner
+            try:
+                result = runner.run_llama_bench(model_path, {
+                    "n_gpu_layers": bench_config.n_gpu_layers,
+                    "batch_size": bench_config.batch_size,
+                    "ubatch_size": bench_config.ubatch_size,
+                    "threads": bench_config.threads,
+                    "threads_batch": bench_config.threads_batch,
+                    "cache_type_k": bench_config.cache_type_k,
+                    "cache_type_v": bench_config.cache_type_v,
+                    "flash_attn": bench_config.flash_attn,
+                    "ctx_size": bench_config.ctx_size,
+                    "n_prompt": bench_config.n_prompt,
+                    "n_gen": bench_config.n_gen,
+                    "repetitions": bench_config.repetitions,
+                    "timeout_sec": bench_config.timeout_sec,
+                    "numa": bench_config.numa,
+                    "numa_value": bench_config.numa_value,
+                    "cpu_affinity": bench_config.cpu_affinity,
+                    "cpu_strict": bench_config.cpu_strict,
+                    "parallel": bench_config.parallel,
+                })
+            except Exception as e:
+                self._active_runner = None
+                log.warning(f"Single benchmark for prompt size {n_prompt} failed: {e}")
+                all_benchmark_results.append({
+                    "config": {**filtered_config, "n_prompt": n_prompt},
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": time.time(),
+                    "test_type": "custom",
+                    "optimization_target": "current_config_test",
+                })
+                continue
+            finally:
+                self._active_runner = None
+            
+            # Check if cancelled during run
+            if self._cancel_requested:
+                log.info(f"Single benchmark cancelled during prompt size {n_prompt}")
+                break
             
             # run_llama_bench returns metrics dict on success, raises exception on failure
             benchmark_result = {
@@ -1744,8 +1840,9 @@ class BenchmarkOptimizer:
                 if hist_config_str not in existing_configs:
                     all_benchmark_results.append(hist_result)
         
-        # Add the new single benchmark result
-        all_benchmark_results.append(benchmark_result)
+        # The new benchmark results are already added in the loop above
+        # No need to append again
+        pass
         
         # Use optimal_settings from cache if available (from full optimization), otherwise current config
         if cached_result and cached_result.get("optimal_settings"):
@@ -1778,19 +1875,22 @@ class BenchmarkOptimizer:
         Signal cancellation of any running benchmark process.
         
         This method:
-        1. Calls the cancel_callback if provided
-        2. Terminates any active subprocess in the benchmark runner
+        1. Sets the cancellation flag
+        2. Calls the cancel_callback if provided
+        3. Terminates any active subprocess in the benchmark runner
         
         Note: This is called when the user clicks Cancel in the UI.
         It signals cancellation to the currently running benchmark.
         """
+        self._cancel_requested = True
+        
         if self._cancel_callback:
             self._cancel_callback()
         
-        # Signal cancellation to the benchmark runner
-        if hasattr(self, '_runner') and self._runner is not None:
+        # Signal cancellation to the active benchmark runner
+        if self._active_runner is not None:
             try:
-                self._runner.cancel()
+                self._active_runner.cancel()
             except Exception as e:
                 log.error(f"Failed to cancel benchmark runner: {e}")
         
