@@ -883,8 +883,12 @@ class BenchmarkOptimizer:
         # Total KV = batch * ctx * 2048 bytes (for non-shared prompt) or ctx * 2048 + batch * ctx * 2048 (shared)
         # We'll use a conservative estimate: batch * ctx * 4 KB = GB
         batch_sizes = [8192, 16384, 32768]
+        max_ctx = max(ctx_sizes)
         filtered_batch = []
         for bs in batch_sizes:
+            # Batch size must fit within context size
+            if bs > max_ctx:
+                continue
             # Conservative VRAM estimate: batch * ctx * 4 KB (covers KV cache for all layers)
             for ctx in ctx_sizes:
                 est_gb = (bs * ctx * 4) / 1e9
@@ -1167,15 +1171,23 @@ class BenchmarkOptimizer:
             elif hasattr(reader, 'get_field'):
                 # Try to get specific fields
                 meta = {}
-                for key in ["context_length", "llama.context_length", "qwen.context_length", "rope.max_position_embeddings"]:
+                for key in ["context_length", "llama.context_length", "qwen.context_length", "phi3.context_length", "mistral.context_length", "gemma.context_length", "falcon.context_length", "mpt.context_length", "baichuan.context_length", "internlm.context_length", "yarn.context_length", "rope.max_position_embeddings"]:
                     try:
                         val = reader.get_field(key)
                         if val is not None:
-                            meta[key] = val
+                            # ReaderField objects need .value or parts[-1].data to get actual value
+                            if hasattr(val, 'value'):
+                                meta[key] = val.value
+                            elif hasattr(val, 'parts') and val.parts:
+                                meta[key] = val.parts[-1].data
+                            else:
+                                meta[key] = val
                     except Exception:
                         pass
             
             if meta is not None:
+                # Convert ReaderField values to primitive types if needed
+                meta = {k: (v.value if hasattr(v, 'value') else (v.parts[-1].data if hasattr(v, 'parts') and v.parts else v)) for k, v in meta.items()}
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
                 context_keys = [
