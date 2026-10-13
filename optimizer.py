@@ -1255,7 +1255,23 @@ class BenchmarkOptimizer:
             
             if meta is not None:
                 # Convert ReaderField values to primitive types if needed
-                meta = {k: (v.value if hasattr(v, 'value') else (int.from_bytes(v.parts[-1].data, byteorder='little', signed=False) if hasattr(v, 'parts') and v.parts and isinstance(v.parts[-1].data, bytes) else v.parts[-1].data if hasattr(v, 'parts') and v.parts else v)) for k, v in meta.items()}
+                def convert_value(v):
+                    """Convert a ReaderField or similar object to a primitive Python value."""
+                    if hasattr(v, 'value'):
+                        return v.value
+                    if hasattr(v, 'parts') and v.parts:
+                        data = v.parts[-1].data
+                        if isinstance(data, bytes):
+                            try:
+                                return int.from_bytes(data, byteorder='little', signed=False)
+                            except Exception:
+                                # If conversion fails, return raw bytes for debugging
+                                return data
+                        return data
+                    return v
+                
+                meta = {k: convert_value(v) for k, v in meta.items()}
+                
                 # Keys to check in order of preference
                 # Includes architecture-specific keys (e.g., phi3.context_length, mistral.context_length, etc.)
                 context_keys = [
@@ -1275,10 +1291,14 @@ class BenchmarkOptimizer:
                 
                 for key in context_keys:
                     if key in meta:
-                        ctx = int(meta[key])
-                        if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
-                            log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
-                            return ctx
+                        try:
+                            ctx = int(meta[key])
+                            if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                                log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
+                                return ctx
+                        except (ValueError, TypeError) as e:
+                            log.debug(f"Could not convert {key}={meta[key]!r} to int: {e}")
+                            continue
                 
                 log.warning(f"Could not find context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
             else:
