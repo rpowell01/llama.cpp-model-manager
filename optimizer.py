@@ -884,27 +884,56 @@ class BenchmarkOptimizer:
                         if bs not in filtered_batch:
                             filtered_batch.append(bs)
                         break
-        batch_sizes = filtered_batch or [4096]  # Fallback to smaller batch
+        # Fallback batch size proportional to context size
+        # For small context models, use smaller batch sizes
+        max_ctx = max(ctx_sizes)
+        if max_ctx <= 4096:
+            fallback_batch = 1024
+        elif max_ctx <= 8192:
+            fallback_batch = 2048
+        elif max_ctx <= 16384:
+            fallback_batch = 4096
+        else:
+            fallback_batch = 8192
+        batch_sizes = filtered_batch or [fallback_batch]  # Fallback to smaller batch
         
-        # Threads to test (user specified 12 and 16)
-        threads_options = [12, 16]
-        threads_options = [t for t in threads_options if t <= cpu_logical]
+        # Threads to test - adapt to available CPUs
+        # Use a range of thread counts up to cpu_logical
+        if cpu_logical >= 16:
+            threads_options = [cpu_logical, cpu_logical // 2, 12]
+        elif cpu_logical >= 8:
+            threads_options = [cpu_logical, cpu_logical // 2]
+        else:
+            threads_options = [cpu_logical]
+        threads_options = [t for t in threads_options if t > 0 and t <= cpu_logical]
+        threads_options = list(dict.fromkeys(threads_options))  # Deduplicate while preserving order
         
         # Cache types to test
         cache_types = [("f16", "f16"), ("q4_0", "q4_0")]
         if total_vram >= 16:
             cache_types.insert(0, ("q8_0", "q8_0"))  # Add q8_0 for high VRAM
         
-        # Fixed parameters
+        # Fixed parameters - adapt ubatch_size to batch sizes
+        # ubatch_size should be <= batch_size
+        max_batch = max(batch_sizes) if batch_sizes else 4096
+        ubatch_size = min(4096, max_batch)
         fixed_params = {
             "n_gpu_layers": 99,
-            "ubatch_size": 4096,
+            "ubatch_size": ubatch_size,
             "flash_attn": "auto",
         }
         
         # Native sweep parameters for batched-bench
-        # User's use case: ~30k context, so npp up to 32768
-        sweep_npp = [8192, 16384, 32768]
+        # Adjust npp based on model's max context
+        max_ctx = max(ctx_sizes)
+        if max_ctx >= 32768:
+            sweep_npp = [8192, 16384, 32768]
+        elif max_ctx >= 16384:
+            sweep_npp = [4096, 8192, 16384]
+        elif max_ctx >= 8192:
+            sweep_npp = [2048, 4096, 8192]
+        else:
+            sweep_npp = [1024, 2048, 4096]
         sweep_ntg = [128, 256, 512]
         sweep_npl = [1, 4]  # auto (kv-unified) handled separately
         
@@ -925,21 +954,24 @@ class BenchmarkOptimizer:
             max_batch = max(valid_batches)
             mid_batch = valid_batches[len(valid_batches) // 2] if len(valid_batches) > 1 else max_batch
             
-            # Representative combinations per ctx size
+            # Representative combinations per ctx size - use adaptive thread counts
+            primary_threads = threads_options[0] if threads_options else cpu_logical
+            secondary_threads = threads_options[1] if len(threads_options) > 1 else primary_threads
+            
             ctx_configs = [
-                # 1. Max batch, 16 threads, f16 cache (best performance)
-                {"batch_size": max_batch, "threads": 16, "cache_type_k": "f16", "cache_type_v": "f16"},
-                # 2. Max batch, 16 threads, q4_0 cache (memory efficient)
-                {"batch_size": max_batch, "threads": 16, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
-                # 3. Mid batch, 16 threads, f16 cache
-                {"batch_size": mid_batch, "threads": 16, "cache_type_k": "f16", "cache_type_v": "f16"},
-                # 4. Mid batch, 12 threads, f16 cache (test thread scaling)
-                {"batch_size": mid_batch, "threads": 12, "cache_type_k": "f16", "cache_type_v": "f16"},
+                # 1. Max batch, primary threads, f16 cache (best performance)
+                {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                # 2. Max batch, primary threads, q4_0 cache (memory efficient)
+                {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
+                # 3. Mid batch, primary threads, f16 cache
+                {"batch_size": mid_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                # 4. Mid batch, secondary threads, f16 cache (test thread scaling)
+                {"batch_size": mid_batch, "threads": secondary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
             ]
             
             # Add q8_0 for high VRAM
             if total_vram >= 16:
-                ctx_configs.append({"batch_size": max_batch, "threads": 16, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
+                ctx_configs.append({"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
             
             # Add configs for this ctx_size
             for combo in ctx_configs:
@@ -1077,6 +1109,21 @@ class BenchmarkOptimizer:
                 f"{summary['completed_runs']}/{summary['total_runs']} successful, "
                 f"best: {best_config} (score: {best_score:.1f})")
         
+        # Save results to cache so they persist for later UI display
+        cache_result = {
+            "optimal_settings": best_config,
+            "benchmark_results": all_results,
+            "hardware_info": hardware_info,
+            "model_info": model_info,
+            "cache_key": self._generate_cache_key(model_path, hardware_info, optimization_target),
+            "optimization_target": optimization_target,
+        }
+        self._save_to_cache(
+            self._generate_cache_key(model_path, hardware_info, optimization_target),
+            cache_result,
+            hardware_info
+        )
+        
         return summary
     
     def _get_model_max_context(self, model_path: str, hardware_info: Dict[str, Any]) -> int:
@@ -1094,25 +1141,44 @@ class BenchmarkOptimizer:
         try:
             import gguf
             reader = gguf.GGUFReader(model_path)
-            # All metadata lives in reader.metadata_kv (dict-like)
-            meta = reader.metadata_kv
+            # Handle both old and new gguf library APIs
+            # Old API: reader.metadata_kv (dict-like)
+            # New API: reader.fields (dict-like) or metadata via get_field
+            meta = None
+            if hasattr(reader, 'metadata_kv'):
+                meta = reader.metadata_kv
+            elif hasattr(reader, 'fields'):
+                meta = reader.fields
+            elif hasattr(reader, 'get_field'):
+                # Try to get specific fields
+                meta = {}
+                for key in ["context_length", "llama.context_length", "qwen.context_length", "rope.max_position_embeddings"]:
+                    try:
+                        val = reader.get_field(key)
+                        if val is not None:
+                            meta[key] = val
+                    except Exception:
+                        pass
             
-            # Keys to check in order of preference
-            context_keys = [
-                "context_length",
-                "llama.context_length",
-                "qwen.context_length",
-                "rope.max_position_embeddings",
-            ]
-            
-            for key in context_keys:
-                if key in meta:
-                    ctx = int(meta[key])
-                    if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
-                        log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
-                        return ctx
-            
-            log.warning(f"Could not find context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
+            if meta is not None:
+                # Keys to check in order of preference
+                context_keys = [
+                    "context_length",
+                    "llama.context_length",
+                    "qwen.context_length",
+                    "rope.max_position_embeddings",
+                ]
+                
+                for key in context_keys:
+                    if key in meta:
+                        ctx = int(meta[key])
+                        if ctx in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288]:
+                            log.info(f"Found model max context from GGUF metadata (python): {ctx} (key: {key})")
+                            return ctx
+                
+                log.warning(f"Could not find context_length in GGUF metadata via python library. Available keys: {list(meta.keys())[:20]}...")
+            else:
+                log.warning("Could not access GGUF metadata - unknown gguf library API")
         except ImportError:
             log.debug("gguf Python library not available")
         except Exception as e:

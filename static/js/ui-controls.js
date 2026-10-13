@@ -1575,106 +1575,277 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
   }
 
   // Modal to display deep sweep results
-  function showDeepSweepResultsModal(result) {
+  async function showDeepSweepResultsModal(result) {
     // Remove existing modal if any
     const existingModal = document.getElementById("deep-sweep-results-modal");
     if (existingModal) {
       existingModal.remove();
     }
 
-    const modal = document.createElement("div");
-    modal.id = "deep-sweep-results-modal";
-    modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5); z-index: 10000;
-      display: flex; align-items: center; justify-content: center;
-    `;
+    const model = result.model || "Unknown";
+    const target = result.optimization_target || "balanced";
+    
+    // Fetch persisted results from the benchmark history API
+    try {
+      const fetchPromise = fetch(`/api/benchmark-history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      const historyResponse = await fetchPromise;
+      const history = await historyResponse.json();
+      
+      if (history.error) {
+        console.error("Failed to fetch deep sweep history for model", model, history.error);
+        // Fall back to using the transient result if history fetch fails
+        const allResults = result.all_results || [];
+        const successfulResults = allResults.filter(r => r.success);
+        const failedResults = allResults.filter(r => !r.success);
+        // Sort by batched_throughput descending
+        successfulResults.sort((a, b) => (b.batched_throughput || 0) - (a.batched_throughput || 0));
+        
+        const resultsHtml = successfulResults.length > 0 ? 
+          `<table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 1rem;">
+            <thead>
+              <tr style="background: var(--surface2);">
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Rank</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Throughput (tok/s)</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">PP Avg</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">TG Avg</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Latency P50 (ms)</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Ctx Size</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Batch</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Threads</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Cache</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Parallel Sweep</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${successfulResults.map((r, idx) => {
+                const c = r.config || {};
+                const pr = r.parallel_results || [];
+                const sweepInfo = pr.length > 0 ? 
+                  pr.map(p => `pl=${p.parallel}:${p.throughput?.toFixed(0) || 0}`).join(", ") :
+                  "N/A";
+                const isBest = idx === 0;
+                const rowStyle = isBest ? "background: rgba(0,200,0,0.1); font-weight: bold;" : "";
+                return `
+                <tr style="${rowStyle}">
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${isBest ? "🥇 1" : idx + 1}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.batched_throughput || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.pp_avg || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.tg_avg || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${r.latency_p50 ? r.latency_p50.toFixed(1) : "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.ctx_size || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.batch_size || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.threads || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.cache_type_k || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${sweepInfo}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>` : "<p>No successful results.</p>";
 
-    const allResults = result.all_results || [];
-    const successfulResults = allResults.filter(r => r.success);
-    const failedResults = allResults.filter(r => !r.success);
+        const failedHtml = failedResults.length > 0 ? 
+          `<div style="margin-top: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px;">
+            <strong>Failed runs (${failedResults.length}):</strong>
+            <ul style="margin: 0.5rem 0; font-size: 0.8rem;">
+              ${failedResults.map(r => `<li>${r.config?.ctx_size || "?"}ctx/${r.config?.batch_size || "?"}b/${r.config?.threads || "?"}t/${r.config?.cache_type_k || "?"} - ${r.error || "Unknown error"}</li>`).join("")}
+            </ul>
+          </div>` : "";
 
-    // Sort by batched_throughput descending
-    successfulResults.sort((a, b) => (b.batched_throughput || 0) - (a.batched_throughput || 0));
+        modal.innerHTML = `
+          <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
+              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+            </div>
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+              <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
+              <strong>Target:</strong> ${target} |
+              <strong>Total runs:</strong> ${result.total_runs} | 
+              <strong>Successful:</strong> ${result.completed_runs} | 
+              <strong>Failed:</strong> ${result.failed_runs} | 
+              <strong>Elapsed:</strong> ${result.elapsed_sec ? result.elapsed_sec.toFixed(1) + "s" : "N/A"}
+            </div>
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+              <strong>Best configuration:</strong>
+              <pre style="margin: 0.5rem 0; font-size: 0.75rem;">${JSON.stringify(result.best_config || {}, null, 2)}</pre>
+            </div>
+            ${resultsHtml}
+            ${failedHtml}
+          </div>
+        `;
+      } else {
+        // Use persisted results from cache
+        const optimalSettings = history.optimal_settings || {};
+        const benchmarkResults = history.benchmark_results || [];
+        const hardwareInfo = history.hardware_info || {};
+        const optimizationTarget = history.optimization_target || target;
+        
+        // Sort benchmark results by batched_throughput descending
+        benchmarkResults.sort((a, b) => (b.batched_throughput || 0) - (a.batched_throughput || 0));
+        
+        const allResults = benchmarkResults;
+        const successfulResults = allResults.filter(r => r.success);
+        const failedResults = allResults.filter(r => !r.success);
 
-    const resultsHtml = successfulResults.length > 0 ? `
-      <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 1rem;">
-        <thead>
-          <tr style="background: var(--surface2);">
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Rank</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Throughput (tok/s)</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">PP Avg</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">TG Avg</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Latency P50 (ms)</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Ctx Size</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Batch</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Threads</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Cache</th>
-            <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Parallel Sweep</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${successfulResults.map((r, idx) => {
-            const c = r.config || {};
-            const pr = r.parallel_results || [];
-            const sweepInfo = pr.length > 0 ? 
-              pr.map(p => `pl=${p.parallel}:${p.throughput?.toFixed(0) || 0}`).join(", ") :
-              "N/A";
-            const isBest = idx === 0;
-            const rowStyle = isBest ? "background: rgba(0,200,0,0.1); font-weight: bold;" : "";
-            return `
-            <tr style="${rowStyle}">
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${isBest ? "🥇 1" : idx + 1}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.batched_throughput || 0).toFixed(1)}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.pp_avg || 0).toFixed(1)}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.tg_avg || 0).toFixed(1)}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${r.latency_p50 ? r.latency_p50.toFixed(1) : "N/A"}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.ctx_size || "N/A"}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.batch_size || "N/A"}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.threads || "N/A"}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.cache_type_k || "N/A"}</td>
-              <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${sweepInfo}</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>
-    ` : "<p>No successful results.</p>";
+        const resultsHtml = successfulResults.length > 0 ? 
+          `<table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 1rem;">
+            <thead>
+              <tr style="background: var(--surface2);">
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Rank</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Throughput (tok/s)</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">PP Avg</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">TG Avg</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Latency P50 (ms)</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Ctx Size</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Batch</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Threads</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Cache</th>
+                <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Parallel Sweep</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${successfulResults.map((r, idx) => {
+                const c = r.config || {};
+                const pr = r.parallel_results || [];
+                const sweepInfo = pr.length > 0 ? 
+                  pr.map(p => `pl=${p.parallel}:${p.throughput?.toFixed(0) || 0}`).join(", ") :
+                  "N/A";
+                const isBest = idx === 0;
+                const rowStyle = isBest ? "background: rgba(0,200,0,0.1); font-weight: bold;" : "";
+                return `
+                <tr style="${rowStyle}">
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${isBest ? "🥇 1" : idx + 1}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.batched_throughput || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.pp_avg || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.tg_avg || 0).toFixed(1)}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${r.latency_p50 ? r.latency_p50.toFixed(1) : "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.ctx_size || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.batch_size || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.threads || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.cache_type_k || "N/A"}</td>
+                  <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${sweepInfo}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>` : "<p>No successful results.</p>";
 
-    const failedHtml = failedResults.length > 0 ? `
-      <div style="margin-top: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px;">
-        <strong>Failed runs (${failedResults.length}):</strong>
-        <ul style="margin: 0.5rem 0; font-size: 0.8rem;">
-          ${failedResults.map(r => `<li>${r.config?.ctx_size || "?"}ctx/${r.config?.batch_size || "?"}b/${r.config?.threads || "?"}t/${r.config?.cache_type_k || "?"} - ${r.error || "Unknown error"}</li>`).join("")}
-        </ul>
-      </div>
-    ` : "";
+        const failedHtml = failedResults.length > 0 ? 
+          `<div style="margin-top: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px;">
+            <strong>Failed runs (${failedResults.length}):</strong>
+            <ul style="margin: 0.5rem 0; font-size: 0.8rem;">
+              ${failedResults.map(r => `<li>${r.config?.ctx_size || "?"}ctx/${r.config?.batch_size || "?"}b/${r.config?.threads || "?"}t/${r.config?.cache_type_k || "?"} - ${r.error || "Unknown error"}</li>`).join("")}
+            </ul>
+          </div>` : "";
 
-    modal.innerHTML = `
-      <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h2 style="margin: 0;">Deep Sweep Results: ${result.model || "Model"}</h2>
-          <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+        modal.innerHTML = `
+          <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
+              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+            </div>
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+              <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
+              <strong>Target:</strong> ${optimizationTarget} |
+              <strong>Total runs:</strong> ${benchmarkResults.length} | 
+              <strong>Successful:</strong> ${successfulResults.length} | 
+              <strong>Failed:</strong> ${failedResults.length} | 
+              <strong>Elapsed:</strong> ${history.elapsed_sec ? history.elapsed_sec.toFixed(1) + "s" : "N/A"}
+            </div>
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+              <strong>Best configuration:</strong>
+              <pre style="margin: 0.5rem 0; font-size: 0.75rem;">${JSON.stringify(optimalSettings, null, 2)}</pre>
+            </div>
+            ${resultsHtml}
+            ${failedHtml}
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error("Error fetching deep sweep history", err);
+      // Fall back to using the transient result if history fetch fails
+      const allResults = result.all_results || [];
+      const successfulResults = allResults.filter(r => r.success);
+      const failedResults = allResults.filter(r => !r.success);
+      // Sort by batched_throughput descending
+      successfulResults.sort((a, b) => (b.batched_throughput || 0) - (a.batched_throughput || 0));
+      
+      const resultsHtml = successfulResults.length > 0 ? 
+        `<table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 1rem;">
+          <thead>
+            <tr style="background: var(--surface2);">
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Rank</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Throughput (tok/s)</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">PP Avg</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">TG Avg</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Latency P50 (ms)</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Ctx Size</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Batch</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Threads</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Cache</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border);">Parallel Sweep</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${successfulResults.map((r, idx) => {
+              const c = r.config || {};
+              const pr = r.parallel_results || [];
+              const sweepInfo = pr.length > 0 ? 
+                pr.map(p => `pl=${p.parallel}:${p.throughput?.toFixed(0) || 0}`).join(", ") :
+                "N/A";
+              const isBest = idx === 0;
+              const rowStyle = isBest ? "background: rgba(0,200,0,0.1); font-weight: bold;" : "";
+              return `
+              <tr style="${rowStyle}">
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${isBest ? "🥇 1" : idx + 1}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.batched_throughput || 0).toFixed(1)}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.pp_avg || 0).toFixed(1)}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${(r.tg_avg || 0).toFixed(1)}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${r.latency_p50 ? r.latency_p50.toFixed(1) : "N/A"}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.ctx_size || "N/A"}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.batch_size || "N/A"}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.threads || "N/A"}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${c.cache_type_k || "N/A"}</td>
+                <td style="padding: 0.4rem; border-bottom: 1px solid var(--border);">${sweepInfo}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>` : "<p>No successful results.</p>";
+
+      const failedHtml = failedResults.length > 0 ? 
+        `<div style="margin-top: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px;">
+          <strong>Failed runs (${failedResults.length}):</strong>
+          <ul style="margin: 0.5rem 0; font-size: 0.8rem;">
+            ${failedResults.map(r => `<li>${r.config?.ctx_size || "?"}ctx/${r.config?.batch_size || "?"}b/${r.config?.threads || "?"}t/${r.config?.cache_type_k || "?"} - ${r.error || "Unknown error"}</li>`).join("")}
+          </ul>
+        </div>` : "";
+
+      modal.innerHTML = `
+        <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
+            <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+          </div>
+          <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+            <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
+            <strong>Target:</strong> ${target} |
+            <strong>Total runs:</strong> ${result.total_runs} | 
+            <strong>Successful:</strong> ${result.completed_runs} | 
+            <strong>Failed:</strong> ${result.failed_runs} | 
+            <strong>Elapsed:</strong> ${result.elapsed_sec ? result.elapsed_sec.toFixed(1) + "s" : "N/A"}
+          </div>
+          <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
+            <strong>Best configuration:</strong>
+            <pre style="margin: 0.5rem 0; font-size: 0.75rem;">${JSON.stringify(result.best_config || {}, null, 2)}</pre>
+          </div>
+          ${resultsHtml}
+          ${failedHtml}
         </div>
-        <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
-          <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
-          <strong>Target:</strong> ${result.optimization_target || "N/A"} |
-          <strong>Total runs:</strong> ${result.total_runs} | 
-          <strong>Successful:</strong> ${result.completed_runs} | 
-          <strong>Failed:</strong> ${result.failed_runs} | 
-          <strong>Elapsed:</strong> ${result.elapsed_sec ? result.elapsed_sec.toFixed(1) + "s" : "N/A"}
-        </div>
-        <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
-          <strong>Best configuration:</strong>
-          <pre style="margin: 0.5rem 0; font-size: 0.75rem;">${JSON.stringify(result.best_config || {}, null, 2)}</pre>
-        </div>
-        ${resultsHtml}
-        ${failedHtml}
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Close on backdrop click
+      `;
+    }
+  }
     modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         modal.remove();

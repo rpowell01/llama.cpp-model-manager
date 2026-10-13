@@ -414,3 +414,5 @@
 {"time": "2026-10-12T17:45:34Z", "action": "start", "model": "oxcoder-9b.q4-k-m", "port": 11005, "pid": 18552, "status": "running"}
 {"time": "2026-10-12T19:41:34Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 25612, "status": "running"}
 {"time": "2026-10-13T01:36:43Z", "action": "start", "model": "pentacoder-9b.i1-q4-k-m", "port": 11006, "pid": 18880, "status": "running"}
+{"time": "2026-10-13T02:35:34Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 14024, "status": "running"}
+{"time": "2026-10-13T02:47:02Z", "action": "start", "model": "qwopus3.5-9b-coder-mtp", "port": 11002, "pid": 15048, "status": "running"}
