@@ -1154,40 +1154,45 @@ class BenchmarkOptimizer:
                         continue
                     
                     cache_type = combo["cache_type_k"]
+                    batch = combo["batch_size"]
                     
-                    # Memory safety check: estimate worst-case KV cache for this config
-                    # Use max sweep parameters to be conservative
-                    max_sweep_npp = max(sweep_npp) if sweep_npp else 512
-                    max_sweep_ntg = max(sweep_ntg) if sweep_ntg else 512
-                    max_sweep_npl = max(sweep_npl) if sweep_npl else 4
+                    # Memory safety check: estimate KV cache using PER-RUN filtered sweep params
+                    # At run time, sweep params are filtered: max_npp = max(512, (ctx // (batch * 4)) - 512)
+                    # Use this per-run value instead of global sweep max for accurate estimation
+                    per_run_max_npp = max(512, (ctx // (batch * 4)) - 512) if batch > 0 else ctx
+                    per_run_max_npp = min(per_run_max_npp, ctx)
+                    per_run_max_ntg = 512  # ntg is capped at 512 at run time
+                    per_run_max_npl = 4    # npl is capped at 4 at run time
                     
                     est_total_gb = BenchmarkOptimizer._estimate_total_memory_gb(
                         ctx_size=ctx,
-                        batch_size=combo["batch_size"],
+                        batch_size=batch,
                         cache_type=cache_type,
                         model_size_gb=model_info.get("file_size_gb", 0),
-                        npp=max_sweep_npp,
-                        ntg=max_sweep_ntg,
-                        npl=max_sweep_npl,
+                        npp=per_run_max_npp,
+                        ntg=per_run_max_ntg,
+                        npl=per_run_max_npl,
                     )
                     
                     # Skip if estimated memory exceeds available VRAM (with 15% headroom)
                     if total_vram > 0:
                         if est_total_gb > total_vram * 0.85:
                             log.debug(f"Skipping config (est {est_total_gb:.1f}GB > VRAM {total_vram}GB): "
-                                    f"ctx={ctx}, batch={combo['batch_size']}, cache={cache_type}")
+                                    f"ctx={ctx}, batch={batch}, cache={cache_type}, "
+                                    f"per-run max npp={per_run_max_npp}")
                             continue
                     else:
                         # No GPU - check system RAM
                         if est_total_gb > mem_total * 0.5:
                             log.debug(f"Skipping config (est {est_total_gb:.1f}GB > RAM {mem_total}GB): "
-                                    f"ctx={ctx}, batch={combo['batch_size']}, cache={cache_type}")
+                                    f"ctx={ctx}, batch={batch}, cache={cache_type}, "
+                                    f"per-run max npp={per_run_max_npp}")
                             continue
                     
                     config = {
                         **fixed_params,
                         "ctx_size": ctx,
-                        "batch_size": combo["batch_size"],
+                        "batch_size": batch,
                         "threads": combo["threads"],
                         "threads_batch": combo["threads"],
                         "cache_type_k": combo["cache_type_k"],
