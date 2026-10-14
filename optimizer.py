@@ -142,6 +142,83 @@ class BenchmarkOptimizer:
             sanitized["gpu_info"] = []
             
         return sanitized
+
+    @staticmethod
+    def _estimate_kv_cache_gb(
+        ctx_size: int,
+        batch_size: int,
+        cache_type: str,
+        npp: int,
+        ntg: int,
+        npl: int,
+    ) -> float:
+        """
+        Estimate KV cache memory in GB for llama-batched-bench.
+        
+        Uses the -pps (prompt shared) formula: n_kv = npp + batch * ntg * npl
+        bytes_per_token depends on cache type:
+        - f16: 2 bytes/element * 2 (K,V) * n_kv_heads * head_dim = 4096 bytes (assuming 8 heads, 128 dim)
+        - q8_0: 1 byte/element * 2 * 8 * 128 = 2048 bytes
+        - q4_0: 0.5 bytes/element * 2 * 8 * 128 = 1024 bytes
+        
+        Args:
+            ctx_size: Context size (max tokens)
+            batch_size: Batch size
+            cache_type: Cache type ("f16", "q8_0", "q4_0")
+            npp: Prompt size (n_prompt)
+            ntg: Generation size (n_gen)
+            npl: Parallel sequences
+            
+        Returns:
+            Estimated KV cache memory in GB
+        """
+        # Conservative estimates for typical model architectures (e.g., Llama-3, Qwen)
+        bytes_per_token = {
+            "f16": 4096,
+            "q8_0": 2048,
+            "q4_0": 1024,
+            "q6_k": 1536,
+            "q5_k_m": 1280,
+        }.get(cache_type.lower(), 4096)  # Default to f16 for unknown
+        
+        # With -pps (prompt shared): n_kv = npp + batch * ntg * npl
+        # Clamp npp to ctx_size
+        effective_npp = min(npp, ctx_size)
+        # Total tokens in KV cache
+        n_kv = effective_npp + batch_size * ntg * npl
+        # Total KV cache bytes
+        kv_bytes = n_kv * bytes_per_token
+        return kv_bytes / 1e9  # Convert to GB
+
+    @staticmethod
+    def _estimate_total_memory_gb(
+        ctx_size: int,
+        batch_size: int,
+        cache_type: str,
+        model_size_gb: float,
+        npp: int,
+        ntg: int,
+        npl: int,
+    ) -> float:
+        """
+        Estimate total memory (model + KV cache) in GB.
+        
+        Args:
+            ctx_size: Context size
+            batch_size: Batch size
+            cache_type: Cache type
+            model_size_gb: Model file size in GB (approximate weight memory)
+            npp: Prompt size
+            ntg: Generation size
+            npl: Parallel sequences
+            
+        Returns:
+            Estimated total memory in GB
+        """
+        kv_gb = BenchmarkOptimizer._estimate_kv_cache_gb(ctx_size, batch_size, cache_type, npp, ntg, npl)
+        # Model weights are loaded with n_gpu_layers=99 (all on GPU)
+        # Add ~10% overhead for activations, etc.
+        return model_size_gb + kv_gb + 1.0
          
     def _get_cache_path(self, cache_key: str) -> Path:
         """Get cache file path for a given key."""
@@ -1075,6 +1152,38 @@ class BenchmarkOptimizer:
                 for combo in ctx_configs:
                     if combo["threads"] > cpu_logical:
                         continue
+                    
+                    cache_type = combo["cache_type_k"]
+                    
+                    # Memory safety check: estimate worst-case KV cache for this config
+                    # Use max sweep parameters to be conservative
+                    max_sweep_npp = max(sweep_npp) if sweep_npp else 512
+                    max_sweep_ntg = max(sweep_ntg) if sweep_ntg else 512
+                    max_sweep_npl = max(sweep_npl) if sweep_npl else 4
+                    
+                    est_total_gb = BenchmarkOptimizer._estimate_total_memory_gb(
+                        ctx_size=ctx,
+                        batch_size=combo["batch_size"],
+                        cache_type=cache_type,
+                        model_size_gb=model_info.get("file_size_gb", 0),
+                        npp=max_sweep_npp,
+                        ntg=max_sweep_ntg,
+                        npl=max_sweep_npl,
+                    )
+                    
+                    # Skip if estimated memory exceeds available VRAM (with 15% headroom)
+                    if total_vram > 0:
+                        if est_total_gb > total_vram * 0.85:
+                            log.debug(f"Skipping config (est {est_total_gb:.1f}GB > VRAM {total_vram}GB): "
+                                    f"ctx={ctx}, batch={combo['batch_size']}, cache={cache_type}")
+                            continue
+                    else:
+                        # No GPU - check system RAM
+                        if est_total_gb > mem_total * 0.5:
+                            log.debug(f"Skipping config (est {est_total_gb:.1f}GB > RAM {mem_total}GB): "
+                                    f"ctx={ctx}, batch={combo['batch_size']}, cache={cache_type}")
+                            continue
+                    
                     config = {
                         **fixed_params,
                         "ctx_size": ctx,
