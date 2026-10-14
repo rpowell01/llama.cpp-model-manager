@@ -1126,27 +1126,30 @@ class BenchmarkOptimizer:
                 if not valid_batches:
                     continue
                 
-                max_batch = max(valid_batches)
-                mid_batch = valid_batches[len(valid_batches) // 2] if len(valid_batches) > 1 else max_batch
-                
-                # Representative combinations per ctx size - use adaptive thread counts
+                # Test ALL valid batch sizes, not just max/mid
+                # For each batch, test representative cache types and thread counts
                 primary_threads = threads_options[0] if threads_options else cpu_logical
                 secondary_threads = threads_options[1] if len(threads_options) > 1 else primary_threads
                 
-                ctx_configs = [
-                    # 1. Max batch, primary threads, f16 cache (best performance)
-                    {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-                    # 2. Max batch, primary threads, q4_0 cache (memory efficient)
-                    {"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
-                    # 3. Mid batch, primary threads, f16 cache
-                    {"batch_size": mid_batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-                    # 4. Mid batch, secondary threads, f16 cache (test thread scaling)
-                    {"batch_size": mid_batch, "threads": secondary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
-                ]
+                ctx_configs = []
                 
-                # Add q8_0 for high VRAM
-                if total_vram >= 16:
-                    ctx_configs.append({"batch_size": max_batch, "threads": primary_threads, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
+                for batch in valid_batches:
+                    # For each batch size, test a focused set of cache/thread combos
+                    # Priority: q4_0 (memory efficient), then f16 (performance), then q8_0 (if high VRAM)
+                    batch_configs = [
+                        # q4_0 cache - most memory efficient, best chance to fit
+                        {"batch_size": batch, "threads": primary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
+                        # f16 cache - better performance if it fits
+                        {"batch_size": batch, "threads": primary_threads, "cache_type_k": "f16", "cache_type_v": "f16"},
+                        # Secondary threads with q4_0 - test thread scaling
+                        {"batch_size": batch, "threads": secondary_threads, "cache_type_k": "q4_0", "cache_type_v": "q4_0"},
+                    ]
+                    
+                    # Add q8_0 for high VRAM
+                    if total_vram >= 16:
+                        batch_configs.append({"batch_size": batch, "threads": primary_threads, "cache_type_k": "q8_0", "cache_type_v": "q8_0"})
+                    
+                    ctx_configs.extend(batch_configs)
                 
                 # Add configs for this ctx_size
                 for combo in ctx_configs:
