@@ -4,7 +4,7 @@
 
 **You are being evaluated on your coding ability. Please follow these instructions carefully:**
 
-1. **Solve the problem below** by writing complete, working Python code.
+1. **Solve the problem below** by writing complete, working Python code **to a file in the repository**.
 2. **Track your performance**: Record the **start time** when you begin, and the **end time** when you submit your final solution.
 3. **Count your turns**: Each message you send counts as one turn. Report the total number of turns used.
 4. **Output format**: At the end of your solution, include a summary block with:
@@ -85,16 +85,49 @@ def parse_semver(version: str) -> dict:
 
 ---
 
+## REQUIRED EXECUTION WORKFLOW
+
+**You MUST follow this exact workflow - do not just output code to chat:**
+
+### Step 1: Create the Solution File
+Write your complete Python solution to: `/mnt/c/Users/russe/code/llama.cpp-model-manager/semver_solution.py`
+
+The file must contain:
+1. The `parse_semver()` function implementation
+2. A `main()` function that runs all test cases and prints results
+3. The `if __name__ == "__main__": main()` guard
+
+### Step 2: Validate Python Syntax
+Run this command to verify syntax is valid:
+```bash
+python3 -m py_compile /mnt/c/Users/russe/code/llama.cpp-model-manager/semver_solution.py
+```
+If this fails, fix the syntax error and re-run until it passes.
+
+### Step 3: Execute and Validate
+Run the solution and capture output:
+```bash
+cd /mnt/c/Users/russe/code/llama.cpp-model-manager && python3 semver_solution.py
+```
+
+### Step 4: Verify All Test Cases Pass
+Compare your output against expected results. Each test case must produce the correct dictionary. If any test case fails, fix your implementation and re-run Steps 2-3.
+
+### Step 5: Report Results
+Only after ALL test cases pass, include the performance summary block in your final response.
+
+---
+
 ## Expected Output Format
 
-Your solution should include a `main()` function that runs all test cases and prints results:
+Your `semver_solution.py` should produce output like:
 
-```python
-def main():
-    test_cases = [...]  # from above
-    for tc in test_cases:
-        result = parse_semver(tc)
-        print(f"{tc!r:30} → {result}")
+```
+'1.0.0'                       → {'major': 1, 'minor': 0, 'patch': 0, 'prerelease': None, 'build': None}
+'2.10.3'                      → {'major': 2, 'minor': 10, 'patch': 3, 'prerelease': None, 'build': None}
+...
+'1'                           → {'error': 'missing minor and patch version'}
+...
 ```
 
 ---
@@ -109,9 +142,14 @@ def main():
 
 ---
 
-## Submission Format
+## Submission Requirements
 
-Provide your solution as a single Python file. At the end, include:
+Your final response MUST include:
+
+1. **Confirmation that you created `/mnt/c/Users/russe/code/llama.cpp-model-manager/semver_solution.py`**
+2. **Proof that `python3 -m py_compile semver_solution.py` passed** (no syntax errors)
+3. **Proof that `python3 semver_solution.py` executed and all test cases passed**
+4. **The performance summary block:**
 
 ```
 === PERFORMANCE SUMMARY ===
@@ -124,7 +162,8 @@ Final solution: [brief description of your approach]
 
 ## Notes
 
-- Python standard library only (re module allowed)
+- Python standard library only (`re` module allowed)
 - Target Python 3.10+
 - Focus on correctness and clarity
 - Should complete in **5-10 minutes** for a 9B model
+- **FAILURE TO CREATE AND EXECUTE THE FILE WILL RESULT IN AUTOMATIC FAILURE**
