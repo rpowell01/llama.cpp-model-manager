@@ -435,11 +435,11 @@ def api_export_metrics():
     file_exists = csv_path.exists()
     fieldnames = list(row.keys())
     
-    with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+with open(csv_path, 'a', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
-writer.writerow(row)
+        writer.writerow(row)
 
     return jsonify({
          "status": "exported",
