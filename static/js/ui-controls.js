@@ -268,27 +268,27 @@ async function renderPanelProperties(data, modelName) {
   let html = "";
 
   // Action buttons (Start/Stop/Optimize) at the top
-  html += `<div class="panel-section">
-    <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
-      <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" ? "disabled" : ""}>
-        [Start] Start
-      </button>
-      <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
-        [Stop] Stop
-      </button>
-      <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        \u26A1 Quick Optimize (Heuristics)
-      </button>
-      <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        \uD83D\uDD27 Optimize Settings (Empirical Benchmarks)
-      </button>
-      <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        \uD83D\uDD2C Deep Sweep (Batched Bench)
-      </button>
-      <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        \uD83D\uDCCA View Historical Benchmark Results
-      </button>
-    </div>
+     html += `<div class="panel-section">
+       <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+         <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" ? "disabled" : ""}>
+           ▶ [Start] Start
+         </button>
+         <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
+           ■ [Stop] Stop
+         </button>
+         <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
+           ⚡ Quick Optimize (Heuristics)
+         </button>
+         <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
+           ⚙️ Optimize Settings (Empirical Benchmarks)
+         </button>
+         <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
+           🔍 Deep Sweep (Batched Bench)
+         </button>
+         <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
+           📊 View Historical Benchmark Results
+         </button>
+       </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
       <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
