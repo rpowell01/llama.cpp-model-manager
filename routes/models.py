@@ -429,23 +429,23 @@ def api_export_metrics():
         "spec_type": meta.get("spec_type"),
         "spec_draft_n_max": meta.get("spec_draft_n_max"),
         "spec_draft_n_min": meta.get("spec_draft_n_min"),
-    }
-    
+}
+
     # Write/append to CSV
     file_exists = csv_path.exists()
     fieldnames = list(row.keys())
-    
-with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+
+    with open(csv_path, 'a', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
 
     return jsonify({
-         "status": "exported",
-         "csv_path": str(csv_path),
-         "row": row
-     })
+        "status": "exported",
+        "csv_path": str(csv_path),
+        "row": row
+    })
 
 
 @models_bp.route("/api/get-metrics", methods=["POST"])
