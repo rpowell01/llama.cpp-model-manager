@@ -2207,25 +2207,32 @@ window.hideMetricsTooltip = hideMetricsTooltip;
  * @param {string} modelName - Model name
  * @param {number} port - Model port
  */
-async function exportMetrics(modelName, port) {
+async function exportMetrics(modelName, port, event) {
    try {
-     const btn = event.target;
-     const originalText = btn.textContent;
-     btn.disabled = true;
-     btn.textContent = '⏳ Loading...';
+     if (event && event.target) {
+       const btn = event.target;
+       const originalText = btn.textContent;
+       btn.disabled = true;
+       btn.textContent = '[Loading]';
+     }
      
      // Instead of exporting to CSV, open the performance graph dialog
      openPerformanceGraphModal(modelName, port);
      
-     btn.disabled = false;
-     btn.textContent = originalText;
-   } catch (e) {
-     log('<b>Error:</b> ' + e, 'red');
-     const btn = event.target;
-     if (btn) {
+     if (event && event.target) {
+       const btn = event.target;
        btn.disabled = false;
        btn.textContent = '[Performance] Performance';
      }
+   } catch (e) {
+     log('<b>Error:</b> ' + e, 'red');
+     if (event && event.target) {
+       const btn = event.target;
+       btn.disabled = false;
+       btn.textContent = '[Performance] Performance';
+     }
+   }
+ }
    }
 }
 
