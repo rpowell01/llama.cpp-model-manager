@@ -57,7 +57,7 @@ function renderTiles(rows, dlMap, query) {
           ? '<span class="chip warn">● starting</span>'
           : r.file_exists
             ? '<span class="chip ok">● stopped</span>'
-            : '<span class="chip bad">✕ missing</span>';
+            : '<span class="chip bad">[x] missing</span>';
 
       const dl = dlMap[r.model] || {};
       const partial = r.partial_download || 0;
@@ -102,7 +102,7 @@ function renderTiles(rows, dlMap, query) {
           jsEscape(r.model) +
           "', " +
           partial +
-          ')">▶ Resume</button>';
+          ')">[Start] Resume</button>';
       } else {
         const force = r.file_exists ? "true" : "false";
         dlHtml =
@@ -220,25 +220,25 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         "', 'start')\" " +
         (running || starting || !r.file_exists ? "disabled" : "") +
-        ">▶ Start</button>" +
+        ">[Start] Start</button>" +
         ' <button class="stop" onclick="act(\'' +
         jsEscape(r.model) +
         "', 'stop')\" " +
         (!running && !starting ? "disabled" : "") +
-        ">■ Stop</button>" +
+        ">[Stop] Stop</button>" +
         ' <button class="add" onclick="downloadModel(\'' +
         jsEscape(r.model) +
-        "', true)\">＋ Add Variant</button>" +
+        "', true)\">[+] Add Variant</button>" +
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
-        "')\">✕ Delete</button>" +
+        "')\">[x] Delete</button>" +
         (running
           ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' +
             jsEscape(r.model) +
-            "')">💬 Chat</button>" +
+            "')\">Chat</button>" +
             ' <button class="performance" onclick="event.stopPropagation(); openPerformanceGraphModal(\'' +
             jsEscape(r.model) +
-            '\', ' + r.port + ')" title="View performance metrics over time">📈 Performance</button>'
+            '\', ' + r.port + ')" title="View performance metrics over time">Performance</button>'
           : "") +
         "</div>" +
         progressHtml +
@@ -271,22 +271,22 @@ async function renderPanelProperties(data, modelName) {
   html += `<div class="panel-section">
     <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
       <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" ? "disabled" : ""}>
-        ▶ Start
+        [Start] Start
       </button>
       <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
-        ■ Stop
+        [Stop] Stop
       </button>
       <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        ⚡ Quick Optimize (Heuristics)
+        [Quick] Quick Optimize (Heuristics)
       </button>
       <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        🔧 Optimize Settings (Empirical Benchmarks)
+        [Optimize] Optimize Settings (Empirical Benchmarks)
       </button>
       <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        🔬 Deep Sweep (Batched Bench)
+        [Deep Sweep] Deep Sweep (Batched Bench)
       </button>
       <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        📊 View Historical Benchmark Results
+        [History] View Historical Benchmark Results
       </button>
     </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
@@ -1087,7 +1087,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
 
     const btn = useEmpirical ? optimizeBtn : quickOptimizeBtn;
     btn.disabled = true;
-    btn.textContent = useEmpirical ? "🔧 Benchmarking…" : "⚡ Computing…";
+    btn.textContent = useEmpirical ? "[Optimize] Benchmarking…" : "[Quick] Computing…";
     
     if (statusEl) {
       statusEl.textContent = "";
@@ -1358,7 +1358,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       }
     } finally {
       btn.disabled = false;
-      btn.textContent = useEmpirical ? "🔧 Optimize Settings (Empirical Benchmarks)" : "⚡ Quick Optimize (Heuristics)";
+      btn.textContent = useEmpirical ? "[Optimize] Optimize Settings (Empirical Benchmarks)" : "[Quick] Quick Optimize (Heuristics)";
       
       if (useEmpirical) {
         progressContainer.style.display = "none";
@@ -1373,7 +1373,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     const btn = document.getElementById(`view-history-${modelSafeId}`);
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "📊 Loading…";
+      btn.textContent = "[History] Loading…";
     }
     
     try {
@@ -1398,7 +1398,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "📊 View Historical Benchmark Results";
+        btn.textContent = "[History] View Historical Benchmark Results";
       }
     }
   }
@@ -1418,7 +1418,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "🔬 Deep Sweep Running…";
+      btn.textContent = "[Deep Sweep] Deep Sweep Running…";
     }
 
     if (statusEl) {
@@ -1566,7 +1566,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "🔬 Deep Sweep (Batched Bench)";
+        btn.textContent = "[Deep Sweep] Deep Sweep (Batched Bench)";
       }
       progressContainer.style.display = "none";
       cancelBtn.disabled = false;
@@ -1664,7 +1664,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
               <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
-              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">[x]</button>
             </div>
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
               <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
@@ -1750,7 +1750,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
               <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
-              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+              <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">[x]</button>
             </div>
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
               <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
@@ -1832,7 +1832,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         <div style="background: var(--surface); border-radius: 8px; padding: 1.5rem; max-width: 1100px; max-height: 85vh; overflow: auto; width: 95%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h2 style="margin: 0;">Deep Sweep Results: ${model}</h2>
-            <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">✕</button>
+            <button onclick="this.closest('#deep-sweep-results-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);">[x]</button>
           </div>
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem;">
             <strong>Model max context:</strong> ${result.model_max_context ? (result.model_max_context/1024).toFixed(0) + "k" : "N/A"} |
@@ -2224,7 +2224,7 @@ async function exportMetrics(modelName, port) {
      const btn = event.target;
      if (btn) {
        btn.disabled = false;
-       btn.textContent = '📈 Performance';
+       btn.textContent = '[Performance] Performance';
      }
    }
 }
