@@ -2231,12 +2231,11 @@ async function exportMetrics(modelName, port, event) {
        btn.disabled = false;
        btn.textContent = '[Performance] Performance';
      }
-   }
- }
-   }
+}
 }
 
 // Expose functions globally for use in model-manager.js
 window.showMetricsTooltip = showMetricsTooltip;
 window.hideMetricsTooltip = hideMetricsTooltip;
 window.exportMetrics = exportMetrics;
+window.renderTiles = renderTiles;
