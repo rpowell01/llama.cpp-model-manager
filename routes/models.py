@@ -439,9 +439,9 @@ def api_export_metrics():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
-        writer.writerow(row)
-    
-     return jsonify({
+writer.writerow(row)
+
+    return jsonify({
          "status": "exported",
          "csv_path": str(csv_path),
          "row": row
