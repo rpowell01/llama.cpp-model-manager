@@ -2242,7 +2242,7 @@ async function openPerformanceGraphModal(modelName, port, event) {
     }
     
     // Open the performance graph modal
-    window.openPerformanceGraphModal(modelName, port);
+    ModalManager.open('performance-graph-modal');
     
     if (event && event.target) {
       const btn = event.target;

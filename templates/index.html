@@ -367,7 +367,12 @@
     </div>
 
 <!-- Performance Graph Modal -->
-    <div id="performance-graph-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Performance Graph dialog" aria-hidden="true" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+       <div id="performance-graph-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Performance Graph dialog" aria-hidden="true" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+         <div class="modal-content performance-modal" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; height: 90vh;">
+           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+             <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
+             <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0; z-index: 10;">×</button>
+           </div>
       <div class="modal-content performance-modal" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; height: 90vh;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
@@ -375,7 +380,7 @@
         </div>
         <div id="performance-graph-container" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
           <div id="performance-chart" style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden;">
-            <canvas id="metrics-canvas"></canvas>
+            <canvas id="metrics-canvas" style="background: var(--surface); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"></canvas>
           </div>
           <div id="performance-controls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
             <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -525,75 +530,74 @@ function updateMetricsChart(metricsData) {
   const predictTimes = metricsData.predict_times || [];
   const tokensGenerated = metricsData.tokens_generated || [];
   
-  // Create the chart
-  metricsChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Prompt Time (ms)',
-          data: promptTimes,
-          borderColor: 'rgb(255, 99, 132)',
-          backgroundColor: 'rgba(255, 99, 132, 0.1)',
-          yAxisID: 'y1',
-          tension: 0.1
-        },
-        {
-          label: 'Predict Time (ms)',
-          data: predictTimes,
-          borderColor: 'rgb(54, 162, 235)',
-          backgroundColor: 'rgba(54, 162, 235, 0.1)',
-          yAxisID: 'y1',
-          tension: 0.1
-        },
-        {
-          label: 'Tokens Generated',
-          data: tokensGenerated,
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.1)',
-          yAxisID: 'y2',
-          tension: 0.1
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        title: {
-          display: true,
-          text: 'Model Performance Metrics Over Time'
-        },
-        legend: {
-          position: 'top'
-        }
-      },
-      scales: {
-        y1: {
-          type: 'linear',
-          display: true,
-          position: 'left',
-          title: {
-            display: true,
-            text: 'Time (ms)'
-          }
-        },
-        y2: {
-          type: 'linear',
-          display: true,
-          position: 'right',
-          title: {
-            display: true,
-            text: 'Tokens'
-          },
-          grid: {
-            drawOnChartArea: false,
-          }
-        }
-      }
-    }
-  });
+       // Create the chart
+       metricsChart = new Chart(ctx, {
+         type: 'line',
+         data: {
+           labels: labels,
+           datasets: [
+             {
+               label: 'Prompt Time (ms)',
+               data: promptTimes,
+               borderColor: 'rgb(255, 159, 64)', // Orange - more visible than pink
+               backgroundColor: 'rgba(255, 159, 64, 0.1)',
+               yAxisID: 'y1',
+               tension: 0.1
+             },
+             {
+               label: 'Predict Time (ms)',
+               data: predictTimes,
+               borderColor: 'rgb(54, 235, 162)', // Green - more visible than blue
+               backgroundColor: 'rgba(54, 235, 162, 0.1)',
+               yAxisID: 'y1',
+               tension: 0.1
+             },
+             {
+               label: 'Tokens Generated',
+               data: tokensGenerated,
+               borderColor: 'rgb(255, 206, 86)', // Yellow - more visible than teal
+               backgroundColor: 'rgba(255, 206, 86, 0.1)',
+               yAxisID: 'y2',
+               tension: 0.1
+             }
+         ],
+         options: {
+           responsive: true,
+           maintainAspectRatio: false,
+           plugins: {
+             title: {
+               display: true,
+               text: 'Model Performance Metrics Over Time'
+             },
+             legend: {
+               position: 'top'
+             }
+           },
+           scales: {
+             y1: {
+               type: 'linear',
+               display: true,
+               position: 'left',
+               title: {
+                 display: true,
+                 text: 'Time (ms)'
+               }
+             },
+             y2: {
+               type: 'linear',
+               display: true,
+               position: 'right',
+               title: {
+                 display: true,
+                 text: 'Tokens'
+               },
+               grid: {
+                 drawOnChartArea: false,
+               }
+             }
+           }
+         }
+       });
 }
 
 // Initialize the performance graph modal when the page loads

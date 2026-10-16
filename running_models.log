@@ -460,3 +460,8 @@
 {"time": "2026-10-16T01:24:11Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 36208, "status": "running"}
 {"time": "2026-10-16T01:54:10Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 22852, "status": "running"}
 {"time": "2026-10-16T02:36:44Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 21612, "status": "running"}
+{"time": "2026-10-16T13:22:55Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 54944, "status": "running"}
+{"time": "2026-10-16T19:24:24Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 35948, "status": "running"}
+{"time": "2026-10-16T20:08:53Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 56456, "status": "running"}
+{"time": "2026-10-16T21:08:51Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 61184, "status": "running"}
+{"time": "2026-10-16T21:58:26Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 38128, "status": "running"}
