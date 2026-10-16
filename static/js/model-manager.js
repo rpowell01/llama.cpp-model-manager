@@ -344,23 +344,11 @@ async function refresh(showLoading = true) {
           // Use the original (unnormalized) model name for display
           const displayName = modelData.model;
           renderPanelProperties(modelData, displayName);
-          
-          // Automatically export metrics for running models
-          if (modelData.status && modelData.status.startsWith('running')) {
-            exportMetrics(modelData.model, modelData.port);
-          }
         } else {
           console.warn('Model not found after refresh:', selectedModel);
           closePanel();
         }
       }
-      
-      // Also export metrics for all running models (in case selectedModel is not running)
-      deduplicated.forEach(r => {
-        if (r.status && r.status.startsWith('running')) {
-          exportMetrics(r.model, r.port);
-        }
-      });
   } catch (e) {
     console.error('Refresh failed:', e);
   } finally {

@@ -118,6 +118,15 @@
   background: var(--blue);
 }
 
+.actions .performance {
+  background: var(--btn-export);
+  color: #fff;
+}
+
+.actions .performance:hover:not(:disabled) {
+  background: #5a5a5a;
+}
+
 .actions .export {
   background: var(--btn-export);
 }

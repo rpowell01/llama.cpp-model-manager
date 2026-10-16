@@ -220,25 +220,25 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         "', 'start')\" " +
         (running || starting || !r.file_exists ? "disabled" : "") +
-        ">[Start] Start</button>" +
+        ">\u25B6 Start</button>" +
         ' <button class="stop" onclick="act(\'' +
         jsEscape(r.model) +
         "', 'stop')\" " +
         (!running && !starting ? "disabled" : "") +
-        ">[Stop] Stop</button>" +
+        ">\u25A0 Stop</button>" +
         ' <button class="add" onclick="downloadModel(\'' +
         jsEscape(r.model) +
-        "', true)\">[+] Add Variant</button>" +
+        "', true)\">\u2795 Add Variant</button>" +
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
-        "')\">[x] Delete</button>" +
+        "')\">\u274C Delete</button>" +
         (running
           ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' +
             jsEscape(r.model) +
-            "')\">Chat</button>" +
+            "')\">\uD83D\uDCA8 Chat</button>" +
             ' <button class="performance" onclick="event.stopPropagation(); openPerformanceGraphModal(\'' +
             jsEscape(r.model) +
-            '\', ' + r.port + ')" title="View performance metrics over time">Performance</button>'
+            '\', ' + r.port + ', event)\" title="View performance metrics over time">\uD83D\uDCC8 Performance</button>'
           : "") +
         "</div>" +
         progressHtml +
@@ -277,16 +277,16 @@ async function renderPanelProperties(data, modelName) {
         [Stop] Stop
       </button>
       <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        [Quick] Quick Optimize (Heuristics)
+        \u26A1 Quick Optimize (Heuristics)
       </button>
       <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        [Optimize] Optimize Settings (Empirical Benchmarks)
+        \uD83D\uDD27 Optimize Settings (Empirical Benchmarks)
       </button>
       <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        [Deep Sweep] Deep Sweep (Batched Bench)
+        \uD83D\uDD2C Deep Sweep (Batched Bench)
       </button>
       <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
-        [History] View Historical Benchmark Results
+        \uD83D\uDCCA View Historical Benchmark Results
       </button>
     </div>
     <div class="panel-item full-width" style="margin-top: 0.5rem;">
@@ -2203,36 +2203,62 @@ window.showMetricsTooltip = showMetricsTooltip;
 window.hideMetricsTooltip = hideMetricsTooltip;
 
 /**
- * Export model metrics to CSV
+ * Export model metrics to CSV (background operation)
  * @param {string} modelName - Model name
  * @param {number} port - Model port
  */
-async function exportMetrics(modelName, port, event) {
-   try {
-     if (event && event.target) {
-       const btn = event.target;
-       const originalText = btn.textContent;
-       btn.disabled = true;
-       btn.textContent = '[Loading]';
-     }
-     
-     // Instead of exporting to CSV, open the performance graph dialog
-     openPerformanceGraphModal(modelName, port);
-     
-     if (event && event.target) {
-       const btn = event.target;
-       btn.disabled = false;
-       btn.textContent = '[Performance] Performance';
-     }
-   } catch (e) {
-     log('<b>Error:</b> ' + e, 'red');
-     if (event && event.target) {
-       const btn = event.target;
-       btn.disabled = false;
-       btn.textContent = '[Performance] Performance';
-     }
+async function exportMetrics(modelName, port) {
+  try {
+    const response = await fetch('/api/export-metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelName })
+    });
+    const data = await response.json();
+    if (data.error) {
+      console.error('Export metrics error:', data.error);
+    } else {
+      console.log('Metrics exported:', data.csv_path);
+    }
+  } catch (e) {
+    console.error('Error exporting metrics:', e);
+  }
 }
+window.exportMetrics = exportMetrics;
+
+/**
+ * Open performance graph modal (called from button click)
+ * @param {string} modelName - Model name
+ * @param {number} port - Model port
+ * @param {Event} event - Click event for button state
+ */
+async function openPerformanceGraphModal(modelName, port, event) {
+  try {
+    if (event && event.target) {
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '📈 Loading...';
+    }
+    
+    // Open the performance graph modal
+    window.openPerformanceGraphModal(modelName, port);
+    
+    if (event && event.target) {
+      const btn = event.target;
+      btn.disabled = false;
+      btn.textContent = '📈 Performance';
+    }
+  } catch (e) {
+    console.error('Error opening performance graph:', e);
+    if (event && event.target) {
+      const btn = event.target;
+      btn.disabled = false;
+      btn.textContent = '📈 Performance';
+    }
+  }
 }
+window.openPerformanceGraphModal = openPerformanceGraphModal;
 
 // Expose functions globally for use in model-manager.js
 window.showMetricsTooltip = showMetricsTooltip;
