@@ -235,10 +235,10 @@ function renderTiles(rows, dlMap, query) {
         (running
           ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' +
             jsEscape(r.model) +
-            "')\">💬 Chat</button>" +
-            ' <button class="export" onclick="event.stopPropagation(); exportMetrics(\'' +
+            "')">💬 Chat</button>" +
+            ' <button class="performance" onclick="event.stopPropagation(); openPerformanceGraphModal(\'' +
             jsEscape(r.model) +
-            '\', ' + r.port + ')\" title="Export metrics to CSV">📊 Export</button>'
+            '\', ' + r.port + ')" title="View performance metrics over time">📈 Performance</button>'
           : "") +
         "</div>" +
         progressHtml +
@@ -2208,35 +2208,25 @@ window.hideMetricsTooltip = hideMetricsTooltip;
  * @param {number} port - Model port
  */
 async function exportMetrics(modelName, port) {
-  try {
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '⏳ Exporting...';
-    
-    const res = await fetch('/api/export-metrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName })
-    });
-    
-    const data = await res.json();
-    if (data.error) {
-      log('<b>Export error:</b> ' + data.error, 'red');
-    } else {
-      log(`<b>Export:</b> ${modelName} → ${data.csv_path}`, 'green');
-    }
-    
-    btn.disabled = false;
-    btn.textContent = originalText;
-  } catch (e) {
-    log('<b>Export error:</b> ' + e, 'red');
-    const btn = event.target;
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '📊 Export';
-    }
-  }
+   try {
+     const btn = event.target;
+     const originalText = btn.textContent;
+     btn.disabled = true;
+     btn.textContent = '⏳ Loading...';
+     
+     // Instead of exporting to CSV, open the performance graph dialog
+     openPerformanceGraphModal(modelName, port);
+     
+     btn.disabled = false;
+     btn.textContent = originalText;
+   } catch (e) {
+     log('<b>Error:</b> ' + e, 'red');
+     const btn = event.target;
+     if (btn) {
+       btn.disabled = false;
+       btn.textContent = '📈 Performance';
+     }
+   }
 }
 
 // Expose functions globally for use in model-manager.js

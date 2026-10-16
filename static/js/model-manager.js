@@ -334,21 +334,33 @@ async function refresh(showLoading = true) {
      }
      Object.assign(dlMap, dlJson);
 
-     renderTiles(deduplicated, dlMap, document.getElementById('search').value.toLowerCase());
+      renderTiles(deduplicated, dlMap, document.getElementById('search').value.toLowerCase());
 
-     if (selectedModel) {
-       // Use normalized comparison to find the model
-       const normalizedSelected = normalizeModelName(selectedModel);
-       const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedSelected);
-       if (modelData) {
-         // Use the original (unnormalized) model name for display
-         const displayName = modelData.model;
-         renderPanelProperties(modelData, displayName);
-       } else {
-         console.warn('Model not found after refresh:', selectedModel);
-         closePanel();
-       }
-     }
+      if (selectedModel) {
+        // Use normalized comparison to find the model
+        const normalizedSelected = normalizeModelName(selectedModel);
+        const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedSelected);
+        if (modelData) {
+          // Use the original (unnormalized) model name for display
+          const displayName = modelData.model;
+          renderPanelProperties(modelData, displayName);
+          
+          // Automatically export metrics for running models
+          if (modelData.status && modelData.status.startsWith('running')) {
+            exportMetrics(modelData.model, modelData.port);
+          }
+        } else {
+          console.warn('Model not found after refresh:', selectedModel);
+          closePanel();
+        }
+      }
+      
+      // Also export metrics for all running models (in case selectedModel is not running)
+      deduplicated.forEach(r => {
+        if (r.status && r.status.startsWith('running')) {
+          exportMetrics(r.model, r.port);
+        }
+      });
   } catch (e) {
     console.error('Refresh failed:', e);
   } finally {

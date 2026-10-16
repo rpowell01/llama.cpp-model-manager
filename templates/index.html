@@ -358,7 +358,28 @@
   </div>
 
 <!-- Chat Modal (bead web-e7r.1: modal container) -->
-   <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;" aria-hidden="true">
+    <div id="chat-modal" class="modal-overlay chat-modal" role="dialog" aria-modal="true" aria-label="Chat dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;" aria-hidden="true">
+      <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
+        <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
+        <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
+      </div>
+    </div>
+
+<!-- Performance Graph Modal -->
+    <div id="performance-graph-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Performance Graph dialog" aria-hidden="true" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+      <div class="modal-content performance-modal" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; height: 90vh;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
+          <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+        </div>
+        <div id="performance-graph-container" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          <div id="performance-chart" style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden;">
+            <canvas id="metrics-canvas"></canvas>
+          </div>
+          <div id="performance-controls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <label for="model-select">Model:</label>
+              <select id="model-select" style="padding: 0.3rem;">
     <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
       <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
       <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
@@ -373,7 +394,213 @@
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 <script src="{{ url_for('static', filename='js/hf-integration.js') }}"></script>
 <script src="{{ url_for('static', filename='js/add-model.js') }}"></script>
-   <script src="{{ url_for('static', filename='js/kilo-config.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/kilo-config.js') }}"></script>
 <script src="{{ url_for('static', filename='js/init.js') }}"></script>
+
+<!-- Performance Graph Modal Script -->
+<script>
+// Performance Graph Modal
+const performanceGraphModal = document.getElementById('performance-graph-modal');
+const performanceGraphModalClose = document.getElementById('performance-graph-modal-close');
+const performanceChart = document.getElementById('metrics-canvas');
+const modelSelect = document.getElementById('model-select');
+
+let metricsChart = null;
+
+// Initialize the performance graph modal
+function initPerformanceGraphModal() {
+  // Close button event listener
+  performanceGraphModalClose.addEventListener('click', closePerformanceGraphModal);
+  
+  // Close modal when clicking outside of it
+  performanceGraphModal.addEventListener('click', (e) => {
+    if (e.target === performanceGraphModal) {
+      closePerformanceGraphModal();
+    }
+  });
+  
+  // Close modal with Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && performanceGraphModal.style.display === 'flex') {
+      closePerformanceGraphModal();
+    }
+  });
+  
+  // Model selection event listener
+  if (modelSelect) {
+    modelSelect.addEventListener('change', loadModelMetrics);
+  }
+}
+
+// Open the performance graph modal
+function openPerformanceGraphModal(modelName, port) {
+  // Set the model name in the dropdown
+  if (modelSelect) {
+    // Find the option that matches the model name
+    const options = [...modelSelect.options];
+    const matchingOption = options.find(option => option.textContent.trim() === modelName);
+    if (matchingOption) {
+      matchingOption.selected = true;
+    } else {
+      // If no matching option, add it
+      const newOption = document.createElement('option');
+      newOption.value = modelName;
+      newOption.textContent = modelName;
+      modelSelect.appendChild(newOption);
+      modelSelect.value = modelName;
+    }
+  }
+  
+  // Load metrics for the selected model
+  loadModelMetrics({ target: modelSelect });
+  
+  // Show the modal
+  performanceGraphModal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+// Close the performance graph modal
+function closePerformanceGraphModal() {
+  performanceGraphModal.style.display = 'none';
+  document.body.style.overflow = 'auto';
+  
+  // Clear the chart
+  if (metricsChart) {
+    metricsChart.destroy();
+    metricsChart = null;
+  }
+  
+  // Clear the model dropdown
+  if (modelSelect) {
+    // Remove any dynamically added options
+    const options = [...modelSelect.options];
+    options.forEach(option => {
+      if (option.value && !['Model A', 'Model B', 'Model C'].includes(option.value)) { // Adjust condition as needed
+        option.remove();
+      }
+    });
+    modelSelect.value = '';
+  }
+}
+
+// Load metrics for the selected model and display in the chart
+function loadModelMetrics(event) {
+  const modelName = event.target.value;
+  if (!modelName) return;
+  
+  // Fetch metrics from the server
+  fetch('/api/get-metrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelName })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.error) {
+      console.error('Error fetching metrics:', data.error);
+      return;
+    }
+    
+    // Create or update the chart with the metrics data
+    updateMetricsChart(data.metrics);
+  })
+  .catch(error => {
+    console.error('Error loading metrics:', error);
+  });
+}
+
+// Update the metrics chart with new data
+function updateMetricsChart(metricsData) {
+  const ctx = performanceChart.getContext('2d');
+  
+  // Destroy existing chart if it exists
+  if (metricsChart) {
+    metricsChart.destroy();
+  }
+  
+  // Prepare the data for the chart
+  const labels = metricsData.timestamps || [];
+  const promptTimes = metricsData.prompt_times || [];
+  const predictTimes = metricsData.predict_times || [];
+  const tokensGenerated = metricsData.tokens_generated || [];
+  
+  // Create the chart
+  metricsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Prompt Time (ms)',
+          data: promptTimes,
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          yAxisID: 'y1',
+          tension: 0.1
+        },
+        {
+          label: 'Predict Time (ms)',
+          data: predictTimes,
+          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          yAxisID: 'y1',
+          tension: 0.1
+        },
+        {
+          label: 'Tokens Generated',
+          data: tokensGenerated,
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.1)',
+          yAxisID: 'y2',
+          tension: 0.1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: {
+          display: true,
+          text: 'Model Performance Metrics Over Time'
+        },
+        legend: {
+          position: 'top'
+        }
+      },
+      scales: {
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          title: {
+            display: true,
+            text: 'Time (ms)'
+          }
+        },
+        y2: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          title: {
+            display: true,
+            text: 'Tokens'
+          },
+          grid: {
+            drawOnChartArea: false,
+          }
+        }
+      }
+    }
+  });
+}
+
+// Initialize the performance graph modal when the page loads
+document.addEventListener('DOMContentLoaded', initPerformanceGraphModal);
+
+// Expose functions to global scope for use in other scripts
+window.openPerformanceGraphModal = openPerformanceGraphModal;
+window.closePerformanceGraphModal = closePerformanceGraphModal;
+</script>
 </body>
 </html>

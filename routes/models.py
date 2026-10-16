@@ -441,10 +441,127 @@ def api_export_metrics():
             writer.writeheader()
         writer.writerow(row)
     
+     return jsonify({
+         "status": "exported",
+         "csv_path": str(csv_path),
+         "row": row
+     })
+
+
+@models_bp.route("/api/get-metrics", methods=["POST"])
+def api_get_metrics():
+    """Get current model metrics for performance graph."""
+    import requests
+    from datetime import datetime
+    
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    models = get_models()
+    # Case-insensitive lookup
+    model_key = None
+    for k in models:
+        if k.lower() == model.lower():
+            model_key = k
+            break
+    if model_key is None:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    meta = models[model_key]
+    port = meta.get("port", 0)
+    if not port:
+        return jsonify({"error": "Model has no port assigned"}), 400
+    
+    # Fetch metrics from the model's port
+    try:
+        resp = requests.get(f"http://127.0.0.1:{port}/metrics", timeout=5)
+        if not resp.ok:
+            return jsonify({"error": "Failed to fetch metrics from model"}), 500
+        metrics_text = resp.text
+    except Exception as e:
+        return jsonify({"error": f"Error fetching metrics: {e}"}), 500
+    
+    # Parse metrics
+    metrics = {}
+    for line in metrics_text.split('\n'):
+        if line.startswith('#') or not line.strip():
+            continue
+        # Simple parsing for Prometheus format
+        parts = line.split()
+        if len(parts) >= 2:
+            name = parts[0]
+            try:
+                value = float(parts[-1])
+                metrics[name] = value
+            except ValueError:
+                pass
+    
+    # Calculate derived metrics
+    prompt_sec = metrics.get('llamacpp:prompt_seconds_total', 0)
+    prompt_tokens = metrics.get('llamacpp:prompt_tokens_total', 0)
+    gen_sec = metrics.get('llamacpp:tokens_predicted_seconds_total', 0)
+    gen_tokens = metrics.get('llamacpp:tokens_predicted_total', 0)
+    # Calculate rates from counters (more reliable than gauge metrics)
+    prompt_rate = (prompt_tokens / prompt_sec) if prompt_sec > 0 else 0
+    gen_rate = (gen_tokens / gen_sec) if gen_sec > 0 else 0
+    
+    prompt_eval_ms = (prompt_sec / prompt_tokens * 1000) if prompt_tokens > 0 else 0
+    eval_ms = (gen_sec / gen_tokens * 1000) if gen_tokens > 0 else 0
+    
+    # Speculative decoding
+    draft_tokens = metrics.get('llamacpp:spec_decode_num_draft_tokens_total', 0)
+    accepted_tokens = metrics.get('llamacpp:spec_decode_num_accepted_tokens_total', 0)
+    drafts = metrics.get('llamacpp:spec_decode_num_drafts_total', 0)
+    acceptance_rate = (accepted_tokens / draft_tokens * 100) if draft_tokens > 0 else 0
+    avg_draft_len = (draft_tokens / drafts) if drafts > 0 else 0
+    accepted_per_step = (accepted_tokens / drafts) if drafts > 0 else 0
+    speedup = (1 + accepted_per_step) if drafts > 0 else 1
+    
+    # Prepare the response data
+    response_data = {
+        "model": model,
+        "timestamp": datetime.now().isoformat(),
+        # Prompt metrics
+        "prompt_seconds_total": prompt_sec,
+        "prompt_tokens_total": prompt_tokens,
+        "prompt_eval_ms_per_token": round(prompt_eval_ms, 1),
+        "prompt_rate_tokens_per_sec": round(prompt_rate, 1),
+        # Generation metrics
+        "gen_seconds_total": gen_sec,
+        "gen_tokens_total": gen_tokens,
+        "gen_eval_ms_per_token": round(eval_ms, 1),
+        "gen_rate_tokens_per_sec": round(gen_rate, 1),
+        # Speculative decoding
+        "spec_draft_tokens_total": draft_tokens,
+        "spec_accepted_tokens_total": accepted_tokens,
+        "spec_drafts_total": drafts,
+        "spec_acceptance_rate_pct": round(acceptance_rate, 1),
+        "spec_avg_draft_len": round(avg_draft_len, 1),
+        "spec_est_speedup": round(speedup, 2),
+        # Configuration
+        "threads": meta.get("threads"),
+        "threads_batch": meta.get("threads_batch"),
+        "gpu_layers": meta.get("gpu_layers"),
+        "ctx_size": meta.get("ctx_size"),
+        "batch_size": meta.get("batch_size"),
+        "ubatch_size": meta.get("ubatch_size"),
+        "flash_attn": meta.get("flash_attn"),
+        "numa": meta.get("numa"),
+        "numa_value": meta.get("numa_value"),
+        "parallel": meta.get("parallel"),
+        "rope_scaling_type": meta.get("rope_scaling_type"),
+        "cache_type_k": meta.get("cache_type_k"),
+        "cache_type_v": meta.get("cache_type_v"),
+        "spec_type": meta.get("spec_type"),
+        "spec_draft_n_max": meta.get("spec_draft_n_max"),
+        "spec_draft_n_min": meta.get("spec_draft_n_min"),
+    }
+    
     return jsonify({
-        "status": "exported",
-        "csv_path": str(csv_path),
-        "row": row
+        "status": "success",
+        "metrics": response_data
     })
 
 
