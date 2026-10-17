@@ -214,11 +214,16 @@ function initChatModal() {
      // Cleanup handler for when modal closes
    });
 
-   // Register performance graph modal
+   // Performance Graph Modal - close button listener (at init, like chat-modal)
+   const perfCloseBtn = document.getElementById('performance-graph-modal-close');
+   if (perfCloseBtn) {
+     perfCloseBtn.addEventListener('click', () => ModalManager.close('performance-graph-modal'));
+   }
+
+   // Register performance graph modal (cleanup only)
    ModalManager.register('performance-graph-modal', () => {
-     const perfCloseBtn = document.getElementById('performance-graph-modal-close');
-     if (perfCloseBtn) {
-       perfCloseBtn.addEventListener('click', () => ModalManager.close('performance-graph-modal'));
+     if (typeof window.cleanupPerformanceGraph === 'function') {
+       window.cleanupPerformanceGraph();
      }
    });
 

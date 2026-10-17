@@ -367,6 +367,24 @@
     </div>
 
 <!-- Performance Graph Modal -->
+    <div id="performance-graph-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Performance Graph dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;" aria-hidden="true">
+      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
+          <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+        </div>
+        <div style="margin-bottom: 1rem;">
+          <label style="margin-right: 1rem; font-weight: 600; color: var(--text);">Model:</label>
+          <select id="model-select" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+            <option value="">Select a model</option>
+          </select>
+        </div>
+        <canvas id="metrics-canvas" height="400" style="width: 100%; max-width: 800px; height: 400px; display: block; margin: 0 auto;"></canvas>
+        <div id="metrics-info" style="margin-top: 1rem; padding: 1rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem; color: var(--text2); display: none;">
+          <p>No metrics data available for this model.</p>
+        </div>
+      </div>
+    </div>
 
 <script src="{{ url_for('static', filename='js/core.js') }}"></script>
 <script src="{{ url_for('system.serve_state_js') }}"></script>
@@ -381,87 +399,18 @@
 
 <!-- Performance Graph Modal Script -->
 <script>
-// Performance Graph Modal
-const performanceGraphModal = document.getElementById('performance-graph-modal') || {};
-const performanceGraphModalClose = document.getElementById('performance-graph-modal-close') || {};
+// Performance Graph Modal - Chart Logic Only
+// Modal display is handled by ModalManager (ui-controls.js)
 const performanceChart = document.getElementById('metrics-canvas') || {};
 const modelSelect = document.getElementById('model-select') || {};
 
 let metricsChart = null;
 
-// Initialize the performance graph modal
+// Initialize the performance graph modal - only model select listener
 function initPerformanceGraphModal() {
-  // Close button event listener
-  performanceGraphModalClose.addEventListener('click', closePerformanceGraphModal);
-  
-  // Close modal when clicking outside of it
-  performanceGraphModal.addEventListener('click', (e) => {
-    if (e.target === performanceGraphModal) {
-      closePerformanceGraphModal();
-    }
-  });
-  
-  // Close modal with Escape key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && performanceGraphModal.style.display === 'flex') {
-      closePerformanceGraphModal();
-    }
-  });
-  
   // Model selection event listener
   if (modelSelect) {
     modelSelect.addEventListener('change', loadModelMetrics);
-  }
-}
-
-// Open the performance graph modal
-function openPerformanceGraphModal(modelName, port) {
-  // Set the model name in the dropdown
-  if (modelSelect) {
-    // Find the option that matches the model name
-    const options = [...modelSelect.options];
-    const matchingOption = options.find(option => option.textContent.trim() === modelName);
-    if (matchingOption) {
-      matchingOption.selected = true;
-    } else {
-      // If no matching option, add it
-      const newOption = document.createElement('option');
-      newOption.value = modelName;
-      newOption.textContent = modelName;
-      modelSelect.appendChild(newOption);
-      modelSelect.value = modelName;
-    }
-  }
-  
-  // Load metrics for the selected model
-  loadModelMetrics({ target: modelSelect });
-  
-  // Show the modal
-  performanceGraphModal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-}
-
-// Close the performance graph modal
-function closePerformanceGraphModal() {
-  performanceGraphModal.style.display = 'none';
-  document.body.style.overflow = 'auto';
-  
-  // Clear the chart
-  if (metricsChart) {
-    metricsChart.destroy();
-    metricsChart = null;
-  }
-  
-  // Clear the model dropdown
-  if (modelSelect) {
-    // Remove any dynamically added options
-    const options = [...modelSelect.options];
-    options.forEach(option => {
-      if (option.value && !['Model A', 'Model B', 'Model C'].includes(option.value)) { // Adjust condition as needed
-        option.remove();
-      }
-    });
-    modelSelect.value = '';
   }
 }
 
@@ -579,9 +528,29 @@ function updateMetricsChart(metricsData) {
 // Initialize the performance graph modal when the page loads
 document.addEventListener('DOMContentLoaded', initPerformanceGraphModal);
 
+// Cleanup function for when modal closes
+function cleanupPerformanceGraph() {
+  if (metricsChart) {
+    metricsChart.destroy();
+    metricsChart = null;
+  }
+  if (modelSelect) {
+    // Remove any dynamically added options (keep only the original static options)
+    const originalValues = ['', 'Model A', 'Model B', 'Model C'];
+    const options = [...modelSelect.options];
+    options.forEach(option => {
+      if (!originalValues.includes(option.value)) {
+        option.remove();
+      }
+    });
+    modelSelect.value = '';
+  }
+}
+
 // Expose functions to global scope for use in other scripts
-window.openPerformanceGraphModal = openPerformanceGraphModal;
-window.closePerformanceGraphModal = closePerformanceGraphModal;
+window.loadModelMetrics = loadModelMetrics;
+window.updateMetricsChart = updateMetricsChart;
+window.cleanupPerformanceGraph = cleanupPerformanceGraph;
 </script>
 </body>
 </html>

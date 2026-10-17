@@ -2240,10 +2240,39 @@ async function openPerformanceGraphModal(modelName, port, event) {
       btn.disabled = true;
       btn.textContent = '📈 Loading...';
     }
-    
-    // Open the performance graph modal
+
+    // Set the model in the dropdown (but don't load metrics yet)
+    const modelSelect = document.getElementById('model-select');
+    if (modelSelect) {
+      // Find or add the model option
+      const options = [...modelSelect.options];
+      const matchingOption = options.find(option => option.textContent.trim() === modelName);
+      if (matchingOption) {
+        matchingOption.selected = true;
+      } else {
+        const newOption = document.createElement('option');
+        newOption.value = modelName;
+        newOption.textContent = modelName;
+        modelSelect.appendChild(newOption);
+        modelSelect.value = modelName;
+      }
+    }
+
+    // Re-register cleanup callback for each open/close cycle
+    // (ModalManager deletes the callback after close)
+    if (typeof window.cleanupPerformanceGraph === 'function') {
+      ModalManager.register('performance-graph-modal', window.cleanupPerformanceGraph);
+    }
+
+    // Open the performance graph modal via ModalManager FIRST
+    // This ensures the canvas is visible when Chart.js initializes
     ModalManager.open('performance-graph-modal');
-    
+
+    // NOW load metrics - canvas is visible so Chart.js can size correctly
+    if (modelSelect && typeof loadModelMetrics === 'function') {
+      loadModelMetrics({ target: modelSelect });
+    }
+
     if (event && event.target) {
       const btn = event.target;
       btn.disabled = false;

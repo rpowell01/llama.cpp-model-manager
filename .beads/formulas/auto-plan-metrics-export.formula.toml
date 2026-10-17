@@ -1,0 +1,242 @@
+formula = "auto-plan-metrics-export"
+description = "Auto-generated plan: Implement automatic metrics export to CSV and fix performance dialog display"
+type = "workflow"
+version = 1
+
+[[steps]]
+id = "epic-metrics-export"
+title = "Implement Automatic Metrics Export and Fix Performance Dialog"
+description = """
+Epic: Implement automatic metrics export to CSV files for running models and fix the performance metrics dialog display issue.
+
+The system currently has manual export via /api/export-metrics endpoint but no automatic/periodic export mechanism.
+The performance dialog should display when clicking the 'Performance' button but currently shows no data/lines.
+
+Implementation prompt:
+This is the root epic task. It will be completed when all child tasks are done.
+No code changes in this task - it's a container for child tasks.
+"""
+priority = 1
+tags = ["backend", "frontend", "testing"]
+estimates = { total = 16, unit = "hours" }
+needs = ["task-1-investigate", "task-2-scheduler", "task-3-dialog-fix", "task-4-auto-export", "task-5-test", "task-6-config", "task-7-tooltip-pattern"]
+
+[[steps]]
+id = "task-1-investigate"
+title = "Investigate Existing Scheduling and Metrics Generation"
+description = """
+Investigate if there's any existing scheduling mechanism (cron, timer, etc.) in the codebase.
+Check how metrics are generated/pushed by the model server vs needing to be polled.
+Examine the metrics tooltip implementation to understand the pattern for fetching metrics.
+
+Implementation prompt:
+1. Search for any cron, scheduler, timer, or background task code in the codebase
+2. Examine metrics.py _fetch_metrics_from_model function to understand polling pattern
+3. Check how metrics tooltip fetches and displays data in ui-controls.js
+4. Verify if llama-server /metrics endpoint pushes or needs polling
+5. Document findings in a brief report
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 2
+tags = ["backend", "investigation"]
+estimates = { total = 4, unit = "hours" }
+needs = []
+
+[[steps]]
+id = "task-2-scheduler"
+title = "Create Automatic Export Scheduler Service"
+description = """
+Create a background scheduler service that periodically exports metrics for all running models.
+The scheduler should run as a background task, check for running models, and call the export API.
+
+Implementation prompt:
+1. Create a new module scheduler.py or extend existing background task mechanism
+2. Implement a periodic task (configurable interval, default 60 seconds) that:
+   - Gets list of running models from status API
+   - For each running model, calls /api/export-metrics endpoint
+   - Handles errors gracefully (log but continue)
+3. Add scheduler startup/shutdown hooks in main.py
+4. Ensure thread safety and proper cleanup on shutdown
+5. Use existing background task patterns in the codebase
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 1
+tags = ["backend", "scheduler"]
+estimates = { total = 8, unit = "hours" }
+needs = ["task-1-investigate"]
+
+[[steps]]
+id = "task-3-dialog-fix"
+title = "Fix Performance Metrics Dialog Display"
+description = """
+Fix the performance metrics dialog so it displays properly when clicking the 'Performance' button.
+The dialog should show a line graph with metrics data (prompt time, predict time, tokens generated).
+
+Implementation prompt:
+1. Check why openPerformanceGraphModal in index.html is not displaying the chart
+2. Verify Chart.js is loaded (already added via CDN)
+3. Check the loadModelMetrics and updateMetricsChart functions
+4. Ensure the canvas element exists and is accessible
+5. Fix any JavaScript errors preventing chart rendering
+6. Test with a running model to verify graph displays lines
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 1
+tags = ["frontend", "chart"]
+estimates = { total = 4, unit = "hours" }
+needs = ["task-1-investigate"]
+
+[[steps]]
+id = "task-4-auto-export"
+title = "Implement Automatic Periodic Export for Running Models"
+description = """
+Implement the core automatic export logic that fetches metrics from running models and appends to CSV files.
+Should follow the same pattern as metrics tooltip but run independently without UI dependency.
+
+Implementation prompt:
+1. Create a function that exports metrics for a single model (reuse logic from api_export_metrics)
+2. Integrate with scheduler from task-2 to run periodically for all running models
+3. Ensure CSV format matches existing format (38 columns: timestamp, model, port, prompt/gen metrics, speculative stats, config)
+4. Handle append mode correctly (write header only on first write)
+5. Add proper error handling and logging
+6. Ensure thread-safe file writes (use file locking if needed)
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 1
+tags = ["backend", "export", "csv"]
+estimates = { total = 8, unit = "hours" }
+needs = ["task-2-scheduler"]
+
+[[steps]]
+id = "task-5-test"
+title = "Test Automatic Export with Target Model"
+description = """
+Test the automatic export implementation with the target model mellum2-12b-a2.5b-instruct.i1-q4-k-m on port 11012.
+Verify CSV files are created/updated with multiple rows over time.
+
+Implementation prompt:
+1. Start the target model (mellum2-12b-a2.5b-instruct.i1-q4-k-m) on port 11012
+2. Wait for automatic export to run (based on configured interval)
+3. Check metrics_exports/mellum2-12b-a2.5b-instruct.i1-q4-k-m_metrics.csv for multiple rows
+4. Verify CSV data integrity (all 38 columns populated correctly)
+5. Test performance dialog by clicking 'Performance' button - verify graph displays
+6. Document any issues and fix
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 2
+tags = ["testing", "integration"]
+estimates = { total = 4, unit = "hours" }
+needs = ["task-3-dialog-fix", "task-4-auto-export"]
+
+[[steps]]
+id = "task-6-config"
+title = "Add Configuration for Export Interval and Settings"
+description = """
+Add configuration options for the automatic export feature including interval, enable/disable, and model selection.
+
+Implementation prompt:
+1. Add config options in config.py:
+   - METRICS_EXPORT_ENABLED (default: true)
+   - METRICS_EXPORT_INTERVAL_SECONDS (default: 60)
+   - METRICS_EXPORT_MODELS (optional: list of model names, empty = all running)
+2. Add environment variable support
+3. Update scheduler to respect configuration
+4. Add API endpoint to get/set export configuration
+5. Update UI to show export status/configuration
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 2
+tags = ["backend", "config"]
+estimates = { total = 4, unit = "hours" }
+needs = ["task-2-scheduler"]
+
+[[steps]]
+id = "task-7-tooltip-pattern"
+title = "Ensure Export Follows Metrics Tooltip Pattern"
+description = """
+Ensure the automatic export follows the same metrics fetching pattern as the tooltip but runs independently.
+The tooltip fetches metrics on hover; export should fetch on schedule.
+
+Implementation prompt:
+1. Review metrics tooltip implementation in ui-controls.js (showMetricsTooltip function)
+2. Identify the exact metrics fetching pattern used
+3. Refactor export logic to use same _fetch_metrics_from_model function
+4. Ensure both tooltip and export can run concurrently without conflicts
+5. Share common metrics parsing/validation logic
+6. Add unit tests for shared metrics fetching
+
+Mandatory Code Review Gate:
+Before completing this bead, check for changes first:
+git diff HEAD --stat
+git diff --cached --stat
+Only if the above shows any file modifications, invoke bd-code-reviewer sub-agent with full git diff.
+Continue fixing until response is exactly: APPROVED.
+
+Environment Isolation:
+You are executing in an isolated git worktree. Verify: git rev-parse --is-inside-work-tree returns true.
+Confine ALL file operations to current working directory and subdirectories.
+"""
+priority = 2
+tags = ["backend", "refactor"]
+estimates = { total = 4, unit = "hours" }
+needs = ["task-1-investigate", "task-4-auto-export"]
