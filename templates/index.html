@@ -367,30 +367,6 @@
     </div>
 
 <!-- Performance Graph Modal -->
-       <div id="performance-graph-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Performance Graph dialog" aria-hidden="true" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-         <div class="modal-content performance-modal" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; height: 90vh;">
-           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-             <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
-             <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0; z-index: 10;">×</button>
-           </div>
-      <div class="modal-content performance-modal" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 90vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; height: 90vh;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
-          <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
-        </div>
-        <div id="performance-graph-container" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-          <div id="performance-chart" style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden;">
-            <canvas id="metrics-canvas" style="background: var(--surface); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"></canvas>
-          </div>
-          <div id="performance-controls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <label for="model-select">Model:</label>
-              <select id="model-select" style="padding: 0.3rem;">
-    <div class="chat-section" style="width: min(800px, 90vw); max-height: 90vh; overflow: hidden; position: relative;">
-      <button id="chat-modal-close" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 10;">&times;</button>
-      <div id="chat-modal-content" style="padding-top: 0.5rem;"></div>
-    </div>
-  </div>
 
 <script src="{{ url_for('static', filename='js/core.js') }}"></script>
 <script src="{{ url_for('system.serve_state_js') }}"></script>
@@ -406,10 +382,10 @@
 <!-- Performance Graph Modal Script -->
 <script>
 // Performance Graph Modal
-const performanceGraphModal = document.getElementById('performance-graph-modal');
-const performanceGraphModalClose = document.getElementById('performance-graph-modal-close');
-const performanceChart = document.getElementById('metrics-canvas');
-const modelSelect = document.getElementById('model-select');
+const performanceGraphModal = document.getElementById('performance-graph-modal') || {};
+const performanceGraphModalClose = document.getElementById('performance-graph-modal-close') || {};
+const performanceChart = document.getElementById('metrics-canvas') || {};
+const modelSelect = document.getElementById('model-select') || {};
 
 let metricsChart = null;
 

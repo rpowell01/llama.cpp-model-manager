@@ -205,9 +205,22 @@ function initChatModal() {
   const chatModal = document.getElementById('chat-modal');
   const chatCloseBtn = document.getElementById('chat-modal-close');
 
-  if (chatCloseBtn) {
-    chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
-  }
+   if (chatCloseBtn) {
+     chatCloseBtn.addEventListener('click', () => ModalManager.close('chat-modal'));
+   }
+
+   // Register chat modal
+   ModalManager.register('chat-modal', () => {
+     // Cleanup handler for when modal closes
+   });
+
+   // Register performance graph modal
+   ModalManager.register('performance-graph-modal', () => {
+     const perfCloseBtn = document.getElementById('performance-graph-modal-close');
+     if (perfCloseBtn) {
+       perfCloseBtn.addEventListener('click', () => ModalManager.close('performance-graph-modal'));
+     }
+   });
 
   // Clear chat button handler (event delegation for dynamic button)
   if (chatModal) {
