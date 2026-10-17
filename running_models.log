@@ -485,3 +485,5 @@
 {"time": "2026-10-17T17:56:48Z", "action": "start", "model": "ternary-bonsai-2-9b-hf-bf16.tq2-0", "port": 11011, "pid": 44244, "status": "running"}
 {"time": "2026-10-17T17:57:33Z", "action": "start", "model": "ternary-bonsai-2-9b-hf-bf16.tq2-0", "port": 11011, "pid": 49284, "status": "running"}
 {"time": "2026-10-17T18:30:32Z", "action": "start", "model": "gemma4-v2-q4-k-m", "port": 11007, "pid": 41876, "status": "running"}
+{"time": "2026-10-17T21:22:51Z", "action": "start", "model": "ternary-bonsai-2-27b-ptq1-0", "port": 11008, "pid": 28336, "status": "running"}
+{"time": "2026-10-17T21:42:34Z", "action": "start", "model": "ternary-bonsai-2-27b-ptq1-0", "port": 11008, "pid": 31096, "status": "running"}

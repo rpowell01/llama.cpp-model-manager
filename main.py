@@ -5,6 +5,7 @@ llama.cpp web frontend - simplified entry point
 
 from __future__ import annotations
 
+import atexit
 import argparse
 import logging
 import socket
@@ -18,6 +19,9 @@ from config import BASE_DIR, Config, WSL
 
 # Import models functions
 from models import load_models_cache
+
+# Import scheduler
+from scheduler import init_scheduler
 
 # Import hardware detection
 from routes.system import get_hardware_info
@@ -156,6 +160,10 @@ def main() -> None:
     else:
         log.info("Remote mode: skipping local models cache")
 
+    # Initialize and start the export scheduler
+    scheduler = init_scheduler(app, interval=60)
+    atexit.register(scheduler.stop)
+
     log.info("Starting web UI on http://%s:%d from %s", args.host, args.port, BASE_DIR)
     
     # Show WSL-specific connection info
@@ -167,7 +175,7 @@ def main() -> None:
                 log.info("  http://%s:%d (WSL IP)", ip, args.port)
             log.info("  http://127.0.0.1:%d (via port forwarding)", args.port)
             log.info("Note: The Windows IP shown by Flask below is NOT accessible in WSL2 default networking mode.")
-    
+
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
 
 

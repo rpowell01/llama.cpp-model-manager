@@ -371,7 +371,7 @@
       <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <h3 style="margin: 0; color: var(--text);">Performance Metrics</h3>
-          <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+          <button id="performance-graph-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;" aria-label="Close">&times;</button>
         </div>
         <div style="margin-bottom: 1rem;">
           <label style="margin-right: 1rem; font-weight: 600; color: var(--text);">Model:</label>
@@ -382,6 +382,9 @@
         <canvas id="metrics-canvas" height="400" style="width: 100%; max-width: 800px; height: 400px; display: block; margin: 0 auto;"></canvas>
         <div id="metrics-info" style="margin-top: 1rem; padding: 1rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem; color: var(--text2); display: none;">
           <p>No metrics data available for this model.</p>
+        </div>
+        <div style="margin-top: 1rem; font-size: 0.85rem; color: var(--muted);">
+          The chart displays prompt time, predict time, and tokens generated over time for the selected model.
         </div>
       </div>
     </div>
@@ -411,6 +414,79 @@ function initPerformanceGraphModal() {
   // Model selection event listener
   if (modelSelect) {
     modelSelect.addEventListener('change', loadModelMetrics);
+  }
+}
+
+// Open the performance graph modal
+function openPerformanceGraphModal(modelName, port) {
+  // Set the model name in the dropdown
+  if (modelSelect && modelSelect.options) {
+    // Find the option that matches the model name
+    const options = [...modelSelect.options];
+    const matchingOption = options.find(option => option.textContent.trim() === modelName);
+    if (matchingOption) {
+      matchingOption.selected = true;
+    } else {
+      // If no matching option, add it
+      const newOption = document.createElement('option');
+      newOption.value = modelName;
+      newOption.textContent = modelName;
+      modelSelect.appendChild(newOption);
+      modelSelect.value = modelName;
+    }
+  }
+  
+  // Load metrics for the selected model
+  if (modelSelect && modelSelect.value) {
+    loadModelMetrics({ target: modelSelect });
+  } else {
+    // Fetch metrics directly for the specified model
+    fetch('/api/get-metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelName })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        console.error('Error fetching metrics:', data.error);
+        return;
+      }
+      updateMetricsChart(data.metrics);
+    })
+    .catch(error => {
+      console.error('Error loading metrics:', error);
+    });
+  }
+  
+  // Show the modal
+  performanceGraphModal.style.display = 'flex';
+  performanceGraphModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = 'hidden';
+}
+
+// Close the performance graph modal
+function closePerformanceGraphModal() {
+  performanceGraphModal.style.display = 'none';
+  performanceGraphModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = 'auto';
+  
+  // Clear the chart
+  if (metricsChart) {
+    metricsChart.destroy();
+    metricsChart = null;
+  }
+  
+  // Clear the model dropdown
+  if (modelSelect) {
+    // Remove any dynamically added options
+    const options = [...modelSelect.options];
+    options.forEach(option => {
+      if (option.value && !['Model A', 'Model B', 'Model C'].includes(option.value)) { // Adjust condition as needed
+        option.remove();
+      }
+    });
+    modelSelect.value = '';
   }
 }
 
