@@ -499,3 +499,9 @@
 {"time": "2026-10-18T02:52:00Z", "action": "start", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 11008, "pid": 36868, "status": "running"}
 {"time": "2026-10-18T03:31:31Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 37164, "status": "running"}
 {"time": "2026-10-18T03:56:52Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 16064, "status": "running"}
+{"time": "2026-10-18T04:44:17Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 41864, "status": "running"}
+{"time": "2026-10-18T14:09:20Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 33300, "status": "running"}
+{"time": "2026-10-18T14:50:04Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 15628, "status": "running"}
+{"time": "2026-10-18T15:08:25Z", "action": "download", "model": "llama-3.2-4x3b-moe-ultra-instruct-10b-d-au-q4-k-m", "port": 0, "pid": null, "status": "completed (6082137120 bytes)"}
+{"time": "2026-10-18T15:59:13Z", "action": "start", "model": "llama-3.2-4x3b-moe-ultra-instruct-10b-d-au-q4-k-m", "port": 11008, "pid": 498017, "status": "exited_early"}
+{"time": "2026-10-18T16:02:04Z", "action": "start", "model": "llama-3.2-4x3b-moe-ultra-instruct-10b-d-au-q4-k-m", "port": 11008, "pid": 50040, "status": "running"}

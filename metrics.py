@@ -73,7 +73,7 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
     for try_host in hosts_to_try:
         url = f"http://{try_host}:{port}/metrics"
         try:
-            resp = requests.get(url, timeout=0.5)
+            resp = requests.get(url, timeout=3)
             if resp.status_code != 200:
                 continue
             values = _parse_metrics_text(resp.text)

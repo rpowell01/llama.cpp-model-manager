@@ -443,6 +443,14 @@ const modelSelect = document.getElementById('model-select') || {};
 
 let metricsChart = null;
 
+// Historical metrics for the time-series chart (accumulated across fetches)
+const MAX_METRIC_POINTS = 50;
+let metricTimestamps = [];
+let metricPromptTimes = [];
+let metricPredictTimes = [];
+let metricTokensGenerated = [];
+let lastMetricModel = '';
+
 // Initialize the performance graph modal - only model select listener
 function initPerformanceGraphModal() {
   // Model selection event listener
@@ -451,83 +459,21 @@ function initPerformanceGraphModal() {
   }
 }
 
-// Open the performance graph modal
-function openPerformanceGraphModal(modelName, port) {
-  // Set the model name in the dropdown
-  if (modelSelect && modelSelect.options) {
-    // Find the option that matches the model name
-    const options = [...modelSelect.options];
-    const matchingOption = options.find(option => option.textContent.trim() === modelName);
-    if (matchingOption) {
-      matchingOption.selected = true;
-    } else {
-      // If no matching option, add it
-      const newOption = document.createElement('option');
-      newOption.value = modelName;
-      newOption.textContent = modelName;
-      modelSelect.appendChild(newOption);
-      modelSelect.value = modelName;
-    }
-  }
-  
-  // Load metrics for the selected model
-  if (modelSelect && modelSelect.value) {
-    loadModelMetrics({ target: modelSelect });
-  } else {
-    // Fetch metrics directly for the specified model
-    fetch('/api/get-metrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName })
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.error) {
-        console.error('Error fetching metrics:', data.error);
-        return;
-      }
-      updateMetricsChart(data.metrics);
-    })
-    .catch(error => {
-      console.error('Error loading metrics:', error);
-    });
-  }
-  
-  // Show the modal
-  performanceGraphModal.style.display = 'flex';
-  performanceGraphModal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = 'hidden';
-}
 
-// Close the performance graph modal
-function closePerformanceGraphModal() {
-  performanceGraphModal.style.display = 'none';
-  performanceGraphModal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = 'auto';
-  
-  // Clear the chart
-  if (metricsChart) {
-    metricsChart.destroy();
-    metricsChart = null;
-  }
-  
-  // Clear the model dropdown
-  if (modelSelect) {
-    // Remove any dynamically added options
-    const options = [...modelSelect.options];
-    options.forEach(option => {
-      if (option.value && !['Model A', 'Model B', 'Model C'].includes(option.value)) { // Adjust condition as needed
-        option.remove();
-      }
-    });
-    modelSelect.value = '';
-  }
-}
 
 // Load metrics for the selected model and display in the chart
 function loadModelMetrics(event) {
-  const modelName = event.target.value;
+  const modelName = (event?.target?.value) || (modelSelect?.value) || '';
   if (!modelName) return;
+
+  // Clear history when switching models to avoid mixing data
+  if (modelName !== lastMetricModel) {
+    metricTimestamps = [];
+    metricPromptTimes = [];
+    metricPredictTimes = [];
+    metricTokensGenerated = [];
+    lastMetricModel = modelName;
+  }
   
   // Fetch metrics from the server
   fetch('/api/get-metrics', {
@@ -542,8 +488,30 @@ function loadModelMetrics(event) {
       return;
     }
     
-    // Create or update the chart with the metrics data
-    updateMetricsChart(data.metrics);
+    // Extract current values from flat API response and accumulate into history
+    const m = data.metrics || {};
+    const ts = m.timestamp || new Date().toISOString();
+
+    metricTimestamps.push(ts);
+    metricPromptTimes.push(m.prompt_eval_ms_per_token || 0);
+    metricPredictTimes.push(m.gen_eval_ms_per_token || 0);
+    metricTokensGenerated.push(m.gen_tokens_total || 0);
+
+    // Trim history to max points
+    if (metricTimestamps.length > MAX_METRIC_POINTS) {
+      metricTimestamps.shift();
+      metricPromptTimes.shift();
+      metricPredictTimes.shift();
+      metricTokensGenerated.shift();
+    }
+
+    // Create or update the chart with the accumulated metrics data
+    updateMetricsChart({
+      timestamps: metricTimestamps,
+      prompt_times: metricPromptTimes,
+      predict_times: metricPredictTimes,
+      tokens_generated: metricTokensGenerated,
+    });
   })
   .catch(error => {
     console.error('Error loading metrics:', error);

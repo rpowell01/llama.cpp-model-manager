@@ -5,6 +5,7 @@ from logging import getLogger
 
 from config import DEFAULTS
 from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
+from processes import get_server_host
 
 log = getLogger("llamaweb")
 
@@ -476,7 +477,8 @@ def api_get_metrics():
     
     # Fetch metrics from the model's port
     try:
-        resp = requests.get(f"http://127.0.0.1:{port}/metrics", timeout=5)
+        host = get_server_host()
+        resp = requests.get(f"http://{host}:{port}/metrics", timeout=5)
         if not resp.ok:
             return jsonify({"error": "Failed to fetch metrics from model"}), 500
         metrics_text = resp.text
