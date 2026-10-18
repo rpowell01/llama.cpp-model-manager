@@ -5,10 +5,54 @@ from processes import get_server_host
 
 log = logging.getLogger("llamaweb")
 
+def _parse_metrics_text(text: str) -> dict[str, float]:
+    """Parse Prometheus text-format metrics into a ``{name: value}`` dict.
+
+    This is the shared metrics parsing/validation logic used by both
+    :func:`_fetch_metrics_from_model` (the metrics tooltip/status path) and
+    the metrics exporter, so that fetching and parsing happen in one place
+    instead of being duplicated.
+
+    Args:
+        text: Raw Prometheus text payload from a llama-server ``/metrics``
+            endpoint.
+
+    Returns:
+        A dict mapping metric name (label suffix stripped) to its float value.
+        Comment lines, blank lines, and lines that are not parseable as
+        ``name value`` are skipped.
+    """
+    values: dict[str, float] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Format: metric_name{labels...} value [timestamp]
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name_full = parts[0]
+        # Strip label suffix if present (everything from first '{' to matching '}')
+        name = name_full.split("{", 1)[0]
+        try:
+            values[name] = float(parts[1])
+        except ValueError:
+            continue
+    return values
+
+
 def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
     """Fetch performance metrics from a running llama-server's /metrics endpoint.
 
-    Returns a dict with keys 'pp', 'tg', 'pg' (or None if not available).
+    Returns a dict with keys ``'pp'``, ``'tg'``, ``'pg'`` (or ``None`` if not
+    available) plus every raw counter parsed from the endpoint. Exposing the
+    raw counters lets consumers such as the metrics exporter build full CSV
+    rows from a single shared fetch instead of re-parsing the endpoint
+    themselves. ``pp``/``tg``/``pg`` remain available for the status/tooltip
+    path.
+
+    On any fetch or parse failure the derived keys are returned as ``None``
+    and no raw counters are present.
     """
     host = get_server_host()
     url = f"http://{host}:{port}/metrics"
@@ -17,27 +61,8 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
         resp = requests.get(url, timeout=0.5)
         if resp.status_code != 200:
             return result
-        text = resp.text
-        # Parse Prometheus text format
-        # We'll collect raw values by metric name (strip labels)
-        values: dict[str, float] = {}
-        for line in text.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            # Format: metric_name{labels...} value timestamp?
-            # We only want the first two tokens
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            name_full = parts[0]
-            # Strip label suffix if present (everything from first '{' to matching '}')
-            name = name_full.split("{", 1)[0]
-            try:
-                val = float(parts[1])
-                values[name] = val
-            except ValueError:
-                continue
+        values = _parse_metrics_text(resp.text)
+
         # Map to expected fields
         # llama-server uses colon-separated names; support both separators
         # pp: prompt processing time (ms). llama-server gives: llamacpp:prompt_seconds_total
@@ -64,8 +89,9 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
             result["tg"] = round(values["llamacpp_tokens_per_second"], 2)
         elif "llamacpp:tokens_predicted_seconds_total" in values:
             gen_seconds = values["llamacpp:tokens_predicted_seconds_total"]
-        # Compute tg if we have tokens and seconds
-        if "tg" not in result and gen_tokens is not None and gen_seconds and gen_seconds > 0:
+        # Compute tg if we have tokens and seconds (only when not already set
+        # from a direct tokens_per_second metric).
+        if result.get("tg") is None and gen_tokens is not None and gen_seconds and gen_seconds > 0:
             result["tg"] = round(gen_tokens / gen_seconds, 2)
 
         # pg: combined total tokens (prompt + generated)
@@ -78,6 +104,11 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
             result["pg"] = int(prompt_tokens)
         elif gen_tokens is not None:
             result["pg"] = int(gen_tokens)
+
+        # Expose the raw counters so consumers (e.g. the metrics exporter) can
+        # build full metric rows from the same shared fetch instead of
+        # re-parsing the endpoint.
+        result.update(values)
     except Exception as e:
         log.debug(f"Failed to fetch metrics for port {port}: {e}")
     return result

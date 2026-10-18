@@ -491,3 +491,8 @@
 {"time": "2026-10-17T23:16:39Z", "action": "start", "model": "ternary-bonsai-2-9b-pq2-0", "port": 11013, "pid": 48340, "status": "running"}
 {"time": "2026-10-17T23:38:14Z", "action": "download", "model": "ternary-bonsai-2-27b-pq2-0", "port": 0, "pid": null, "status": "completed (7206168928 bytes)"}
 {"time": "2026-10-17T23:48:12Z", "action": "start", "model": "ternary-bonsai-2-27b-pq2-0", "port": 11011, "pid": 14224, "status": "running"}
+{"time": "2026-10-18T00:56:28Z", "action": "start", "model": "ternary-bonsai-2-9b-pq2-0", "port": 11013, "pid": 286195, "status": "exited_early"}
+{"time": "2026-10-18T00:57:10Z", "action": "start", "model": "ternary-bonsai-2-27b-pq2-0", "port": 11011, "pid": 286441, "status": "exited_early"}
+{"time": "2026-10-18T00:57:20Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 33536, "status": "running"}
+{"time": "2026-10-18T01:23:40Z", "action": "download", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 0, "pid": null, "status": "completed (8071295616 bytes)"}
+{"time": "2026-10-18T01:55:19Z", "action": "start", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 11008, "pid": 4824, "status": "running"}

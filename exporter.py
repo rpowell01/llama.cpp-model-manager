@@ -27,9 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import requests
-
 from config import BASE_DIR
+from metrics import _fetch_metrics_from_model
 from models import get_models
 from routes.models import check_port_active
 
@@ -83,48 +82,6 @@ FIELDNAMES: list[str] = [
 ]
 
 
-def _fetch_metrics_text(port: int) -> str:
-    """Fetch the Prometheus-text metrics payload from a running model.
-
-    Args:
-        port: The port the llama-server is listening on.
-
-    Returns:
-        The raw metrics text.
-
-    Raises:
-        RuntimeError: If the metrics endpoint cannot be reached or returns
-            a non-OK status.
-    """
-    url = f"http://127.0.0.1:{port}/metrics"
-    try:
-        resp = requests.get(url, timeout=5)
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Error fetching metrics from port {port}: {exc}") from exc
-    if not resp.ok:
-        raise RuntimeError(
-            f"Failed to fetch metrics from port {port} (HTTP {resp.status_code})"
-        )
-    return resp.text
-
-
-def _parse_metrics(metrics_text: str) -> dict[str, float]:
-    """Parse Prometheus-text metrics into a ``{name: value}`` dict."""
-    metrics: dict[str, float] = {}
-    for line in metrics_text.splitlines():
-        if line.startswith("#") or not line.strip():
-            continue
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        name = parts[0]
-        try:
-            metrics[name] = float(parts[-1])
-        except ValueError:
-            continue
-    return metrics
-
-
 def build_metrics_row(model: str, meta: dict) -> dict:
     """Build the CSV row dict for a running model.
 
@@ -149,8 +106,26 @@ def build_metrics_row(model: str, meta: dict) -> dict:
     if not check_port_active(port):
         raise RuntimeError(f"Model '{model}' is not running on port {port}")
 
-    metrics_text = _fetch_metrics_text(port)
-    metrics = _parse_metrics(metrics_text)
+    # Fetch metrics using the same shared function the metrics tooltip uses
+    # (metrics._fetch_metrics_from_model). The tooltip scrapes on demand; the
+    # export scrapes on schedule. Both are read-only scrapes of the model's
+    # /metrics endpoint, so they can run concurrently without conflicting over
+    # any shared state.
+    metrics = _fetch_metrics_from_model(port)
+
+    # _fetch_metrics_from_model returns only {"pp", "tg", "pg"} (no raw
+    # counters) when the fetch fails. Require at least one raw counter so a
+    # failed fetch raises instead of silently writing a row of zeros.
+    _raw_keys = (
+        "llamacpp:prompt_seconds_total",
+        "llamacpp:prompt_tokens_total",
+        "llamacpp:tokens_predicted_seconds_total",
+        "llamacpp:tokens_predicted_total",
+    )
+    if not any(key in metrics for key in _raw_keys):
+        raise RuntimeError(
+            f"Failed to fetch metrics from model '{model}' on port {port}"
+        )
 
     # Prompt metrics
     prompt_sec = metrics.get("llamacpp:prompt_seconds_total", 0)
