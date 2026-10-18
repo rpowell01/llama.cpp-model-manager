@@ -112,17 +112,22 @@ def _get_wsl_host_ip() -> str | None:
             pass
         return None
     
-    # Method 1: Try WSL interface IP (shared networking mode)
-    # In shared mode, Windows and WSL share the same IP
-    wsl_ip = _get_wsl_interface_ip()
-    if wsl_ip:
-        return wsl_ip
-    
-    # Method 2: Try default gateway (standard WSL2)
+    # Method 1: Default gateway (standard WSL2 NAT mode).
+    # In standard WSL2 the Windows host is the default gateway, and the
+    # Windows llama-server (bound to 0.0.0.0) is reachable from WSL there.
+    # This is the correct host for the common NAT configuration.
     gateway = _get_default_gateway()
     if gateway:
         return gateway
-    
+
+    # Method 2: Try WSL interface IP (shared networking mode).
+    # In shared networking mode Windows and WSL share the same IP, so the
+    # WSL interface IP is also the Windows host IP. Only valid in that mode,
+    # so it is tried after the gateway (standard WSL2).
+    wsl_ip = _get_wsl_interface_ip()
+    if wsl_ip:
+        return wsl_ip
+
     # Method 3: Fallback to resolv.conf nameserver
     try:
         resolv = Path("/etc/resolv.conf")
