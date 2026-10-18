@@ -21,6 +21,12 @@ from models import get_models, load_models_cache
 from routes.status import get_status_registry
 from routes.models import check_port_active
 
+from config import (
+    METRICS_EXPORT_ENABLED,
+    METRICS_EXPORT_INTERVAL_SECONDS,
+    METRICS_EXPORT_MODELS,
+)
+
 log = logging.getLogger("llamaweb.scheduler")
 
 
@@ -41,20 +47,32 @@ class Scheduler:
         scheduler.stop()
     """
 
-    def __init__(self, app, interval: int = 60):
+    def __init__(self, app, interval: Optional[int] = None):
         """
         Initialize the scheduler.
 
         Args:
             app: Flask application instance
-            interval: Export interval in seconds (default 60, minimum 1)
+            interval: Export interval in seconds. Defaults to the
+                METRICS_EXPORT_INTERVAL_SECONDS config value (default 60).
+                Minimum 1 second.
         """
         self.app = app
-        # Validate interval - enforce minimum of 1 second to prevent busy loop
+        # Whether automatic metrics export is enabled at all
+        self.enabled = METRICS_EXPORT_ENABLED
+        # Resolve interval: explicit argument > config value > 60 default
+        if interval is None:
+            interval = METRICS_EXPORT_INTERVAL_SECONDS
+        # Validate interval - enforce 1-3600 second range
         if interval < 1:
             log.warning("Interval %d is less than 1 second, defaulting to 60", interval)
             interval = 60
+        elif interval > 3600:
+            log.warning("Interval %d is greater than 3600 seconds, clamping to 3600", interval)
+            interval = 3600
         self.interval = interval
+        # Optional allowlist of models to export (empty = all running models)
+        self.export_models = set(METRICS_EXPORT_MODELS)
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
@@ -62,6 +80,10 @@ class Scheduler:
 
     def start(self) -> None:
         """Start the scheduler background thread."""
+        if not self.enabled:
+            log.info("Metrics export is disabled; scheduler will not run")
+            return
+
         with self._lock:
             if self._running:
                 log.warning("Scheduler is already running")
@@ -111,7 +133,14 @@ class Scheduler:
             log.info("Scheduler thread exiting")
 
     def _export_cycle(self) -> None:
-        """One cycle: check running models and export metrics for each."""
+        """One cycle: check running models and export metrics for each.
+
+        Returns immediately when automatic export is disabled, so toggling
+        ``enabled`` at runtime stops further exports without stopping the
+        thread itself.
+        """
+        if not self.enabled:
+            return
         # Use Flask app context
         with self.app.app_context():
             # Get model registry
@@ -132,6 +161,10 @@ class Scheduler:
             running_models = self._get_running_models(registry, model_names)
 
             # Export metrics for each running model
+            # Respect the configured model allowlist, if any
+            if self.export_models:
+                running_models = [m for m in running_models if m in self.export_models]
+
             for model_name in running_models:
                 if self._stop_event.is_set():
                     break
@@ -214,6 +247,74 @@ class Scheduler:
             result.get("status"),
         )
         return result
+
+    def get_config(self) -> dict:
+        """Return the current export configuration as a plain dict."""
+        with self._lock:
+            enabled = self.enabled
+            interval = self.interval
+            models = sorted(self.export_models)
+        return {
+            "enabled": enabled,
+            "interval_seconds": interval,
+            "models": models,
+        }
+
+    def update_config(
+        self,
+        enabled: Optional[bool] = None,
+        interval_seconds: Optional[int] = None,
+        models: Optional[list[str]] = None,
+    ) -> dict:
+        """
+        Update the live export configuration.
+
+        Changes to ``interval_seconds`` take effect on the next scheduler
+        cycle because the wait timeout is re-read each loop. Changes to the
+        model allowlist take effect on the next cycle as well.
+
+        The ``enabled`` flag is persisted immediately and a running scheduler
+        stops exporting as soon as it is toggled off (the background thread
+        becomes a no-op). Starting a scheduler that was disabled at
+        initialization requires restarting the application.
+
+        All mutations are performed under ``self._lock`` so concurrent reads
+        from the scheduler thread see a consistent state.
+
+        Args:
+            enabled: Whether automatic export is enabled.
+            interval_seconds: Export interval in seconds (1-3600).
+            models: Allowlist of model names to export (empty = all running).
+
+        Returns:
+            The updated configuration dict.
+
+        Raises:
+            ValueError: If interval_seconds is not a valid integer, or if
+                models is not a list of model names.
+        """
+        if models is not None and not isinstance(models, list):
+            raise ValueError("models must be a list of model names")
+
+        with self._lock:
+            if enabled is not None:
+                self.enabled = bool(enabled)
+
+            if interval_seconds is not None:
+                try:
+                    interval = int(interval_seconds)
+                except (TypeError, ValueError):
+                    raise ValueError("interval_seconds must be an integer")
+                if interval < 1:
+                    interval = 1
+                elif interval > 3600:
+                    interval = 3600
+                self.interval = interval
+
+            if models is not None:
+                self.export_models = set(m.strip() for m in models if m.strip())
+
+        return self.get_config()
 
 
 # Convenience function to create and start a scheduler with a Flask app
