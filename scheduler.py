@@ -3,7 +3,7 @@
 Background scheduler service that periodically exports metrics for all running models.
 
 This module provides a Scheduler class that runs as a background thread, periodically
-checking for running models and calling the /api/export-metrics endpoint for each one.
+checking for running models and exporting metrics for each one via the exporter module.
 
 Features:
 - Configurable interval (default 60 seconds, minimum 1 second)
@@ -16,8 +16,6 @@ Features:
 import logging
 import threading
 from typing import Optional
-
-import requests
 
 from models import get_models, load_models_cache
 from routes.status import get_status_registry
@@ -33,7 +31,7 @@ class Scheduler:
     The scheduler runs as a daemon thread and periodically:
     1. Gets the list of model configurations
     2. Checks which models are currently running (port active)
-    3. Calls /api/export-metrics for each running model
+    3. Exports metrics for each running model via the exporter module
     4. Logs successes and failures
 
     Usage:
@@ -96,12 +94,6 @@ class Scheduler:
             # Initialize models cache within the app context
             with self.app.app_context():
                 load_models_cache()
-
-            # Defer first cycle to allow Flask server to start accepting connections
-            # Wait for a short initial delay before first export
-            if self._stop_event.wait(timeout=5):
-                log.info("Scheduler stopped before first cycle")
-                return
 
             while not self._stop_event.is_set():
                 try:
@@ -184,50 +176,35 @@ class Scheduler:
 
     def _export_model_metrics(self, model_name: str) -> dict:
         """
-        Export metrics for a single model by calling the /api/export-metrics endpoint.
+        Export metrics for a single model using the exporter module.
+
+        Calls :func:`exporter.export_metrics_for_model` in-process instead of
+        making an HTTP round-trip to ``/api/export-metrics``. This keeps the
+        periodic export independent of the UI/Flask request stack and avoids
+        the overhead of an HTTP request per model per cycle.
 
         Args:
-            model_name: Name of the model to export metrics for
+            model_name: Name of the model to export metrics for.
 
         Returns:
-            Response dict from the export API
+            The result dict returned by :func:`exporter.export_metrics_for_model`.
+
+        Raises:
+            Any exception raised by the exporter (for example when the model
+            is not running or its metrics endpoint is unreachable). These are
+            caught and logged by :meth:`_export_cycle`.
         """
-        # Use Flask app config for host and port (defaults to 127.0.0.1 and configured port)
-        host = self.app.config.get("SERVER_HOST", "127.0.0.1")
-        port = self.app.config.get("FLASK_PORT", 5000)
-        url = f"http://{host}:{port}/api/export-metrics"
+        # Imported locally to keep the exporter module optional at import time
+        # and to avoid any import-order coupling with the Flask app.
+        from exporter import export_metrics_for_model
 
-        # Call the /api/export-metrics endpoint
-        try:
-            resp = requests.post(
-                url,
-                json={"model": model_name},
-                timeout=10,
-            )
-
-            if resp.status_code == 200:
-                result = resp.json()
-                log.debug(
-                    "Exported metrics for model '%s': %s",
-                    model_name, result.get('status')
-                )
-                return result
-            else:
-                log.warning(
-                    "Export metrics API returned %d for model '%s': %s",
-                    resp.status_code, model_name, resp.text
-                )
-                return {"error": f"API returned {resp.status_code}"}
-
-        except requests.exceptions.Timeout:
-            log.warning("Timeout exporting metrics for model '%s'", model_name)
-            raise
-        except requests.exceptions.ConnectionError:
-            log.warning("Connection error exporting metrics for model '%s'", model_name)
-            raise
-        except Exception as e:
-            log.error("Unexpected error exporting metrics for '%s': %s", model_name, e)
-            raise
+        result = export_metrics_for_model(model_name)
+        log.debug(
+            "Exported metrics for model '%s': %s",
+            model_name,
+            result.get("status"),
+        )
+        return result
 
 
 # Convenience function to create and start a scheduler with a Flask app

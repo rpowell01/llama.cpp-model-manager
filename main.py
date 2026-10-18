@@ -10,6 +10,7 @@ import argparse
 import logging
 import socket
 import sys
+import threading
 from pathlib import Path
 
 from flask import Flask, render_template
@@ -160,9 +161,22 @@ def main() -> None:
     else:
         log.info("Remote mode: skipping local models cache")
 
-    # Initialize and start the export scheduler
-    scheduler = init_scheduler(app, interval=60)
-    atexit.register(scheduler.stop)
+    # Start the export scheduler on the first request, once the Flask
+    # server is accepting connections. This prevents the first export
+    # cycle from running before the server is ready.
+    scheduler_started = False
+    scheduler_lock = threading.Lock()
+
+    @app.before_request
+    def _start_scheduler_on_first_request():
+        nonlocal scheduler_started
+        with scheduler_lock:
+            if scheduler_started:
+                return
+            scheduler = init_scheduler(app, interval=60)
+            app.config["SCHEDULER"] = scheduler
+            atexit.register(scheduler.stop)
+            scheduler_started = True
 
     log.info("Starting web UI on http://%s:%d from %s", args.host, args.port, BASE_DIR)
     
