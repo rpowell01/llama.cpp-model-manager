@@ -171,10 +171,14 @@ class Scheduler:
                 try:
                     self._export_model_metrics(model_name)
                 except Exception as e:
-                    log.error(
+                    # A model can go down between the port-activity check and the
+                    # metrics fetch (race condition), or its /metrics endpoint can
+                    # be briefly unresponsive. These are expected operational events,
+                    # not bugs — the scheduler retries on the next cycle. Log at
+                    # WARNING without a traceback to avoid noisy console spam.
+                    log.warning(
                         "Failed to export metrics for model '%s': %s",
                         model_name, e,
-                        exc_info=True,
                     )
 
     def _get_running_models(self, registry, model_names: list[str]) -> list[str]:

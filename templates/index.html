@@ -446,9 +446,12 @@ let metricsChart = null;
 // Historical metrics for the time-series chart (accumulated across fetches)
 const MAX_METRIC_POINTS = 50;
 let metricTimestamps = [];
-let metricPromptTimes = [];
-let metricPredictTimes = [];
-let metricTokensGenerated = [];
+let metricPromptEvalTimes = [];
+let metricPromptEvalRates = [];
+let metricGenEvalTimes = [];
+let metricGenRates = [];
+let metricSpecAcceptanceRates = [];
+let metricSpecSpeedups = [];
 let lastMetricModel = '';
 
 // Initialize the performance graph modal - only model select listener
@@ -469,9 +472,12 @@ function loadModelMetrics(event) {
   // Clear history when switching models to avoid mixing data
   if (modelName !== lastMetricModel) {
     metricTimestamps = [];
-    metricPromptTimes = [];
-    metricPredictTimes = [];
-    metricTokensGenerated = [];
+    metricPromptEvalTimes = [];
+    metricPromptEvalRates = [];
+    metricGenEvalTimes = [];
+    metricGenRates = [];
+    metricSpecAcceptanceRates = [];
+    metricSpecSpeedups = [];
     lastMetricModel = modelName;
   }
   
@@ -493,24 +499,33 @@ function loadModelMetrics(event) {
     const ts = m.timestamp || new Date().toISOString();
 
     metricTimestamps.push(ts);
-    metricPromptTimes.push(m.prompt_eval_ms_per_token || 0);
-    metricPredictTimes.push(m.gen_eval_ms_per_token || 0);
-    metricTokensGenerated.push(m.gen_tokens_total || 0);
+    metricPromptEvalTimes.push(m.prompt_eval_ms_per_token || 0);
+    metricPromptEvalRates.push(m.prompt_rate_tokens_per_sec || 0);
+    metricGenEvalTimes.push(m.gen_eval_ms_per_token || 0);
+    metricGenRates.push(m.gen_rate_tokens_per_sec || 0);
+    metricSpecAcceptanceRates.push(m.spec_acceptance_rate_pct || 0);
+    metricSpecSpeedups.push(m.spec_est_speedup || 0);
 
     // Trim history to max points
     if (metricTimestamps.length > MAX_METRIC_POINTS) {
       metricTimestamps.shift();
-      metricPromptTimes.shift();
-      metricPredictTimes.shift();
-      metricTokensGenerated.shift();
+      metricPromptEvalTimes.shift();
+      metricPromptEvalRates.shift();
+      metricGenEvalTimes.shift();
+      metricGenRates.shift();
+      metricSpecAcceptanceRates.shift();
+      metricSpecSpeedups.shift();
     }
 
     // Create or update the chart with the accumulated metrics data
     updateMetricsChart({
       timestamps: metricTimestamps,
-      prompt_times: metricPromptTimes,
-      predict_times: metricPredictTimes,
-      tokens_generated: metricTokensGenerated,
+      prompt_eval_times: metricPromptEvalTimes,
+      prompt_eval_rates: metricPromptEvalRates,
+      gen_eval_times: metricGenEvalTimes,
+      gen_rates: metricGenRates,
+      spec_acceptance_rates: metricSpecAcceptanceRates,
+      spec_speedups: metricSpecSpeedups,
     });
   })
   .catch(error => {
@@ -529,10 +544,13 @@ function updateMetricsChart(metricsData) {
   
   // Prepare the data for the chart
   const labels = metricsData.timestamps || [];
-  const promptTimes = metricsData.prompt_times || [];
-  const predictTimes = metricsData.predict_times || [];
-  const tokensGenerated = metricsData.tokens_generated || [];
-  
+  const promptEvalTimes = metricsData.prompt_eval_times || [];
+  const promptEvalRates = metricsData.prompt_eval_rates || [];
+  const genEvalTimes = metricsData.gen_eval_times || [];
+  const genRates = metricsData.gen_rates || [];
+  const specAcceptanceRates = metricsData.spec_acceptance_rates || [];
+  const specSpeedups = metricsData.spec_speedups || [];
+
        // Create the chart
        metricsChart = new Chart(ctx, {
          type: 'line',
@@ -540,26 +558,50 @@ function updateMetricsChart(metricsData) {
            labels: labels,
            datasets: [
              {
-               label: 'Prompt Time (ms)',
-               data: promptTimes,
-               borderColor: 'rgb(255, 159, 64)', // Orange - more visible than pink
-               backgroundColor: 'rgba(255, 159, 64, 0.1)',
+               label: 'Avg Prompt Eval Time (ms/token)',
+               data: promptEvalTimes,
+               borderColor: 'rgb(255, 99, 132)', // Red
+               backgroundColor: 'rgba(255, 99, 132, 0.1)',
                yAxisID: 'y1',
                tension: 0.1
              },
              {
-               label: 'Predict Time (ms)',
-               data: predictTimes,
-               borderColor: 'rgb(54, 235, 162)', // Green - more visible than blue
+               label: 'Avg Prompt Eval Rate (tokens/s)',
+               data: promptEvalRates,
+               borderColor: 'rgb(255, 159, 64)', // Orange
+               backgroundColor: 'rgba(255, 159, 64, 0.1)',
+               yAxisID: 'y2',
+               tension: 0.1
+             },
+             {
+               label: 'Avg Gen Eval Time (ms/token)',
+               data: genEvalTimes,
+               borderColor: 'rgb(54, 235, 162)', // Green
                backgroundColor: 'rgba(54, 235, 162, 0.1)',
                yAxisID: 'y1',
                tension: 0.1
              },
              {
-               label: 'Tokens Generated',
-               data: tokensGenerated,
-               borderColor: 'rgb(255, 206, 86)', // Yellow - more visible than teal
-               backgroundColor: 'rgba(255, 206, 86, 0.1)',
+               label: 'Avg Gen Rate (tokens/s)',
+               data: genRates,
+               borderColor: 'rgb(255, 205, 86)', // Yellow
+               backgroundColor: 'rgba(255, 205, 86, 0.1)',
+               yAxisID: 'y2',
+               tension: 0.1
+             },
+             {
+               label: 'Speculative Decoding Acceptance Rate (%)',
+               data: specAcceptanceRates,
+               borderColor: 'rgb(75, 192, 192)', // Teal
+               backgroundColor: 'rgba(75, 192, 192, 0.1)',
+               yAxisID: 'y2',
+               tension: 0.1
+             },
+             {
+               label: 'Speculative Decoding Est. Speedup (%)',
+               data: specSpeedups,
+               borderColor: 'rgb(153, 102, 255)', // Purple
+               backgroundColor: 'rgba(153, 102, 255, 0.1)',
                yAxisID: 'y2',
                tension: 0.1
              }
@@ -584,7 +626,7 @@ function updateMetricsChart(metricsData) {
                position: 'left',
                title: {
                  display: true,
-                 text: 'Time (ms)'
+                 text: 'Time (ms/token)'
                }
              },
              y2: {
@@ -593,7 +635,7 @@ function updateMetricsChart(metricsData) {
                position: 'right',
                title: {
                  display: true,
-                 text: 'Tokens'
+                 text: 'Rate (tokens/s) / Percent / Speedup'
                },
                grid: {
                  drawOnChartArea: false,
