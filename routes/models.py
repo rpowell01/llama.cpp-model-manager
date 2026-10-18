@@ -475,15 +475,29 @@ def api_get_metrics():
     if not port:
         return jsonify({"error": "Model has no port assigned"}), 400
     
-    # Fetch metrics from the model's port
-    try:
-        host = get_server_host()
-        resp = requests.get(f"http://{host}:{port}/metrics", timeout=5)
-        if not resp.ok:
-            return jsonify({"error": "Failed to fetch metrics from model"}), 500
-        metrics_text = resp.text
-    except Exception as e:
-        return jsonify({"error": f"Error fetching metrics: {e}"}), 500
+    # Fetch metrics from the model's port. Try get_server_host() first, then
+    # fall back to 127.0.0.1 (e.g. when get_server_host() returns a WSL/Windows
+    # host IP that is unreachable for a locally-running llama-server). Matches
+    # the multi-host pattern already used in metrics.py and processes.py.
+    host = get_server_host()
+    hosts_to_try = [host]
+    if host != "127.0.0.1":
+        hosts_to_try.append("127.0.0.1")
+
+    metrics_text = None
+    last_error = None
+    for try_host in hosts_to_try:
+        try:
+            resp = requests.get(f"http://{try_host}:{port}/metrics", timeout=5)
+            if resp.ok:
+                metrics_text = resp.text
+                break
+            last_error = f"HTTP {resp.status_code} from {try_host}"
+        except Exception as e:
+            last_error = f"{type(e).__name__} from {try_host}: {e}"
+
+    if metrics_text is None:
+        return jsonify({"error": f"Failed to fetch metrics from model: {last_error}"}), 500
     
     # Parse metrics
     metrics = {}
