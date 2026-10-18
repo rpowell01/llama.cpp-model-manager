@@ -668,6 +668,10 @@ function populateExportConfig(config) {
 
 async function openExportConfigModal() {
   if (!exportConfigModal) return;
+  // Open the modal FIRST so it displays immediately, then load config asynchronously.
+  // Previously ModalManager.open() was after the await fetch, so if the fetch hung
+  // (e.g. WSL networking issues) the modal never appeared and the button seemed dead.
+  ModalManager.open('export-config-modal');
   try {
     setExportConfigStatus('Loading…');
     const config = await fetchExportConfig();
@@ -675,7 +679,6 @@ async function openExportConfigModal() {
   } catch (e) {
     setExportConfigStatus('Failed to load: ' + e.message, 'error');
   }
-  ModalManager.open('export-config-modal');
 }
 
 async function saveExportConfig(event) {
