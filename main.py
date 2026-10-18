@@ -16,7 +16,7 @@ from pathlib import Path
 from flask import Flask, render_template
 
 # Import configuration
-from config import BASE_DIR, Config, WSL
+from config import BASE_DIR, Config, METRICS_EXPORT_INTERVAL_SECONDS, WSL
 
 # Import models functions
 from models import load_models_cache
@@ -173,7 +173,7 @@ def main() -> None:
         with scheduler_lock:
             if scheduler_started:
                 return
-            scheduler = init_scheduler(app, interval=60)
+            scheduler = init_scheduler(app, interval=METRICS_EXPORT_INTERVAL_SECONDS)
             app.config["SCHEDULER"] = scheduler
             atexit.register(scheduler.stop)
             scheduler_started = True

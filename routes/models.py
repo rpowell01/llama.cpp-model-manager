@@ -1,6 +1,6 @@
 """Model CRUD operations."""
 import requests
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
 from config import DEFAULTS
@@ -562,6 +562,47 @@ def api_get_metrics():
     return jsonify({
         "status": "success",
         "metrics": response_data
+    })
+
+
+@models_bp.route("/api/export-config", methods=["GET"])
+def api_get_export_config():
+    """Get the current metrics export configuration."""
+    scheduler = current_app.config.get("SCHEDULER")
+    if scheduler is None:
+        from config import (
+            METRICS_EXPORT_ENABLED,
+            METRICS_EXPORT_INTERVAL_SECONDS,
+            METRICS_EXPORT_MODELS,
+        )
+        return jsonify({
+            "enabled": METRICS_EXPORT_ENABLED,
+            "interval_seconds": METRICS_EXPORT_INTERVAL_SECONDS,
+            "models": list(METRICS_EXPORT_MODELS),
+        })
+    return jsonify(scheduler.get_config())
+
+
+@models_bp.route("/api/export-config", methods=["POST"])
+def api_set_export_config():
+    """Update the metrics export configuration at runtime."""
+    scheduler = current_app.config.get("SCHEDULER")
+    if scheduler is None:
+        return jsonify({"error": "Scheduler not initialized"}), 503
+
+    data = request.get_json(force=True) or {}
+    try:
+        config = scheduler.update_config(
+            enabled=data.get("enabled"),
+            interval_seconds=data.get("interval_seconds"),
+            models=data.get("models"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({
+        "status": "export config updated",
+        "config": config,
     })
 
 

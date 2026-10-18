@@ -446,6 +446,38 @@ BENCHMARK_ENABLED_STR = os.getenv("BENCHMARK_ENABLED", "true").strip().lower()
 BENCHMARK_ENABLED = BENCHMARK_ENABLED_STR in ("true", "1", "yes", "on")
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Metrics export configuration
+#
+# Automatic periodic metrics export for running models is handled by the
+# background scheduler (scheduler.py). These settings control whether export
+# runs, how often, and which models are included.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# METRICS_EXPORT_ENABLED: Enable/disable automatic metrics export
+# Default: true
+METRICS_EXPORT_ENABLED_STR = os.getenv("METRICS_EXPORT_ENABLED", "true").strip().lower()
+METRICS_EXPORT_ENABLED = METRICS_EXPORT_ENABLED_STR in ("true", "1", "yes", "on")
+
+# METRICS_EXPORT_INTERVAL_SECONDS: Interval between export cycles in seconds
+# Valid range: 1-3600. Default: 60
+try:
+    METRICS_EXPORT_INTERVAL_SECONDS = int(os.getenv("METRICS_EXPORT_INTERVAL_SECONDS", "60"))
+except ValueError:
+    METRICS_EXPORT_INTERVAL_SECONDS = 60
+if METRICS_EXPORT_INTERVAL_SECONDS < 1:
+    METRICS_EXPORT_INTERVAL_SECONDS = 1
+elif METRICS_EXPORT_INTERVAL_SECONDS > 3600:
+    METRICS_EXPORT_INTERVAL_SECONDS = 3600
+
+# METRICS_EXPORT_MODELS: Optional comma-separated list of model names to export.
+# Empty (default) = export metrics for all running models.
+METRICS_EXPORT_MODELS_ENV = os.getenv("METRICS_EXPORT_MODELS", "").strip()
+if METRICS_EXPORT_MODELS_ENV:
+    METRICS_EXPORT_MODELS = [m.strip() for m in METRICS_EXPORT_MODELS_ENV.split(",") if m.strip()]
+else:
+    METRICS_EXPORT_MODELS = []
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Remote configuration support
 #
 # REMOTE_MODE: When enabled (REMOTE_MODE=true), the application connects to an

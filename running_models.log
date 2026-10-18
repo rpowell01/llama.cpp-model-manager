@@ -496,3 +496,6 @@
 {"time": "2026-10-18T00:57:20Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 33536, "status": "running"}
 {"time": "2026-10-18T01:23:40Z", "action": "download", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 0, "pid": null, "status": "completed (8071295616 bytes)"}
 {"time": "2026-10-18T01:55:19Z", "action": "start", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 11008, "pid": 4824, "status": "running"}
+{"time": "2026-10-18T02:52:00Z", "action": "start", "model": "mellum2.1-12b-a2.5b-thinking-q4-k-m-imatrix", "port": 11008, "pid": 36868, "status": "running"}
+{"time": "2026-10-18T03:31:31Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 37164, "status": "running"}
+{"time": "2026-10-18T03:56:52Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 16064, "status": "running"}
