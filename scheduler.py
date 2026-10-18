@@ -97,12 +97,6 @@ class Scheduler:
             with self.app.app_context():
                 load_models_cache()
 
-            # Defer first cycle to allow Flask server to start accepting connections
-            # Wait for a short initial delay before first export
-            if self._stop_event.wait(timeout=5):
-                log.info("Scheduler stopped before first cycle")
-                return
-
             while not self._stop_event.is_set():
                 try:
                     self._export_cycle()
