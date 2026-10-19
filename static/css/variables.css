@@ -27,6 +27,8 @@
   --surface2: #0f3460;
   --text: #e0e0e0;
   --text2: #a0a0b8;
+  --chart-text: #ffffff;
+  --chart-grid: #404060;
 }
 
 /* Theme: Light */
@@ -45,6 +47,8 @@
   --surface2: #586e75;
   --text: #839496;
   --text2: #93a1a1;
+  --chart-text: #ffffff;
+  --chart-grid: #404060;
 }
 
 /* Theme: Nord */
@@ -54,4 +58,6 @@
   --surface2: #4c566a;
   --text: #d8dee9;
   --text2: #a5abb6;
+  --chart-text: #ffffff;
+  --chart-grid: #404060;
 }

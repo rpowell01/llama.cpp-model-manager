@@ -15,12 +15,30 @@
 <header>
   <h1>🐘 llama.cpp - Model Manager</h1>
   <span class="badge">{{ host }}:{{ flask_port }}</span>
-  <select id="themeSelector" style="padding: .3rem .6rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text); font-size: .85rem; margin-left: auto;">
-    <option value="dark">Dark</option>
-    <option value="light">Light</option>
-    <option value="solarized-dark">Solarized Dark</option>
-    <option value="nord">Nord</option>
-  </select>
+   <select id="themeSelector" style="padding: .3rem .6rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text); font-size: .85rem; margin-left: auto;">
+     <option value="dark">Dark</option>
+     <option value="light">Light</option>
+     <option value="solarized-dark">Solarized Dark</option>
+     <option value="nord">Nord</option>
+   </select>
+   <script>
+     // Apply theme to chart when theme changes
+     document.getElementById('themeSelector').addEventListener('change', function() {
+       const theme = this.value;
+       document.documentElement.setAttribute('data-theme', theme);
+       if (window.updateMetricsChart && window.metricsChart) {
+         window.updateMetricsChart({
+           timestamps: metricTimestamps,
+           prompt_eval_times: metricPromptEvalTimes,
+           prompt_eval_rates: metricPromptEvalRates,
+           gen_eval_times: metricGenEvalTimes,
+           gen_rates: metricGenRates,
+           spec_acceptance_rates: metricSpecAcceptanceRates,
+           spec_speedups: metricSpecSpeedups,
+         });
+       }
+     });
+   </script>
 </header>
 
 {% if hardware_info %}
@@ -551,99 +569,122 @@ function updateMetricsChart(metricsData) {
   const specAcceptanceRates = metricsData.spec_acceptance_rates || [];
   const specSpeedups = metricsData.spec_speedups || [];
 
-       // Create the chart
-       metricsChart = new Chart(ctx, {
-         type: 'line',
-         data: {
-           labels: labels,
-           datasets: [
-             {
-               label: 'Avg Prompt Eval Time (ms/token)',
-               data: promptEvalTimes,
-               borderColor: 'rgb(255, 99, 132)', // Red
-               backgroundColor: 'rgba(255, 99, 132, 0.1)',
-               yAxisID: 'y1',
-               tension: 0.1
-             },
-             {
-               label: 'Avg Prompt Eval Rate (tokens/s)',
-               data: promptEvalRates,
-               borderColor: 'rgb(255, 159, 64)', // Orange
-               backgroundColor: 'rgba(255, 159, 64, 0.1)',
-               yAxisID: 'y2',
-               tension: 0.1
-             },
-             {
-               label: 'Avg Gen Eval Time (ms/token)',
-               data: genEvalTimes,
-               borderColor: 'rgb(54, 235, 162)', // Green
-               backgroundColor: 'rgba(54, 235, 162, 0.1)',
-               yAxisID: 'y1',
-               tension: 0.1
-             },
-             {
-               label: 'Avg Gen Rate (tokens/s)',
-               data: genRates,
-               borderColor: 'rgb(255, 205, 86)', // Yellow
-               backgroundColor: 'rgba(255, 205, 86, 0.1)',
-               yAxisID: 'y2',
-               tension: 0.1
-             },
-             {
-               label: 'Speculative Decoding Acceptance Rate (%)',
-               data: specAcceptanceRates,
-               borderColor: 'rgb(75, 192, 192)', // Teal
-               backgroundColor: 'rgba(75, 192, 192, 0.1)',
-               yAxisID: 'y2',
-               tension: 0.1
-             },
-             {
-               label: 'Speculative Decoding Est. Speedup (%)',
-               data: specSpeedups,
-               borderColor: 'rgb(153, 102, 255)', // Purple
-               backgroundColor: 'rgba(153, 102, 255, 0.1)',
-               yAxisID: 'y2',
-               tension: 0.1
-             }
-         ],
-         },
-         options: {
-           responsive: true,
-           maintainAspectRatio: false,
-           plugins: {
-             title: {
-               display: true,
-               text: 'Model Performance Metrics Over Time'
-             },
-             legend: {
-               position: 'top'
-             }
-           },
-           scales: {
-             y1: {
-               type: 'linear',
-               display: true,
-               position: 'left',
-               title: {
-                 display: true,
-                 text: 'Time (ms/token)'
-               }
-             },
-             y2: {
-               type: 'linear',
-               display: true,
-               position: 'right',
-               title: {
-                 display: true,
-                 text: 'Rate (tokens/s) / Percent / Speedup'
-               },
-               grid: {
-                 drawOnChartArea: false,
-               }
-             }
-           }
-         }
-       });
+        // Create the chart
+        metricsChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Avg Prompt Eval Time (ms/token)',
+                data: promptEvalTimes,
+                borderColor: 'rgb(255, 99, 132)', // Red
+                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                yAxisID: 'y1',
+                tension: 0.1,
+                borderDash: [5, 5]
+              },
+              {
+                label: 'Avg Prompt Eval Rate (tokens/s)',
+                data: promptEvalRates,
+                borderColor: 'rgb(255, 159, 64)', // Orange
+                backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                yAxisID: 'y2',
+                tension: 0.1,
+                borderDash: [5, 5]
+              },
+              {
+                label: 'Avg Gen Eval Time (ms/token)',
+                data: genEvalTimes,
+                borderColor: 'rgb(54, 235, 162)', // Green
+                backgroundColor: 'rgba(54, 235, 162, 0.1)',
+                yAxisID: 'y1',
+                tension: 0.1,
+                borderDash: [5, 5]
+              },
+              {
+                label: 'Avg Gen Rate (tokens/s)',
+                data: genRates,
+                borderColor: 'rgb(255, 205, 86)', // Yellow
+                backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                yAxisID: 'y2',
+                tension: 0.1,
+                borderDash: [5, 5]
+              },
+              {
+                label: 'Speculative Decoding Acceptance Rate (%)',
+                data: specAcceptanceRates,
+                borderColor: 'rgb(75, 192, 192)', // Teal
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                yAxisID: 'y2',
+                tension: 0.1,
+                borderDash: [5, 5]
+              },
+              {
+                label: 'Speculative Decoding Est. Speedup (%)',
+                data: specSpeedups,
+                borderColor: 'rgb(153, 102, 255)', // Purple
+                backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                yAxisID: 'y2',
+                tension: 0.1,
+                borderDash: [5, 5]
+              }
+          ],
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: {
+                display: true,
+                text: 'Model Performance Metrics Over Time'
+              },
+              legend: {
+                position: 'top'
+              }
+            },
+            scales: {
+              y1: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                  display: true,
+                  text: 'Time (ms/token)'
+                },
+                ticks: {
+                  color: 'var(--text)'
+                },
+                grid: {
+                  color: 'var(--surface2)'
+                }
+              },
+              y2: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                  display: true,
+                  text: 'Rate (tokens/s) / Percent / Speedup'
+                },
+                ticks: {
+                  color: 'var(--text)'
+                },
+                grid: {
+                  color: 'var(--surface2)',
+                  drawOnChartArea: false,
+                }
+              },
+              x: {
+                ticks: {
+                  color: 'var(--text)'
+                },
+                grid: {
+                  color: 'var(--surface2)'
+                }
+              }
+            }
+          }
+        });
 }
 
 // Initialize the performance graph modal when the page loads
