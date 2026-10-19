@@ -569,6 +569,11 @@ function updateMetricsChart(metricsData) {
   const specAcceptanceRates = metricsData.spec_acceptance_rates || [];
   const specSpeedups = metricsData.spec_speedups || [];
 
+  // Read computed CSS variable values for chart colors (Chart.js doesn't support var())
+  const rootStyles = getComputedStyle(document.documentElement);
+  const chartTextColor = rootStyles.getPropertyValue('--chart-text').trim() || '#e0e0e0';
+  const chartGridColor = rootStyles.getPropertyValue('--chart-grid').trim() || '#4a5a8a';
+
         // Create the chart
         metricsChart = new Chart(ctx, {
           type: 'line',
@@ -634,16 +639,16 @@ function updateMetricsChart(metricsData) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
-plugins: {
+            plugins: {
                 title: {
                   display: true,
                   text: 'Model Performance Metrics Over Time',
-                  color: 'var(--chart-text)'
+                  color: chartTextColor
                 },
                 legend: {
                   position: 'top',
                   labels: {
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   }
                 }
               },
@@ -655,13 +660,13 @@ plugins: {
                   title: {
                     display: true,
                     text: 'Time (ms/token)',
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   },
                   ticks: {
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   },
                   grid: {
-                    color: 'var(--chart-grid)'
+                    color: chartGridColor
                   }
                 },
                 y2: {
@@ -671,22 +676,22 @@ plugins: {
                   title: {
                     display: true,
                     text: 'Rate (tokens/s) / Percent / Speedup',
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   },
                   ticks: {
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   },
                   grid: {
-                    color: 'var(--chart-grid)',
+                    color: chartGridColor,
                     drawOnChartArea: false,
                   }
                 },
                 x: {
                   ticks: {
-                    color: 'var(--chart-text)'
+                    color: chartTextColor
                   },
                   grid: {
-                    color: 'var(--chart-grid)'
+                    color: chartGridColor
                   }
                 }
               }
