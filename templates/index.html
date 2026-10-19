@@ -398,7 +398,7 @@
             <option value="">Select a model</option>
           </select>
         </div>
-        <canvas id="metrics-canvas" height="400" style="width: 100%; max-width: 800px; height: 400px; display: block; margin: 0 auto;"></canvas>
+        <canvas id="metrics-canvas" height="300" style="width: 100%; max-width: 800px; height: 300px; display: block; margin: 0 auto;"></canvas>
         <div id="metrics-info" style="margin-top: 1rem; padding: 1rem; background: var(--surface2); border-radius: 4px; font-size: 0.85rem; color: var(--text2); display: none;">
           <p>No metrics data available for this model.</p>
         </div>
@@ -639,16 +639,30 @@ function updateMetricsChart(metricsData) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+              padding: {
+                top: 8,
+                bottom: 8,
+                left: 8,
+                right: 8
+              }
+            },
             plugins: {
                 title: {
                   display: true,
                   text: 'Model Performance Metrics Over Time',
-                  color: chartTextColor
+                  color: chartTextColor,
+                  padding: { top: 4, bottom: 8 },
+                  font: { size: 13 }
                 },
                 legend: {
                   position: 'top',
                   labels: {
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: 8,
+                    font: { size: 11 },
+                    usePointStyle: true,
+                    pointStyleWidth: 8
                   }
                 }
               },
@@ -660,10 +674,15 @@ function updateMetricsChart(metricsData) {
                   title: {
                     display: true,
                     text: 'Time (ms/token)',
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: { top: 4, bottom: 4 },
+                    font: { size: 11 }
                   },
                   ticks: {
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: 4,
+                    font: { size: 10 },
+                    maxTicksLimit: 6
                   },
                   grid: {
                     color: chartGridColor
@@ -676,10 +695,15 @@ function updateMetricsChart(metricsData) {
                   title: {
                     display: true,
                     text: 'Rate (tokens/s) / Percent / Speedup',
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: { top: 4, bottom: 4 },
+                    font: { size: 11 }
                   },
                   ticks: {
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: 4,
+                    font: { size: 10 },
+                    maxTicksLimit: 6
                   },
                   grid: {
                     color: chartGridColor,
@@ -688,7 +712,10 @@ function updateMetricsChart(metricsData) {
                 },
                 x: {
                   ticks: {
-                    color: chartTextColor
+                    color: chartTextColor,
+                    padding: 4,
+                    font: { size: 10 },
+                    maxTicksLimit: 8
                   },
                   grid: {
                     color: chartGridColor
