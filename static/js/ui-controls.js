@@ -270,12 +270,12 @@ async function renderPanelProperties(data, modelName) {
          // Action buttons (Start/Stop/Optimize) at the top
          html += `<div class="panel-section">
            <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
-             <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" ? "disabled" : ""}>
-               ▶ Start
-             </button>
-             <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running ? "disabled" : ""}>
-               ■ Stop
-             </button>
+              <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" || data.speculative_decoding_model ? "disabled" : ""}>
+                ▶ Start
+              </button>
+              <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running || data.speculative_decoding_model ? "disabled" : ""}>
+                ■ Stop
+              </button>
              <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
                ⚡ Quick Optimize (Heuristics)
              </button>
@@ -725,6 +725,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
     addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
     addEditable("Auto-download", "auto_download", data.auto_download, "checkbox");
+    addEditable("Speculative Decoding Model", "speculative_decoding_model", data.speculative_decoding_model, "checkbox");
     
     // Custom HTTP Header for Kilo Code Config
     addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
