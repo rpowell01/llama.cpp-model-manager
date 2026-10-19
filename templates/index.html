@@ -634,56 +634,62 @@ function updateMetricsChart(metricsData) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-              title: {
-                display: true,
-                text: 'Model Performance Metrics Over Time'
-              },
-              legend: {
-                position: 'top'
-              }
-            },
-            scales: {
-              y1: {
-                type: 'linear',
-                display: true,
-                position: 'left',
+plugins: {
                 title: {
                   display: true,
-                  text: 'Time (ms/token)'
+                  text: 'Model Performance Metrics Over Time',
+                  color: 'var(--chart-text)'
                 },
-                ticks: {
-                  color: 'var(--text)'
-                },
-                grid: {
-                  color: 'var(--surface2)'
+                legend: {
+                  position: 'top',
+                  labels: {
+                    color: 'var(--chart-text)'
+                  }
                 }
               },
-              y2: {
-                type: 'linear',
-                display: true,
-                position: 'right',
-                title: {
+              scales: {
+                y1: {
+                  type: 'linear',
                   display: true,
-                  text: 'Rate (tokens/s) / Percent / Speedup'
+                  position: 'left',
+                  title: {
+                    display: true,
+                    text: 'Time (ms/token)',
+                    color: 'var(--chart-text)'
+                  },
+                  ticks: {
+                    color: 'var(--chart-text)'
+                  },
+                  grid: {
+                    color: 'var(--chart-grid)'
+                  }
                 },
-                ticks: {
-                  color: 'var(--text)'
+                y2: {
+                  type: 'linear',
+                  display: true,
+                  position: 'right',
+                  title: {
+                    display: true,
+                    text: 'Rate (tokens/s) / Percent / Speedup',
+                    color: 'var(--chart-text)'
+                  },
+                  ticks: {
+                    color: 'var(--chart-text)'
+                  },
+                  grid: {
+                    color: 'var(--chart-grid)',
+                    drawOnChartArea: false,
+                  }
                 },
-                grid: {
-                  color: 'var(--surface2)',
-                  drawOnChartArea: false,
-                }
-              },
-              x: {
-                ticks: {
-                  color: 'var(--text)'
-                },
-                grid: {
-                  color: 'var(--surface2)'
+                x: {
+                  ticks: {
+                    color: 'var(--chart-text)'
+                  },
+                  grid: {
+                    color: 'var(--chart-grid)'
+                  }
                 }
               }
-            }
           }
         });
 }
