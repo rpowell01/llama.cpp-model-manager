@@ -185,6 +185,7 @@ def api_update_model_meta():
         "yarn_beta_slow": float,
         "yarn_beta_fast": float,
         # Speculative decoding parameters
+        "speculative_decoding_model": bool,
         "spec_type": str,
         "spec_draft_model": str,
         "spec_draft_hf_repo": str,
@@ -233,7 +234,12 @@ def api_update_model_meta():
                 if typ is int:
                     value = int(value)
                 elif typ is bool:
-                    value = bool(value)
+                    # bool("false") is True, so normalise string input explicitly
+                    # instead of relying on truthiness.
+                    if isinstance(value, str):
+                        value = value.strip().lower() in ("true", "1", "yes", "on")
+                    else:
+                        value = bool(value)
                 elif typ is float:
                     value = float(value)
                 else:

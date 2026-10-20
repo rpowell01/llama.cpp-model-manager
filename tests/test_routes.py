@@ -233,6 +233,116 @@ class TestStatusRoutes:
         assert 'note' in data
 
 
+class TestUpdateModelMeta:
+    """Tests for the /api/update-model-meta endpoint."""
+
+    @pytest.fixture
+    def app(self):
+        from flask import Flask
+        from routes.models import models_bp
+        app = Flask(__name__)
+        app.register_blueprint(models_bp)
+        app.config['TESTING'] = True
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return app.test_client()
+
+    @pytest.fixture
+    def status_client(self):
+        """Client for the status blueprint, which owns /api/status."""
+        from flask import Flask
+        from routes.status import status_bp
+        status_app = Flask(__name__)
+        status_app.register_blueprint(status_bp)
+        status_app.config['TESTING'] = True
+        return status_app.test_client()
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_speculative_decoding_model_is_saved(self, mock_get_models, mock_save_models, client):
+        """Checking the Speculative Decoding Model box must persist the flag.
+
+        Regression test: the field was missing from the endpoint's
+        ``allowed_fields`` allowlist, so the value was silently dropped and
+        the checkbox reverted to unchecked on the next refresh.
+        """
+        models = {'test-model': {'port': 11000, 'threads': 8}}
+        mock_get_models.return_value = models
+
+        response = client.post(
+            '/api/update-model-meta',
+            json={'model': 'test-model', 'speculative_decoding_model': True},
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['changes']['speculative_decoding_model'] is True
+        assert models['test-model']['speculative_decoding_model'] is True
+        mock_save_models.assert_called_once()
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_speculative_decoding_model_can_be_unchecked(self, mock_get_models, mock_save_models, client):
+        """Unchecking the box must persist False, not be dropped as a no-op."""
+        models = {'test-model': {'port': 11000, 'speculative_decoding_model': True}}
+        mock_get_models.return_value = models
+
+        response = client.post(
+            '/api/update-model-meta',
+            json={'model': 'test-model', 'speculative_decoding_model': False},
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert models['test-model']['speculative_decoding_model'] is False
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_boolean_strings_are_normalized_not_truthiness_coerced(self, mock_get_models, mock_save_models, client):
+        """String booleans must be parsed, not truthiness-coerced.
+
+        bool("false") is True in Python, so a client sending the string
+        "false" would otherwise persist True and silently invert the flag.
+        """
+        models = {'test-model': {'port': 11000}}
+        mock_get_models.return_value = models
+
+        for raw, expected in (('false', False), ('False', False), ('0', False),
+                              ('true', True), ('True', True), ('1', True)):
+            response = client.post(
+                '/api/update-model-meta',
+                json={'model': 'test-model', 'speculative_decoding_model': raw},
+                content_type='application/json',
+            )
+
+            assert response.status_code == 200
+            assert models['test-model']['speculative_decoding_model'] is expected, (
+                f"{raw!r} should persist as {expected!r}"
+            )
+
+    @patch('routes.status.check_port_active', return_value=False)
+    @patch('routes.status.get_models')
+    @patch('routes.status.get_status_registry')
+    def test_status_returns_speculative_decoding_model(self, mock_get_registry, mock_get_models,
+                                                      mock_check_port, status_client):
+        """The refresh path must return the flag so the panel can re-render it."""
+        mock_registry = Mock()
+        mock_registry.is_remote_mode = False
+        mock_get_registry.return_value = mock_registry
+        mock_get_models.return_value = {
+            'test-model': {'port': 11000, 'speculative_decoding_model': True},
+        }
+
+        response = status_client.get('/api/status')
+
+        assert response.status_code == 200
+        models = response.get_json()['models']
+        assert models[0]['speculative_decoding_model'] is True
+
+
 class TestSystemRoutes:
     """Tests for system routes (optimize-settings, benchmark-optimize)."""
     

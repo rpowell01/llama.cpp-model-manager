@@ -3,6 +3,30 @@
  */
 
 /**
+ * Determine whether a model's Start/Stop actions should be enabled.
+ *
+ * Shared by the tile grid and the properties panel so the two views cannot
+ * disagree. They previously duplicated this rule and drifted apart: the panel
+ * omitted the missing-file check on Start and treated "starting" as
+ * not-stoppable, while the tile did the opposite.
+ *
+ * Speculative decoding models are managed by their parent model, so they must
+ * not be started or stopped independently.
+ *
+ * @param {Object} r - Model data row from /api/status
+ * @returns {{canStart: boolean, canStop: boolean}}
+ */
+function modelActionState(r) {
+  const running = r.status && r.status.startsWith("running");
+  const starting = r.status === "starting";
+  const spec = r.speculative_decoding_model;
+  return {
+    canStart: !(running || starting || !r.file_exists || spec),
+    canStop: !((!running && !starting) || spec),
+  };
+}
+
+/**
  * Render all model tiles
  * @param {Array} rows - Model data rows from API
  * @param {Object} dlMap - Download status map
@@ -51,6 +75,7 @@ function renderTiles(rows, dlMap, query) {
     .map((r) => {
       const running = r.status && r.status.startsWith("running");
       const starting = r.status === "starting";
+      const { canStart, canStop } = modelActionState(r);
       const statusChip = running
         ? '<span class="chip ok">● running</span>'
         : starting
@@ -219,12 +244,12 @@ function renderTiles(rows, dlMap, query) {
         ' <button class="run" onclick="act(\'' +
         jsEscape(r.model) +
         "', 'start')\" " +
-        (running || starting || !r.file_exists ? "disabled" : "") +
+        (canStart ? "" : "disabled") +
         ">\u25B6 Start</button>" +
         ' <button class="stop" onclick="act(\'' +
         jsEscape(r.model) +
         "', 'stop')\" " +
-        (!running && !starting ? "disabled" : "") +
+        (canStop ? "" : "disabled") +
         ">\u25A0 Stop</button>" +
         ' <button class="add" onclick="downloadModel(\'' +
         jsEscape(r.model) +
@@ -260,6 +285,7 @@ async function renderPanelProperties(data, modelName) {
   if (!content) return;
 
   const running = data.status && data.status.startsWith("running");
+  const { canStart, canStop } = modelActionState(data);
   const modelSafeId = safeId(modelName);
 
   // Store original values for cancel functionality
@@ -270,10 +296,10 @@ async function renderPanelProperties(data, modelName) {
          // Action buttons (Start/Stop/Optimize) at the top
          html += `<div class="panel-section">
            <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
-              <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${running || data.status === "starting" || data.speculative_decoding_model ? "disabled" : ""}>
+              <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${canStart ? "" : "disabled"}>
                 ▶ Start
               </button>
-              <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${!running || data.speculative_decoding_model ? "disabled" : ""}>
+              <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${canStop ? "" : "disabled"}>
                 ■ Stop
               </button>
              <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
