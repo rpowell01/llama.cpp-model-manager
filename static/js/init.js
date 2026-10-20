@@ -101,11 +101,17 @@ function initTileControls() {
   const sortSelect = document.getElementById('tileSortOrder');
   const hideSpecCheckbox = document.getElementById('hideSpecModels');
 
-  if (sortSelect) {
+  // Populate sort dropdown from TILE_SORT_ORDERS (defined in ui-controls.js)
+  if (sortSelect && typeof TILE_SORT_ORDERS !== 'undefined') {
+    sortSelect.innerHTML = TILE_SORT_ORDERS.map(
+      (o) => `<option value="${o.value}">${o.label}</option>`
+    ).join('');
     sortSelect.value = tilePrefs.sortOrder;
     sortSelect.addEventListener('change', function() {
       updateTilePrefs({ sortOrder: this.value });
     });
+  } else if (sortSelect) {
+    console.warn('Tile sort order control found but TILE_SORT_ORDERS not defined');
   } else {
     console.warn('Tile sort order control not found');
   }

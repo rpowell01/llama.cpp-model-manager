@@ -1,7 +1,7 @@
 /.vscode
 __pycache__/
 /extract_script.py
-/full_script.txt
+/full_script.py
 /page_script.js
 /script_part2.txt
 /venv
@@ -17,3 +17,4 @@ __pycache__/
 server.log
 .beads.gate.lock
 running_models.log
+models.json

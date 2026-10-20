@@ -256,6 +256,10 @@ def index():
                 "no_mmap": model.no_mmap,
                 "parallel": model.parallel,
                 "ubatch_size": model.ubatch_size,
+                "rating_speed": model.rating_speed,
+                "rating_coding": model.rating_coding,
+                "comment": model.comment,
+                "speculative_decoding_model": getattr(model, "speculative_decoding_model", False),
             })
     else:
         models = get_models()
@@ -306,6 +310,10 @@ def api_status():
                 "no_mmap": model.no_mmap,
                 "parallel": model.parallel,
                 "ubatch_size": model.ubatch_size,
+                "rating_speed": model.rating_speed,
+                "rating_coding": model.rating_coding,
+                "comment": model.comment,
+                "speculative_decoding_model": getattr(model, "speculative_decoding_model", False),
             })
     else:
         models = get_models()

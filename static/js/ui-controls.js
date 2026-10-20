@@ -17,7 +17,16 @@
  * Persisted in localStorage so the choice survives a page reload.
  */
 const TILE_PREFS_KEY = "tile_prefs";
-const TILE_SORT_ORDERS = ["name", "speed", "coding", "speed-coding"];
+
+// Single source of truth for sort orders - values and their labels
+const TILE_SORT_ORDERS = [
+  { value: "name", label: "Alphabetical (A–Z)" },
+  { value: "speed", label: "Speed rating (high → low)" },
+  { value: "coding", label: "Coding rating (high → low)" },
+  { value: "speed-coding", label: "Speed + Coding (high → low)" },
+];
+
+const TILE_SORT_VALUES = TILE_SORT_ORDERS.map((o) => o.value);
 
 function loadTilePrefs() {
   const fallback = { sortOrder: "name", hideSpecModels: false };
@@ -26,7 +35,7 @@ function loadTilePrefs() {
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     return {
-      sortOrder: TILE_SORT_ORDERS.includes(parsed?.sortOrder)
+      sortOrder: TILE_SORT_VALUES.includes(parsed?.sortOrder)
         ? parsed.sortOrder
         : fallback.sortOrder,
       hideSpecModels: !!parsed?.hideSpecModels,
@@ -47,7 +56,7 @@ let lastTileDlMap = {};
 /**
  * Sort model rows for tile display.
  * @param {Array} rows - Rows to sort in place
- * @param {string} order - One of TILE_SORT_ORDERS
+ * @param {string} order - One of TILE_SORT_VALUES
  */
 function sortModelRows(rows, order) {
   const ratingOf = (r, field) => {
@@ -76,6 +85,7 @@ function sortModelRows(rows, order) {
 
   const cmp = comparators[order];
   if (!cmp) {
+    console.warn(`Unknown sort order "${order}", falling back to alphabetical`);
     rows.sort(byName);
     return;
   }
@@ -120,13 +130,8 @@ function renderTiles(rows, dlMap, query) {
   lastTileRows = rows;
   lastTileDlMap = dlMap;
 
-  // Normalize model names to consistent casing for deduplication
-  const normalizeModelName = (name) => {
-    // Remove extra whitespace, convert to consistent case
-    return name.trim().toLowerCase();
-  };
-
   // Deduplicate: keep the first occurrence of each normalized model name
+  // normalizeModelName is provided by model-manager.js (loaded before ui-controls.js)
   const seen = new Set();
   const deduplicated = [];
   for (const r of rows) {
@@ -2451,5 +2456,4 @@ window.showMetricsTooltip = showMetricsTooltip;
 window.hideMetricsTooltip = hideMetricsTooltip;
 window.exportMetrics = exportMetrics;
 window.renderTiles = renderTiles;
-window.rerenderTiles = rerenderTiles;
 window.updateTilePrefs = updateTilePrefs;

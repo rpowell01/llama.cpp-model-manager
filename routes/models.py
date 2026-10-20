@@ -233,10 +233,21 @@ def api_update_model_meta():
             val = data[field]
             try:
                 val_int = int(val)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 return jsonify({"error": f"Invalid rating value for {field}: must be an integer 0-5"}), 400
             if val_int < 0 or val_int > 5:
                 return jsonify({"error": f"Rating {field} must be between 0 and 5"}), 400
+
+    # Validate comment length (max 500 chars) before mutation
+    if "comment" in data:
+        comment = data["comment"]
+        if not isinstance(comment, str):
+            try:
+                comment = str(comment)
+            except Exception:
+                return jsonify({"error": "Comment must be a string"}), 400
+        if len(comment) > 500:
+            return jsonify({"error": "Comment too long (max 500 characters)"}), 400
 
     changes = {}
     for field, typ in allowed_fields.items():
@@ -260,18 +271,6 @@ def api_update_model_meta():
                 changes[field] = value
             except Exception as e:
                 return jsonify({"error": f"Invalid value for {field}: {value}"}), 400
-
-    # Validate comment length (max 500 chars)
-    if "comment" in data:
-        comment = data["comment"]
-        if not isinstance(comment, str):
-            try:
-                comment = str(comment)
-            except:
-                return jsonify({"error": "Comment must be a string"}), 400
-        if len(comment) > 500:
-            return jsonify({"error": "Comment too long (max 500 characters)"}), 400
-        meta["comment"] = comment
 
     save_models(models)
     log.info(f"Updated model {model} meta: {changes}")

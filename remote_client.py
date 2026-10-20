@@ -122,6 +122,8 @@ class Model:
     comment: str = ""
     rating_speed: int = 0  # 0-5 stars
     rating_coding: int = 0  # 0-5 stars
+    # Speculative decoding model flag
+    speculative_decoding_model: bool = False
     # Slot KV Cache Persistence
     slot_save_path: str = ""
     cache_reuse: int = 4096
@@ -203,6 +205,8 @@ class Model:
             comment=data.get("comment", ""),
             rating_speed=data.get("rating_speed", 0),
             rating_coding=data.get("rating_coding", 0),
+            # Speculative decoding model flag
+            speculative_decoding_model=data.get("speculative_decoding_model", False),
             # Slot KV Cache Persistence
             slot_save_path=data.get("slot_save_path", ""),
             cache_reuse=data.get("cache_reuse", 4096),
