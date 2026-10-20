@@ -226,6 +226,18 @@ def api_update_model_meta():
     "custom_header_key": str,
     "custom_header_value": str,
     }
+    # Validate rating fields before any mutation: an invalid rating must be
+    # rejected without leaving a bad value behind in the cached model meta.
+    for field in ("rating_speed", "rating_coding"):
+        if field in data:
+            val = data[field]
+            try:
+                val_int = int(val)
+            except (TypeError, ValueError):
+                return jsonify({"error": f"Invalid rating value for {field}: must be an integer 0-5"}), 400
+            if val_int < 0 or val_int > 5:
+                return jsonify({"error": f"Rating {field} must be between 0 and 5"}), 400
+
     changes = {}
     for field, typ in allowed_fields.items():
         if field in data:
@@ -248,18 +260,6 @@ def api_update_model_meta():
                 changes[field] = value
             except Exception as e:
                 return jsonify({"error": f"Invalid value for {field}: {value}"}), 400
-
-    # Validate rating fields are within 1-5 range
-    for field in ("rating_speed", "rating_coding"):
-        if field in data:
-            val = data[field]
-            try:
-                val_int = int(val)
-            except (TypeError, ValueError):
-                return jsonify({"error": f"Invalid rating value for {field}: must be an integer 1-5"}), 400
-            if val_int < 1 or val_int > 5:
-                return jsonify({"error": f"Rating {field} must be between 1 and 5"}), 400
-            meta[field] = val_int
 
     # Validate comment length (max 500 chars)
     if "comment" in data:

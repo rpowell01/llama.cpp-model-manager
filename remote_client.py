@@ -120,8 +120,8 @@ class Model:
     warmup_max_tokens: int = 10
     # User ratings and comments
     comment: str = ""
-    rating_speed: int = 0  # 1-5 stars
-    rating_coding: int = 0  # 1-5 stars
+    rating_speed: int = 0  # 0-5 stars
+    rating_coding: int = 0  # 0-5 stars
     # Slot KV Cache Persistence
     slot_save_path: str = ""
     cache_reuse: int = 4096

@@ -518,3 +518,5 @@
 {"time": "2026-10-19T01:52:17Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 31568, "status": "running"}
 {"time": "2026-10-19T01:57:28Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 3384, "status": "running"}
 {"time": "2026-10-19T02:08:26Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 34080, "status": "running"}
+{"time": "2026-10-19T02:17:27Z", "action": "start", "model": "mellum2-12b-a2.5b-instruct.i1-q4-k-m", "port": 11012, "pid": 36572, "status": "running"}
+{"time": "2026-10-20T01:47:48Z", "action": "download", "model": "qwopus3-5-9b-coder-flash.i1-q4-k-m", "port": 0, "pid": null, "status": "completed (5780092000 bytes)"}

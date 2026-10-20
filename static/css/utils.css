@@ -30,6 +30,12 @@
   color: var(--btn-download);
 }
 
+/* Speculative decoding model marker */
+.chip.spec {
+  background: rgba(155, 89, 182, 0.18);
+  color: var(--btn-add);
+}
+
 .chip.running {
   background: rgba(46, 204, 113, 0.2);
   color: var(--green);

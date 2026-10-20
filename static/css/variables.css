@@ -2,6 +2,8 @@
   --bg: #1a1a2e;
   --surface: #16213e;
   --surface2: #0f3460;
+  /* Tile background for speculative decoding models (never used as a primary model) */
+  --surface-spec: #2e2447;
   --text: #e0e0e0;
   --text2: #a0a0b8;
   --chart-text: #e0e0e0;
@@ -27,6 +29,7 @@
   --bg: #1a1a2e;
   --surface: #16213e;
   --surface2: #2a5180;
+  --surface-spec: #2e2447;
   --text: #e0e0e0;
   --text2: #a0a0b8;
   --chart-text: #ffffff;
@@ -38,6 +41,7 @@
   --bg: #f5f5f5;
   --surface: #ffffff;
   --surface2: #e0e0e0;
+  --surface-spec: #f0e6fb;
   --text: #333333;
   --text2: #666666;
   --chart-text: #333333;
@@ -49,6 +53,7 @@
   --bg: #002b36;
   --surface: #073642;
   --surface2: #586e75;
+  --surface-spec: #3b2f52;
   --text: #839496;
   --text2: #93a1a1;
   --chart-text: #ffffff;
@@ -60,6 +65,7 @@
   --bg: #2e3440;
   --surface: #3b4252;
   --surface2: #4c566a;
+  --surface-spec: #474c5e;
   --text: #d8dee9;
   --text2: #a5abb6;
   --chart-text: #ffffff;

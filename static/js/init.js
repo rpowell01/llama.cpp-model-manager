@@ -17,6 +17,9 @@ function init() {
    // Search input debounce
    initSearchDebounce();
 
+   // Tile sort order and speculative model visibility
+   initTileControls();
+
    // Button event listeners
    initButtonListeners();
 
@@ -89,6 +92,32 @@ function initSearchDebounce() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(refresh, 300);
   });
+}
+
+// ──────────────────────────────────────────────────────────────
+// Tile Controls (sort order, speculative model visibility)
+// ──────────────────────────────────────────────────────────────
+function initTileControls() {
+  const sortSelect = document.getElementById('tileSortOrder');
+  const hideSpecCheckbox = document.getElementById('hideSpecModels');
+
+  if (sortSelect) {
+    sortSelect.value = tilePrefs.sortOrder;
+    sortSelect.addEventListener('change', function() {
+      updateTilePrefs({ sortOrder: this.value });
+    });
+  } else {
+    console.warn('Tile sort order control not found');
+  }
+
+  if (hideSpecCheckbox) {
+    hideSpecCheckbox.checked = tilePrefs.hideSpecModels;
+    hideSpecCheckbox.addEventListener('change', function() {
+      updateTilePrefs({ hideSpecModels: this.checked });
+    });
+  } else {
+    console.warn('Hide speculative models control not found');
+  }
 }
 
 // ──────────────────────────────────────────────────────────────

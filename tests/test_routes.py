@@ -342,6 +342,62 @@ class TestUpdateModelMeta:
         models = response.get_json()['models']
         assert models[0]['speculative_decoding_model'] is True
 
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_rating_zero_is_accepted(self, mock_get_models, mock_save_models, client):
+        """A rating of 0 means "unrated" and must be saveable.
+
+        The range used to be 1-5, which made it impossible to clear a rating
+        once one had been set.
+        """
+        models = {'test-model': {'port': 11000, 'rating_speed': 3, 'rating_coding': 4}}
+        mock_get_models.return_value = models
+
+        response = client.post(
+            '/api/update-model-meta',
+            json={'model': 'test-model', 'rating_speed': 0, 'rating_coding': 0},
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert models['test-model']['rating_speed'] == 0
+        assert models['test-model']['rating_coding'] == 0
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_rating_bounds_are_enforced(self, mock_get_models, mock_save_models, client):
+        """Ratings outside 0-5 must be rejected."""
+        models = {'test-model': {'port': 11000}}
+        mock_get_models.return_value = models
+
+        for field in ('rating_speed', 'rating_coding'):
+            for bad in (-1, 6):
+                response = client.post(
+                    '/api/update-model-meta',
+                    json={'model': 'test-model', field: bad},
+                    content_type='application/json',
+                )
+
+                assert response.status_code == 400, f"{field}={bad} should be rejected"
+                assert field not in models['test-model']
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_rating_string_values_are_coerced(self, mock_get_models, mock_save_models, client):
+        """The UI sends number inputs as strings; they must still be accepted."""
+        models = {'test-model': {'port': 11000}}
+        mock_get_models.return_value = models
+
+        response = client.post(
+            '/api/update-model-meta',
+            json={'model': 'test-model', 'rating_speed': '0', 'rating_coding': '5'},
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert models['test-model']['rating_speed'] == 0
+        assert models['test-model']['rating_coding'] == 5
+
 
 class TestAddModel:
     """Tests for the /api/add-model endpoint.

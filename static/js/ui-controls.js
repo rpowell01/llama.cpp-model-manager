@@ -3,6 +3,86 @@
  */
 
 /**
+ * Tile display preferences.
+ *
+ * `sortOrder` controls the tile ordering:
+ *   - "name"        alphabetical (default)
+ *   - "speed"       Speed rating, highest first
+ *   - "coding"      Coding rating, highest first
+ *   - "speed-coding" Speed rating first, Coding rating as tie-breaker
+ *
+ * `hideSpecModels` hides tiles for models flagged as speculative decoding
+ * models, which are only ever used as a draft model by their parent.
+ *
+ * Persisted in localStorage so the choice survives a page reload.
+ */
+const TILE_PREFS_KEY = "tile_prefs";
+const TILE_SORT_ORDERS = ["name", "speed", "coding", "speed-coding"];
+
+function loadTilePrefs() {
+  const fallback = { sortOrder: "name", hideSpecModels: false };
+  try {
+    const raw = localStorage.getItem(TILE_PREFS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return {
+      sortOrder: TILE_SORT_ORDERS.includes(parsed?.sortOrder)
+        ? parsed.sortOrder
+        : fallback.sortOrder,
+      hideSpecModels: !!parsed?.hideSpecModels,
+    };
+  } catch (e) {
+    console.warn("Failed to load tile preferences:", e);
+    return fallback;
+  }
+}
+
+let tilePrefs = loadTilePrefs();
+
+// Last rows/map handed to renderTiles, so a sort or visibility change can
+// re-render without another round trip to the server.
+let lastTileRows = [];
+let lastTileDlMap = {};
+
+/**
+ * Sort model rows for tile display.
+ * @param {Array} rows - Rows to sort in place
+ * @param {string} order - One of TILE_SORT_ORDERS
+ */
+function sortModelRows(rows, order) {
+  const ratingOf = (r, field) => {
+    const v = Number(r[field]);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const byName = (a, b) => {
+    const modelCompare = normalizeModelName(a.model).localeCompare(
+      normalizeModelName(b.model),
+    );
+    if (modelCompare !== 0) return modelCompare;
+    const aFilename =
+      a.filename || (a.model_path ? a.model_path.split("/").pop() : a.model);
+    const bFilename =
+      b.filename || (b.model_path ? b.model_path.split("/").pop() : b.model);
+    return aFilename.localeCompare(bFilename);
+  };
+
+  const comparators = {
+    speed: (a, b) => ratingOf(b, "rating_speed") - ratingOf(a, "rating_speed"),
+    coding: (a, b) => ratingOf(b, "rating_coding") - ratingOf(a, "rating_coding"),
+    "speed-coding": (a, b) =>
+      ratingOf(b, "rating_speed") - ratingOf(a, "rating_speed") ||
+      ratingOf(b, "rating_coding") - ratingOf(a, "rating_coding"),
+  };
+
+  const cmp = comparators[order];
+  if (!cmp) {
+    rows.sort(byName);
+    return;
+  }
+  rows.sort((a, b) => cmp(a, b) || byName(a, b));
+}
+
+/**
  * Determine whether a model's Start/Stop actions should be enabled.
  *
  * Shared by the tile grid and the properties panel so the two views cannot
@@ -36,6 +116,10 @@ function renderTiles(rows, dlMap, query) {
   const grid = document.getElementById("tile-grid");
   if (!grid) return;
 
+  // Remember the inputs so tile preferences can be re-applied without refetching
+  lastTileRows = rows;
+  lastTileDlMap = dlMap;
+
   // Normalize model names to consistent casing for deduplication
   const normalizeModelName = (name) => {
     // Remove extra whitespace, convert to consistent case
@@ -54,27 +138,19 @@ function renderTiles(rows, dlMap, query) {
   }
 
   const filtered = deduplicated.filter((r) => {
+    if (tilePrefs.hideSpecModels && r.speculative_decoding_model) return false;
     const q = query.toLowerCase();
     return r.model.toLowerCase().includes(q) || String(r.port).includes(q);
   });
 
-  // Sort by normalized model name, then by filename
-  filtered.sort((a, b) => {
-    const aNorm = normalizeModelName(a.model);
-    const bNorm = normalizeModelName(b.model);
-    const modelCompare = aNorm.localeCompare(bNorm);
-    if (modelCompare !== 0) return modelCompare;
-    const aFilename =
-      a.filename || (a.model_path ? a.model_path.split("/").pop() : a.model);
-    const bFilename =
-      b.filename || (b.model_path ? b.model_path.split("/").pop() : b.model);
-    return aFilename.localeCompare(bFilename);
-  });
+  // Sort by the selected order (alphabetical by default)
+  sortModelRows(filtered, tilePrefs.sortOrder);
 
   const html = filtered
     .map((r) => {
       const running = r.status && r.status.startsWith("running");
       const starting = r.status === "starting";
+      const isSpec = !!r.speculative_decoding_model;
       const { canStart, canStop } = modelActionState(r);
       const statusChip = running
         ? '<span class="chip ok">● running</span>'
@@ -187,6 +263,7 @@ function renderTiles(rows, dlMap, query) {
       return (
         '<div class="tile ' +
         (running ? "running" : "") +
+        (isSpec ? " spec-model" : "") +
         '" data-model="' +
         jsEscape(r.model) +
         '" onclick="selectModel(\'' +
@@ -199,6 +276,9 @@ function renderTiles(rows, dlMap, query) {
         '<div class="tile-header"><b>' +
         jsEscape(r.model) +
         "</b>" +
+        (isSpec
+          ? '<span class="chip spec" title="Speculative decoding model - used only as a draft model, not as a primary model">⚡ spec</span>'
+          : "") +
         statusChip +
         "</div>" +
         '<div class="tile-body"><code title="' +
@@ -273,6 +353,38 @@ function renderTiles(rows, dlMap, query) {
     .join("");
 
   grid.innerHTML = html;
+}
+
+/**
+ * Persist the current tile preferences to localStorage
+ */
+function saveTilePrefs() {
+  try {
+    localStorage.setItem(TILE_PREFS_KEY, JSON.stringify(tilePrefs));
+  } catch (e) {
+    console.warn("Failed to save tile preferences:", e);
+  }
+}
+
+/**
+ * Re-render the tile grid using the cached rows.
+ * Used when the sort order or the speculative-model visibility changes so
+ * the change is reflected without another server round trip.
+ */
+function rerenderTiles() {
+  const searchInput = document.getElementById("search");
+  const query = searchInput ? searchInput.value.toLowerCase() : "";
+  renderTiles(lastTileRows, lastTileDlMap, query);
+}
+
+/**
+ * Apply a new tile preference and re-render.
+ * @param {Object} changes - Partial preferences to merge in
+ */
+function updateTilePrefs(changes) {
+  tilePrefs = { ...tilePrefs, ...changes };
+  saveTilePrefs();
+  rerenderTiles();
 }
 
 /**
@@ -800,7 +912,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <h3>User Ratings & Comments</h3>
     <div class="panel-grid">`;
   
-  // Speed rating (1-5 stars) with editable input
+  // Speed rating (0-5 stars) with editable input
   const speedVal = data.rating_speed;
   let speedStars = '';
   for (let i = 1; i <= 5; i++) {
@@ -811,12 +923,12 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <div class="rating-input">
       ${speedStars}
     </div>
-    <input type="number" min="1" max="5" value="${speedVal || 0}" 
-      class="meta-input" data-field="rating_speed" 
-      style="width: 50px; text-align: center;" title="Speed rating">
+    <input type="number" min="0" max="5" value="${speedVal || 0}"
+      class="meta-input" data-field="rating_speed"
+      style="width: 50px; text-align: center;" title="Speed rating (0-5)">
   </div>`;
-  
-  // Coding rating (1-5 stars) with editable input
+
+  // Coding rating (0-5 stars) with editable input
   const codingVal = data.rating_coding;
   let codingStars = '';
   for (let i = 1; i <= 5; i++) {
@@ -827,9 +939,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <div class="rating-input">
       ${codingStars}
     </div>
-    <input type="number" min="1" max="5" value="${codingVal || 0}" 
-      class="meta-input" data-field="rating_coding" 
-      style="width: 50px; text-align: center;" title="Coding rating">
+    <input type="number" min="0" max="5" value="${codingVal || 0}"
+      class="meta-input" data-field="rating_coding"
+      style="width: 50px; text-align: center;" title="Coding rating (0-5)">
   </div>`;
   
     // Comment text area
@@ -893,7 +1005,8 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           "spec_draft_p_min", "spec_ngram_size_n", "spec_ngram_size_m",
           "spec_ngram_min_hits",
           "grp_attn_n",
-          "warmup_max_tokens"
+          "warmup_max_tokens",
+          "rating_speed", "rating_coding"
         ];
         if (numericFields.includes(field)) {
           value = Number(value);
@@ -2338,3 +2451,5 @@ window.showMetricsTooltip = showMetricsTooltip;
 window.hideMetricsTooltip = hideMetricsTooltip;
 window.exportMetrics = exportMetrics;
 window.renderTiles = renderTiles;
+window.rerenderTiles = rerenderTiles;
+window.updateTilePrefs = updateTilePrefs;

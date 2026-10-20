@@ -21,6 +21,18 @@
   opacity: 0.98;
 }
 
+/* Speculative decoding models are never used as a primary model.
+   Give them a distinct background + dashed border so they stand out. */
+.tile.spec-model {
+  background: var(--surface-spec);
+  border-style: dashed;
+  border-color: var(--btn-add);
+}
+
+.tile.spec-model .tile-header b {
+  color: var(--text2);
+}
+
 /* Tile header */
 .tile-header {
   display: flex;
