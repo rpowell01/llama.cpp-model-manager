@@ -139,23 +139,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
       
-const formData = new FormData(e.target);
-        const data = {};
-        formData.forEach((value, key) => {
-          if (key === 'mlock' || key === 'no_mmap' || key === 'auto_download' || key === 'numa' || key === 'cpu_strict' || key === 'swa_full') {
-            data[key] = formData.get(key) === 'on';
-          } else if (['expected_size', 'port', 'threads', 'threads_batch', 'timeout', 'parallel', 'ubatch_size', 'gpu_layers', 'batch_size', 'ctx_size', 'cache_reuse', 'spec_ngram_mod_n_match', 'spec_ngram_mod_n_min', 'spec_ngram_mod_n_max'].includes(key)) {
-            data[key] = parseInt(value, 10);
-          } else if (['rope_freq_base', 'rope_freq_scale'].includes(key)) {
-            data[key] = parseFloat(value);
-          } else if (key === 'spec_type') {
-            // Handle multi-select for spec_type - get all selected values and join with commas
-            const values = formData.getAll(key);
-            data[key] = values.length > 0 ? values.join(',') : 'none';
-          } else {
-            data[key] = value;
-          }
-        });
+      const formData = new FormData(e.target);
+      const data = {};
+      formData.forEach((value, key) => {
+        // Only include essential fields for model addition
+        if (key === 'auto_download') {
+          data[key] = formData.get(key) === 'on';
+        } else if (['expected_size', 'port'].includes(key)) {
+          data[key] = parseInt(value, 10);
+        } else {
+          data[key] = value;
+        }
+      });
+      
       const submitBtn = e.target.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
       submitBtn.textContent = 'Adding…';
@@ -232,131 +228,71 @@ const formData = new FormData(e.target);
            `).join('');
            resultsDiv.style.display = 'block';
 
-         // Add click handlers to results
-         resultsDiv.querySelectorAll('div').forEach(div => {
-           div.addEventListener('click', async function () {
-             const modelId = this.getAttribute('data-model');
-             // Hide results and reset search button state
-             resultsDiv.style.display = 'none';
-             btn.disabled = false;
-             btn.textContent = '🔍 Search';
+          // Add click handlers to results
+          resultsDiv.querySelectorAll('div').forEach(div => {
+            div.addEventListener('click', async function () {
+              const modelId = this.getAttribute('data-model');
+              // Hide results and reset search button state
+              resultsDiv.style.display = 'none';
+              btn.disabled = false;
+              btn.textContent = '🔍 Search';
 
-             // Fill model name and repo
-             document.getElementById('modelName').value = modelId.split('/').pop() || modelId;
-             document.querySelector('input[name="repo"]').value = modelId;
+              // Fill model name and repo
+              document.getElementById('modelName').value = modelId.split('/').pop() || modelId;
+              document.querySelector('input[name="repo"]').value = modelId;
 
-             // Suggest a port (find next available port starting from 11000)
-             try {
-               const portResp = await fetch('/api/next-port');
-               const portData = await portResp.json();
-               document.querySelector('input[name="port"]').value = portData.port;
-             } catch (portErr) {
-               console.error('Failed to get next port:', portErr);
-               // Default to 11000 if fetch fails
-               document.querySelector('input[name="port"]').value = 11000;
-             }
+              // Suggest a port (find next available port starting from 11000)
+              try {
+                const portResp = await fetch('/api/next-port');
+                const portData = await portResp.json();
+                document.querySelector('input[name="port"]').value = portData.port;
+              } catch (portErr) {
+                console.error('Failed to get next port:', portErr);
+                // Default to 11000 if fetch fails
+                document.querySelector('input[name="port"]').value = 11000;
+              }
 
-             try {
-               // Fetch all GQUF files for the selected repo
-               const resp = await fetch('/api/hf-repo-files', {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ repo: modelId })
-               });
-               const data = await resp.json();
-               if (data.error || !data.files || data.files.length === 0) {
-                 alert('No GQUF files found for this repository');
-                 return;
-               }
+              try {
+                // Fetch all GQUF files for the selected repo
+                const resp = await fetch('/api/hf-repo-files', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ repo: modelId })
+                });
+                const data = await resp.json();
+                if (data.error || !data.files || data.files.length === 0) {
+                  alert('No GQUF files found for this repository');
+                  return;
+                }
 
-               // If only one variant, select it automatically
-               if (data.files.length === 1) {
-                 const file = data.files[0];
-                 document.querySelector('input[name="filename"]').value = file.filename;
-                 document.querySelector('input[name="expected_size"]').value = file.size;
-                 // Generate model name from variant filename
-                 generateModelNameFromFilename(file.filename);
-               } else {
-                 // Show variant picker modal
-                 showDownloadModal(modelId, data.files, false, function (url, size, filename) {
-                   document.querySelector('input[name="filename"]').value = filename;
-                   document.querySelector('input[name="expected_size"]').value = size;
-                   // Generate unique model name from variant filename
-                   generateModelNameFromFilename(filename);
-                 }, `Select variant for ${modelId.split('/').pop() || modelId}`);
-               }
-             } catch (err) {
-               alert('Error fetching variants: ' + err);
-             }
-           });
-         });
-       } catch (err) {
-         log('<b>Search error:</b> ' + err, 'red');
-         alert('Search failed: ' + err);
-       } finally {
-         btn.disabled = false;
-         btn.textContent = '🔍 Search';
-       }
-     });
-   }
- 
-   // Debounce search input to avoid excessive requests
-   const searchInput = document.getElementById('search');
-   if (searchInput) {
-     let searchTimeout;
-     searchInput.addEventListener('input', () => {
-       clearTimeout(searchTimeout);
-       searchTimeout = setTimeout(() => refresh(false), 300);
-     });
-   }
- 
-   /**
-    * Update visibility of speculative decoding field groups based on selected spec types
-    */
-   function updateSpecFieldVisibility() {
-     const specTypeSelect = document.getElementById('spec_type_select');
-     if (!specTypeSelect) return;
-     
-     const selectedTypes = Array.from(specTypeSelect.selectedOptions).map(opt => opt.value);
-     
-     // Determine which groups to show
-     const hasDraft = selectedTypes.some(t => t.startsWith('draft-') && t !== 'none');
-     const hasNgramSimple = selectedTypes.includes('ngram-simple');
-     const hasNgramMod = selectedTypes.includes('ngram-mod');
-     
-     // Get all field groups
-     const groups = document.querySelectorAll('.spec-field-group');
-     
-     groups.forEach(group => {
-       const specFor = group.dataset.specFor;
-       let show = false;
-       
-       if (specFor === 'draft') {
-         show = hasDraft;
-       } else if (specFor === 'ngram-simple') {
-         show = hasNgramSimple;
-       } else if (specFor === 'ngram-mod') {
-         show = hasNgramMod;
-       }
-       // Other ngram types (ngram-map-k, ngram-map-k4v, ngram-cache) don't have extra params
-       
-       group.style.display = show ? 'block' : 'none';
-     });
-   }
- 
-   // Initialize when modal opens
-   const originalOpenAddModelModal = window.openAddModelModal;
-   window.openAddModelModal = function() {
-     originalOpenAddModelModal();
-     // Small delay to ensure DOM is ready
-     setTimeout(updateSpecFieldVisibility, 50);
-   };
- 
-   // Attach listener when DOM is ready
-   document.addEventListener('DOMContentLoaded', () => {
-     const specTypeSelect = document.getElementById('spec_type_select');
-     if (specTypeSelect) {
-       specTypeSelect.addEventListener('change', updateSpecFieldVisibility);
-     }
-   });
- });
+                // If only one variant, select it automatically
+                if (data.files.length === 1) {
+                  const file = data.files[0];
+                  document.querySelector('input[name="filename"]').value = file.filename;
+                  document.querySelector('input[name="expected_size"]').value = file.size;
+                  // Generate model name from variant filename
+                  generateModelNameFromFilename(file.filename);
+                } else {
+                  // Show variant picker modal
+                  showDownloadModal(modelId, data.files, false, function (url, size, filename) {
+                    document.querySelector('input[name="filename"]').value = filename;
+                    document.querySelector('input[name="expected_size"]').value = size;
+                    // Generate unique model name from variant filename
+                    generateModelNameFromFilename(filename);
+                  }, `Select variant for ${modelId.split('/').pop() || modelId}`);
+                }
+              } catch (err) {
+                alert('Error fetching variants: ' + err);
+              }
+            });
+          });
+        } catch (err) {
+          log('<b>Search error:</b> ' + err, 'red');
+          alert('Search failed: ' + err);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '🔍 Search';
+        }
+      });
+    }
+  });

@@ -343,6 +343,108 @@ class TestUpdateModelMeta:
         assert models[0]['speculative_decoding_model'] is True
 
 
+class TestAddModel:
+    """Tests for the /api/add-model endpoint.
+
+    The Add Model dialog was simplified to only the fields required to
+    search, select and download a model, so the endpoint must accept a
+    payload containing only those fields and fall back to DEFAULTS for
+    every runtime-configuration field that is no longer sent.
+    """
+
+    ESSENTIAL_FIELDS = {
+        "name": "Qwen3 8B Q4 K M",
+        "repo": "Qwen/Qwen3-8B-GGUF",
+        "filename": "Qwen3-8B-Q4_K_M.gguf",
+        "expected_size": 4400000000,
+        "port": 11008,
+    }
+
+    @pytest.fixture
+    def app(self):
+        from flask import Flask
+        from routes.models import models_bp
+        app = Flask(__name__)
+        app.register_blueprint(models_bp)
+        app.config['TESTING'] = True
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return app.test_client()
+
+    @patch('routes.models.add_model_entry')
+    def test_minimal_payload_uses_defaults_for_removed_runtime_fields(self, mock_add, client):
+        """Only the essential fields are required; the rest fall back to DEFAULTS."""
+        from config import DEFAULTS
+        mock_add.return_value = True
+
+        response = client.post('/api/add-model', json=self.ESSENTIAL_FIELDS,
+                               content_type='application/json')
+
+        assert response.status_code == 200
+        assert response.get_json()['name'] == 'qwen3-8b-q4-k-m'
+
+        mock_add.assert_called_once()
+        kwargs = mock_add.call_args.kwargs
+        # Essential fields are passed through unchanged.
+        assert kwargs['repo'] == 'Qwen/Qwen3-8B-GGUF'
+        assert kwargs['filename'] == 'Qwen3-8B-Q4_K_M.gguf'
+        assert kwargs['expected_size'] == 4400000000
+        assert kwargs['port'] == 11008
+        # Runtime-configuration fields that the dialog no longer sends use DEFAULTS.
+        for field in ('threads', 'ctx_size', 'gpu_layers', 'batch_size',
+                      'spec_type', 'numa', 'mlock', 'flash_attn', 'cache_type_k'):
+            assert kwargs[field] == DEFAULTS[field], f"{field} should default"
+
+    @patch('routes.models.add_model_entry')
+    def test_unknown_extra_fields_are_ignored(self, mock_add, client):
+        """Client-only flags such as auto_download must not break the endpoint."""
+        mock_add.return_value = True
+        payload = dict(self.ESSENTIAL_FIELDS, auto_download=True)
+
+        response = client.post('/api/add-model', json=payload,
+                               content_type='application/json')
+
+        assert response.status_code == 200
+        mock_add.assert_called_once()
+
+    @pytest.mark.parametrize("missing", ["name", "repo", "filename", "expected_size", "port"])
+    @patch('routes.models.add_model_entry')
+    def test_missing_required_field_returns_400(self, mock_add, client, missing):
+        """Each essential field is still mandatory."""
+        payload = {k: v for k, v in self.ESSENTIAL_FIELDS.items() if k != missing}
+
+        response = client.post('/api/add-model', json=payload,
+                               content_type='application/json')
+
+        assert response.status_code == 400
+        assert missing in response.get_json()['error']
+        mock_add.assert_not_called()
+
+    @patch('routes.models.add_model_entry')
+    def test_non_integer_port_returns_400(self, mock_add, client):
+        """Numeric fields must be integers."""
+        payload = dict(self.ESSENTIAL_FIELDS, port='not-a-port')
+
+        response = client.post('/api/add-model', json=payload,
+                               content_type='application/json')
+
+        assert response.status_code == 400
+        mock_add.assert_not_called()
+
+    @patch('routes.models.add_model_entry')
+    def test_duplicate_model_returns_409(self, mock_add, client):
+        """A rejected add (e.g. duplicate name) surfaces as 409."""
+        mock_add.return_value = False
+
+        response = client.post('/api/add-model', json=self.ESSENTIAL_FIELDS,
+                               content_type='application/json')
+
+        assert response.status_code == 409
+        assert 'error' in response.get_json()
+
+
 class TestSystemRoutes:
     """Tests for system routes (optimize-settings, benchmark-optimize)."""
     
