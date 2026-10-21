@@ -6,6 +6,25 @@
 const modelMetricsCache = new Map();
 const METRICS_CACHE_TTL = 5000; // 5 seconds
 
+// Candidate list for "Draft Model Path" select (models flagged as speculative decoding models)
+let currentSpecDraftModels = [];
+
+/**
+ * Get the list of speculative-decoding model candidates from currentModelRows.
+ * Called during refresh so the panel render has fresh options.
+ */
+function getSpecDraftModels() {
+  return currentSpecDraftModels;
+}
+
+/**
+ * Refresh the speculative-decoding candidate list from currentModelRows.
+ * Call this after currentModelRows is updated (e.g., in refresh()).
+ */
+function updateSpecDraftModels() {
+  currentSpecDraftModels = currentModelRows.filter(r => r.speculative_decoding_model);
+}
+
 /**
  * Fetch and parse llama.cpp metrics from the model's port
  * @param {string} modelName - Model name
@@ -318,6 +337,7 @@ async function refresh(showLoading = true) {
      console.log('After deduplication:', deduplicated.length, 'models');
      
      currentModelRows = deduplicated;
+     updateSpecDraftModels();
 
      const dlRes = await fetch('/api/download-status?' + Date.now(), {
        cache: 'no-store',

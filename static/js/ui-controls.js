@@ -806,7 +806,30 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       <small style="color: var(--muted); display: block; margin-top: 0.25rem;">Hold Ctrl/Cmd to select multiple (comma-separated)</small>
     </div>`;
     
-    addEditable("Draft Model Path", "spec_draft_model", data.spec_draft_model, "text");
+    // Draft Model Path select: options are the speculative-decoding candidates plus
+    // the model's current value. The current value stays selectable even when it is
+    // not a candidate, so saving unrelated fields cannot clear the draft model path.
+    const currentDraftPath = String(data.spec_draft_model || "");
+    const specDraftChoices = [{ path: "", label: "None" }];
+    getSpecDraftModels().forEach(r => {
+      const path = String(r.model_path || "");
+      if (!path || specDraftChoices.some(c => c.path === path)) return;
+      specDraftChoices.push({ path, label: r.filename || path || r.model || "Unknown" });
+    });
+    if (currentDraftPath && !specDraftChoices.some(c => c.path === currentDraftPath)) {
+      specDraftChoices.push({ path: currentDraftPath, label: currentDraftPath });
+    }
+    const specDraftOptions = specDraftChoices.map(c =>
+      `<option value="${he(c.path)}" ${c.path === currentDraftPath ? "selected" : ""}>${he(String(c.label))}</option>`
+    ).join("");
+    html += `<div class="panel-item">
+      <span class="label">Draft Model Path</span>
+      <span class="value">
+        <select class="meta-input" data-field="spec_draft_model">
+          ${specDraftOptions}
+        </select>
+      </span>
+    </div>`;
     addEditable("Draft HF Repo", "spec_draft_hf_repo", data.spec_draft_hf_repo, "text");
     addEditable("Draft N Max", "spec_draft_n_max", data.spec_draft_n_max, "number", 1, 0);
     addEditable("Draft N Min", "spec_draft_n_min", data.spec_draft_n_min, "number", 1, 0);
