@@ -4,7 +4,7 @@ from pathlib import Path
 from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
 
-from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config, resolve_model_path
+from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
 from models import get_models, ModelRegistry
 from processes import check_port_active, find_pid_by_port
 from routes.system import get_hardware_info
@@ -215,6 +215,7 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         "file_exists": exists,
         "file_size_gb": size_gb,
         "model_path": model_path_str,
+        "model_path_for_binary": convert_path_for_binary(model_path) if model_path else "",
         "download_status": dl_status,
         "partial_download": partial_download,
         "pp": metrics.get("pp"),

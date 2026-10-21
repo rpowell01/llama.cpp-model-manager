@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, resolve_model_path
+from config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, normalize_path_for_binary, resolve_model_path
 
 # Thread-safe in-memory model cache
 _models: dict[str, dict[str, Any]] = {}
@@ -431,6 +431,13 @@ def load_models_cache() -> None:
 
     # Apply defaults to all models for any missing fields
     _apply_defaults_to_models(models)
+
+    # llama-server.exe runs in a Windows context, so stored draft model paths
+    # are kept in Windows form (C:/...) rather than the WSL mount form.
+    for meta in models.values():
+        draft_model = meta.get("spec_draft_model")
+        if draft_model:
+            meta["spec_draft_model"] = normalize_path_for_binary(draft_model)
 
     assign_ports(models)
     with _models_lock:

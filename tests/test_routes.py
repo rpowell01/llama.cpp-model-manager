@@ -344,6 +344,72 @@ class TestUpdateModelMeta:
 
     @patch('routes.models.save_models')
     @patch('routes.models.get_models')
+    def test_draft_model_path_is_stored_in_windows_form(self, mock_get_models, mock_save_models, client):
+        """The draft model path must be stored in Windows form.
+
+        llama-server.exe runs in a Windows context, so a WSL mount path
+        (/mnt/c/...) has to be stored as C:/... in models.json.
+        """
+        models = {'test-model': {'port': 11000, 'threads': 8}}
+        mock_get_models.return_value = models
+
+        with patch('routes.models.normalize_path_for_binary',
+                   return_value='C:/llama.cpp-models/draft.gguf') as mock_normalize:
+            response = client.post(
+                '/api/update-model-meta',
+                json={'model': 'test-model', 'spec_draft_model': '/mnt/c/llama.cpp-models/draft.gguf'},
+                content_type='application/json',
+            )
+
+        assert response.status_code == 200
+        assert models['test-model']['spec_draft_model'] == 'C:/llama.cpp-models/draft.gguf'
+        mock_normalize.assert_called_once_with('/mnt/c/llama.cpp-models/draft.gguf')
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
+    def test_empty_draft_model_path_is_stored_as_empty(self, mock_get_models, mock_save_models, client):
+        """Clearing the draft model must not run the path through normalisation."""
+        models = {'test-model': {'port': 11000, 'spec_draft_model': 'C:/llama.cpp-models/draft.gguf'}}
+        mock_get_models.return_value = models
+
+        with patch('routes.models.normalize_path_for_binary') as mock_normalize:
+            response = client.post(
+                '/api/update-model-meta',
+                json={'model': 'test-model', 'spec_draft_model': ''},
+                content_type='application/json',
+            )
+
+        assert response.status_code == 200
+        assert models['test-model']['spec_draft_model'] == ''
+        mock_normalize.assert_not_called()
+
+    @patch('routes.status.check_port_active', return_value=False)
+    @patch('routes.status.get_models')
+    @patch('routes.status.get_status_registry')
+    def test_status_returns_model_path_in_binary_form(self, mock_get_registry, mock_get_models,
+                                                      mock_check_port, status_client):
+        """The status payload must expose the model path in binary form.
+
+        The draft model dropdown offers these paths, and they have to match
+        what is stored for the model (C:/... for a Windows llama-server.exe).
+        """
+        mock_registry = Mock()
+        mock_registry.is_remote_mode = False
+        mock_get_registry.return_value = mock_registry
+        mock_get_models.return_value = {
+            'test-model': {'port': 11000, 'model_path': '/mnt/c/llama.cpp-models/test.gguf'},
+        }
+
+        with patch('routes.status.convert_path_for_binary',
+                   return_value='C:/llama.cpp-models/test.gguf'):
+            response = status_client.get('/api/status')
+
+        assert response.status_code == 200
+        models = response.get_json()['models']
+        assert models[0]['model_path_for_binary'] == 'C:/llama.cpp-models/test.gguf'
+
+    @patch('routes.models.save_models')
+    @patch('routes.models.get_models')
     def test_rating_zero_is_accepted(self, mock_get_models, mock_save_models, client):
         """A rating of 0 means "unrated" and must be saveable.
 

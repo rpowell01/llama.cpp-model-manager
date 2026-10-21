@@ -118,5 +118,61 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(cfg.remote_url, "http://example.com:8080")
 
 
+class TestNormalizePathForBinary(unittest.TestCase):
+    """Tests for the path normalisation used for llama.cpp binary arguments."""
+
+    WINDOWS_BINARY = '/mnt/c/llama.cpp-vulkan/bin/llama-server.exe'
+    LINUX_BINARY = '/usr/local/bin/llama-server'
+
+    def test_wsl_mount_path_becomes_windows_path(self) -> None:
+        """A WSL mount path is converted when a Windows binary is used.
+
+        llama-server.exe runs in a Windows context, so /mnt/c/... paths have
+        to be handed over as C:/...
+        """
+        from config import normalize_path_for_binary
+
+        with patch('config.WSL', True), \
+             patch('config.LLAMA_SERVER', self.WINDOWS_BINARY), \
+             patch('config.LLAMA_BENCH', None), \
+             patch('config.LLAMA_BATCHED_BENCH', None):
+            self.assertEqual(
+                normalize_path_for_binary('/mnt/c/llama.cpp-models/draft.gguf'),
+                'C:/llama.cpp-models/draft.gguf',
+            )
+
+    def test_native_linux_binary_keeps_posix_path(self) -> None:
+        """With a native Linux binary the path stays in POSIX form."""
+        from config import normalize_path_for_binary
+
+        with patch('config.WSL', True), \
+             patch('config.LLAMA_SERVER', self.LINUX_BINARY), \
+             patch('config.LLAMA_BENCH', None), \
+             patch('config.LLAMA_BATCHED_BENCH', None):
+            self.assertEqual(
+                normalize_path_for_binary('/mnt/c/llama.cpp-models/draft.gguf'),
+                '/mnt/c/llama.cpp-models/draft.gguf',
+            )
+
+    def test_windows_path_keeps_windows_form(self) -> None:
+        """A Windows path stays a Windows path, with forward slashes."""
+        from config import normalize_path_for_binary
+
+        self.assertEqual(
+            normalize_path_for_binary('C:/llama.cpp-models/draft.gguf'),
+            'C:/llama.cpp-models/draft.gguf',
+        )
+        self.assertEqual(
+            normalize_path_for_binary('C:\\llama.cpp-models\\draft.gguf'),
+            'C:/llama.cpp-models/draft.gguf',
+        )
+
+    def test_empty_path_is_unchanged(self) -> None:
+        """An empty path (no draft model) is left alone."""
+        from config import normalize_path_for_binary
+
+        self.assertEqual(normalize_path_for_binary(''), '')
+
+
 if __name__ == "__main__":
     unittest.main()

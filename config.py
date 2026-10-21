@@ -415,6 +415,32 @@ def convert_path_for_binary(path: Path) -> str:
     return path_str
 
 
+def normalize_path_for_binary(path_str: str) -> str:
+    r"""Normalise a model path to the form the llama.cpp binary expects.
+
+    llama-server.exe runs in a Windows context even when the app itself runs
+    under WSL, so a path handed to it must use Windows form (C:/...) rather
+    than the WSL mount form (/mnt/c/...).
+
+    - Windows absolute paths (C:/..., C:\...) are kept in Windows form with
+      forward slashes (Windows APIs accept forward slashes).
+    - Any other path is resolved (relative paths against MODELS_DIR/BASE_DIR)
+      and converted with ``convert_path_for_binary``.
+
+    Args:
+        path_str: The path string as stored in models.json
+
+    Returns:
+        The path in the form expected by the llama.cpp binary
+    """
+    if not path_str:
+        return path_str
+    text = str(path_str)
+    if _is_windows_absolute_path(text):
+        return text.replace("\\", "/")
+    return convert_path_for_binary(resolve_model_path(text))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Benchmark optimization configuration
 # ──────────────────────────────────────────────────────────────────────────────

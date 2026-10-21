@@ -809,10 +809,12 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     // Draft Model Path select: options are the speculative-decoding candidates plus
     // the model's current value. The current value stays selectable even when it is
     // not a candidate, so saving unrelated fields cannot clear the draft model path.
+    // Option values use model_path_for_binary (Windows form, e.g. C:/llama.cpp-models/...)
+    // because llama-server.exe runs in a Windows context, not WSL.
     const currentDraftPath = String(data.spec_draft_model || "");
     const specDraftChoices = [{ path: "", label: "None" }];
     getSpecDraftModels().forEach(r => {
-      const path = String(r.model_path || "");
+      const path = String(r.model_path_for_binary || r.model_path || "");
       if (!path || specDraftChoices.some(c => c.path === path)) return;
       specDraftChoices.push({ path, label: r.filename || path || r.model || "Unknown" });
     });

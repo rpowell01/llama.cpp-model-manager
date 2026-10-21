@@ -3,7 +3,7 @@ import requests
 from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
-from config import DEFAULTS
+from config import DEFAULTS, normalize_path_for_binary
 from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
 from processes import get_server_host
 
@@ -267,6 +267,11 @@ def api_update_model_meta():
                     value = float(value)
                 else:
                     value = str(value)
+                if field == "spec_draft_model" and value:
+                    # llama-server.exe runs in a Windows context, so the draft
+                    # model path is stored in Windows form (C:/...), not the
+                    # WSL mount form (/mnt/c/...).
+                    value = normalize_path_for_binary(value)
                 meta[field] = value
                 changes[field] = value
             except Exception as e:
