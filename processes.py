@@ -666,42 +666,44 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["-c", str(ctx_size)]
     
     
-    rope_freq_base = meta.get("rope_freq_base", DEFAULTS["rope_freq_base"])
-    if rope_freq_base and rope_freq_base != 10000.0:
-        cmd += ["--rope-freq-base", str(rope_freq_base)]
-    
-    rope_freq_scale = meta.get("rope_freq_scale", DEFAULTS["rope_freq_scale"])
-    if rope_freq_scale and rope_freq_scale != 1.0:
-        cmd += ["--rope-freq-scale", str(rope_freq_scale)]
-    
-    # YaRN RoPE scaling parameters
-    rope_scaling_type = meta.get("rope_scaling_type", DEFAULTS["rope_scaling_type"])
+    # RoPE / YaRN scaling parameters.
+    # llama.cpp only applies these when a RoPE scaling method is active, so when
+    # the scaling type is "none" none of the other rope/yarn flags are emitted.
+    rope_scaling_type = str(meta.get("rope_scaling_type", DEFAULTS["rope_scaling_type"]) or "").strip().lower()
     if rope_scaling_type and rope_scaling_type != "none":
+        rope_freq_base = meta.get("rope_freq_base", DEFAULTS["rope_freq_base"])
+        if rope_freq_base and rope_freq_base != 10000.0:
+            cmd += ["--rope-freq-base", str(rope_freq_base)]
+
+        rope_freq_scale = meta.get("rope_freq_scale", DEFAULTS["rope_freq_scale"])
+        if rope_freq_scale and rope_freq_scale != 1.0:
+            cmd += ["--rope-freq-scale", str(rope_freq_scale)]
+
         cmd += ["--rope-scaling", rope_scaling_type]
-    
-    rope_scale = meta.get("rope_scale", DEFAULTS["rope_scale"])
-    if rope_scale and rope_scale != 1.0:
-        cmd += ["--rope-scale", str(rope_scale)]
-    
-    yarn_orig_ctx = meta.get("yarn_orig_ctx", DEFAULTS["yarn_orig_ctx"])
-    if yarn_orig_ctx and yarn_orig_ctx > 0:
-        cmd += ["--yarn-orig-ctx", str(yarn_orig_ctx)]
-    
-    yarn_ext_factor = meta.get("yarn_ext_factor", DEFAULTS["yarn_ext_factor"])
-    if yarn_ext_factor and yarn_ext_factor >= 0:
-        cmd += ["--yarn-ext-factor", str(yarn_ext_factor)]
-    
-    yarn_attn_factor = meta.get("yarn_attn_factor", DEFAULTS["yarn_attn_factor"])
-    if yarn_attn_factor and yarn_attn_factor != 1.0:
-        cmd += ["--yarn-attn-factor", str(yarn_attn_factor)]
-    
-    yarn_beta_slow = meta.get("yarn_beta_slow", DEFAULTS["yarn_beta_slow"])
-    if yarn_beta_slow and yarn_beta_slow != 1.0:
-        cmd += ["--yarn-beta-slow", str(yarn_beta_slow)]
-    
-    yarn_beta_fast = meta.get("yarn_beta_fast", DEFAULTS["yarn_beta_fast"])
-    if yarn_beta_fast and yarn_beta_fast != 32.0:
-        cmd += ["--yarn-beta-fast", str(yarn_beta_fast)]
+
+        rope_scale = meta.get("rope_scale", DEFAULTS["rope_scale"])
+        if rope_scale and rope_scale != 1.0:
+            cmd += ["--rope-scale", str(rope_scale)]
+
+        yarn_orig_ctx = meta.get("yarn_orig_ctx", DEFAULTS["yarn_orig_ctx"])
+        if yarn_orig_ctx and yarn_orig_ctx > 0:
+            cmd += ["--yarn-orig-ctx", str(yarn_orig_ctx)]
+
+        yarn_ext_factor = meta.get("yarn_ext_factor", DEFAULTS["yarn_ext_factor"])
+        if yarn_ext_factor and yarn_ext_factor >= 0:
+            cmd += ["--yarn-ext-factor", str(yarn_ext_factor)]
+
+        yarn_attn_factor = meta.get("yarn_attn_factor", DEFAULTS["yarn_attn_factor"])
+        if yarn_attn_factor and yarn_attn_factor != 1.0:
+            cmd += ["--yarn-attn-factor", str(yarn_attn_factor)]
+
+        yarn_beta_slow = meta.get("yarn_beta_slow", DEFAULTS["yarn_beta_slow"])
+        if yarn_beta_slow and yarn_beta_slow != 1.0:
+            cmd += ["--yarn-beta-slow", str(yarn_beta_slow)]
+
+        yarn_beta_fast = meta.get("yarn_beta_fast", DEFAULTS["yarn_beta_fast"])
+        if yarn_beta_fast and yarn_beta_fast != 32.0:
+            cmd += ["--yarn-beta-fast", str(yarn_beta_fast)]
 
     # Enable Prometheus metrics endpoint for performance monitoring
     cmd += ["--metrics"]
