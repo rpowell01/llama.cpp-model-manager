@@ -319,6 +319,34 @@ function initPerformanceGraphModal() {
 
 
 
+// Render the chart from the accumulated history. Used when a fetch fails so
+// the graph keeps the data it already has instead of going blank.
+function renderMetricsChartFromHistory() {
+  updateMetricsChart({
+    timestamps: metricTimestamps,
+    prompt_eval_times: metricPromptEvalTimes,
+    prompt_eval_rates: metricPromptEvalRates,
+    gen_eval_times: metricGenEvalTimes,
+    gen_rates: metricGenRates,
+    spec_acceptance_rates: metricSpecAcceptanceRates,
+    spec_speedups: metricSpecSpeedups,
+  });
+}
+
+// Show a message under the chart (stale or unavailable metrics). Passing a
+// falsy message hides the message area.
+function setMetricsStatus(message) {
+  const info = document.getElementById('metrics-info');
+  if (!info) return;
+  if (!message) {
+    info.style.display = 'none';
+    info.innerHTML = '<p>No metrics data available for this model.</p>';
+    return;
+  }
+  info.style.display = 'block';
+  info.textContent = message;
+}
+
 // Load metrics for the selected model and display in the chart
 function loadModelMetrics(event) {
   const modelName = (event?.target?.value) || (modelSelect?.value) || '';
@@ -335,7 +363,7 @@ function loadModelMetrics(event) {
     metricSpecSpeedups = [];
     lastMetricModel = modelName;
   }
-  
+
   // Fetch metrics from the server
   fetch('/api/get-metrics', {
     method: 'POST',
@@ -346,9 +374,36 @@ function loadModelMetrics(event) {
   .then(data => {
     if (data.error) {
       console.error('Error fetching metrics:', data.error);
+      setMetricsStatus(data.error);
+      renderMetricsChartFromHistory();
       return;
     }
-    
+
+    if (data.available === false) {
+      // The model did not answer (not running, or busy processing). Keep the
+      // chart populated with what we already have and explain why there is
+      // no new sample.
+      console.warn('Metrics unavailable:', data.warning);
+      setMetricsStatus(data.warning || 'No metrics data available for this model.');
+      renderMetricsChartFromHistory();
+      return;
+    }
+
+    if (data.stale) {
+      // Last known values: show them, but do not add a duplicate point.
+      console.warn('Showing last known metrics:', data.warning);
+      const age = data.cache_age_seconds != null
+        ? ` (${Math.round(data.cache_age_seconds)}s old)`
+        : '';
+      setMetricsStatus(
+        `Live metrics unavailable${age} - showing the last known values. ${data.warning || ''}`
+      );
+      renderMetricsChartFromHistory();
+      return;
+    }
+
+    setMetricsStatus(null);
+
     // Extract current values from flat API response and accumulate into history
     const m = data.metrics || {};
     const ts = m.timestamp || new Date().toISOString();
@@ -373,18 +428,12 @@ function loadModelMetrics(event) {
     }
 
     // Create or update the chart with the accumulated metrics data
-    updateMetricsChart({
-      timestamps: metricTimestamps,
-      prompt_eval_times: metricPromptEvalTimes,
-      prompt_eval_rates: metricPromptEvalRates,
-      gen_eval_times: metricGenEvalTimes,
-      gen_rates: metricGenRates,
-      spec_acceptance_rates: metricSpecAcceptanceRates,
-      spec_speedups: metricSpecSpeedups,
-    });
+    renderMetricsChartFromHistory();
   })
   .catch(error => {
     console.error('Error loading metrics:', error);
+    setMetricsStatus(`Failed to load metrics: ${error.message || error}`);
+    renderMetricsChartFromHistory();
   });
 }
 

@@ -11,11 +11,17 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
 # Add project root to path (matches existing test conventions).
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from metrics import _fetch_metrics_from_model, _parse_metrics_text  # noqa: E402
+from metrics import (  # noqa: E402
+    _fetch_metrics_from_model,
+    _metrics_snapshots,
+    _parse_metrics_text,
+    fetch_metrics_snapshot,
+)
 
 METRICS_TEXT = """\
 # HELP llamacpp:prompt_seconds_total Prompt processing seconds
@@ -106,3 +112,87 @@ class TestFetchMetricsFromModel:
             result = _fetch_metrics_from_model(8080)
 
         assert result == {"pp": None, "tg": None, "pg": None}
+
+
+class TestFetchMetricsSnapshot:
+    """Tests for the cached metrics snapshot used by the performance graph."""
+
+    def _mock_response(self, text, status_code=200):
+        resp = Mock()
+        resp.status_code = status_code
+        resp.text = text
+        return resp
+
+    def setup_method(self):
+        _metrics_snapshots.clear()
+
+    def teardown_method(self):
+        _metrics_snapshots.clear()
+
+    def test_returns_parsed_values_on_success(self):
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        ):
+            snapshot = fetch_metrics_snapshot(8080)
+
+        assert snapshot.values["llamacpp:prompt_seconds_total"] == 10.5
+        assert snapshot.error is None
+        assert snapshot.stale is False
+        assert snapshot.age_seconds is None
+
+    def test_caches_the_successful_snapshot(self):
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        ):
+            fetch_metrics_snapshot(8080)
+
+        assert 8080 in _metrics_snapshots
+
+    def test_falls_back_to_cached_snapshot_when_fetch_fails(self):
+        """A busy llama-server times out; the last known values are reused."""
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        ):
+            fetch_metrics_snapshot(8080)
+
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get",
+            side_effect=requests.exceptions.ReadTimeout("read timed out"),
+        ):
+            snapshot = fetch_metrics_snapshot(8080)
+
+        assert snapshot.values["llamacpp:prompt_seconds_total"] == 10.5
+        assert snapshot.stale is True
+        assert snapshot.error is not None
+        assert "ReadTimeout" in snapshot.error
+        assert snapshot.age_seconds is not None
+        assert snapshot.age_seconds >= 0
+
+    def test_returns_empty_snapshot_when_fetch_fails_without_cache(self):
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get",
+            side_effect=requests.exceptions.ReadTimeout("read timed out"),
+        ):
+            snapshot = fetch_metrics_snapshot(8080)
+
+        assert snapshot.values == {}
+        assert snapshot.stale is True
+        assert snapshot.error is not None
+
+    def test_expired_cache_is_not_served(self):
+        """A snapshot older than the max age must not be shown as current."""
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        ):
+            fetch_metrics_snapshot(8080)
+
+        _metrics_snapshots[8080]["fetched_at"] -= 3600
+
+        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "metrics.requests.get",
+            side_effect=requests.exceptions.ReadTimeout("read timed out"),
+        ):
+            snapshot = fetch_metrics_snapshot(8080)
+
+        assert snapshot.values == {}
+        assert snapshot.stale is True

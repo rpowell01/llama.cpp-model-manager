@@ -465,6 +465,99 @@ class TestUpdateModelMeta:
         assert models['test-model']['rating_coding'] == 5
 
 
+class TestGetMetrics:
+    """Tests for the /api/get-metrics endpoint used by the performance graph.
+
+    A llama-server that is busy processing a long prompt does not answer
+    /metrics within the request timeout. The endpoint must still answer with
+    the last known values instead of failing the request, so the graph keeps
+    rendering.
+    """
+
+    @pytest.fixture
+    def app(self):
+        from flask import Flask
+        from routes.models import models_bp
+        app = Flask(__name__)
+        app.register_blueprint(models_bp)
+        app.config['TESTING'] = True
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return app.test_client()
+
+    @staticmethod
+    def _snapshot(values, error=None, stale=False, age_seconds=None):
+        from metrics import MetricsSnapshot
+        return MetricsSnapshot(
+            values=values, error=error, stale=stale, age_seconds=age_seconds
+        )
+
+    @patch('routes.models.get_models')
+    def test_returns_metrics_when_the_model_answers(self, mock_get_models, client):
+        mock_get_models.return_value = {'test-model': {'port': 11000, 'threads': 8}}
+        snapshot = self._snapshot({
+            'llamacpp:prompt_seconds_total': 10.5,
+            'llamacpp:prompt_tokens_total': 1000.0,
+        })
+
+        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+            response = client.post(
+                '/api/get-metrics',
+                json={'model': 'test-model'},
+                content_type='application/json',
+            )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['available'] is True
+        assert data['stale'] is False
+        assert data['metrics']['prompt_eval_ms_per_token'] == 10.5
+
+    @patch('routes.models.get_models')
+    def test_returns_last_known_metrics_when_the_model_is_busy(self, mock_get_models, client):
+        mock_get_models.return_value = {'test-model': {'port': 11000}}
+        snapshot = self._snapshot(
+            {'llamacpp:prompt_seconds_total': 10.5},
+            error='ReadTimeout from 127.0.0.1',
+            stale=True,
+            age_seconds=42.0,
+        )
+
+        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+            response = client.post(
+                '/api/get-metrics',
+                json={'model': 'test-model'},
+                content_type='application/json',
+            )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['available'] is True
+        assert data['stale'] is True
+        assert data['cache_age_seconds'] == 42.0
+        assert 'ReadTimeout' in data['warning']
+
+    @patch('routes.models.get_models')
+    def test_reports_unavailable_when_there_are_no_metrics_at_all(self, mock_get_models, client):
+        mock_get_models.return_value = {'test-model': {'port': 11000}}
+        snapshot = self._snapshot({}, error='ReadTimeout from 127.0.0.1', stale=True)
+
+        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+            response = client.post(
+                '/api/get-metrics',
+                json={'model': 'test-model'},
+                content_type='application/json',
+            )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['available'] is False
+        assert data['metrics'] == {}
+        assert 'ReadTimeout' in data['warning']
+
+
 class TestAddModel:
     """Tests for the /api/add-model endpoint.
 

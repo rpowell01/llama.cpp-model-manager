@@ -1,9 +1,43 @@
 import logging
+import threading
+import time
+from typing import NamedTuple
+
 import requests
+
 from config import DEFAULTS
 from processes import get_server_host
 
 log = logging.getLogger("llamaweb")
+
+# Last successful /metrics scrape per port. A llama-server that is busy
+# (long prompt processing or generation) does not answer /metrics within the
+# request timeout, so the last known snapshot is reused instead of failing
+# the request outright.
+_metrics_snapshots: dict[int, dict] = {}
+_metrics_snapshots_lock = threading.Lock()
+
+# How long a cached snapshot may still be served after a failed live fetch.
+METRICS_SNAPSHOT_MAX_AGE_SECONDS = 300
+
+
+class MetricsSnapshot(NamedTuple):
+    """Result of a metrics scrape.
+
+    Attributes:
+        values: Raw counters parsed from the /metrics endpoint. Empty when
+            nothing could be fetched at all.
+        error: Why the live fetch failed, or None when it succeeded.
+        stale: True when ``values`` come from the cached snapshot instead of
+            from a live fetch.
+        age_seconds: Age of the cached snapshot, or None for a live fetch.
+    """
+
+    values: dict[str, float]
+    error: str | None
+    stale: bool
+    age_seconds: float | None
+
 
 def _parse_metrics_text(text: str) -> dict[str, float]:
     """Parse Prometheus text-format metrics into a ``{name: value}`` dict.
@@ -130,3 +164,68 @@ def _fetch_metrics_from_model(port: int) -> dict[str, float | None]:
             continue
 
     return result
+
+
+def fetch_metrics_snapshot(port: int, timeout: float = 10.0) -> MetricsSnapshot:
+    """Scrape a model's /metrics endpoint, falling back to the last snapshot.
+
+    A llama-server that is busy processing a long prompt or generation does
+    not answer /metrics within the request timeout. Rather than failing the
+    request, the last successful scrape for the port is reused and flagged as
+    stale so the UI can show the last known values instead of an error.
+
+    In WSL+Windows mode the server may be reachable via the Windows host IP
+    (returned by :func:`get_server_host`) or via ``127.0.0.1`` (WSL localhost
+    forwarding). Both are tried so the fetch succeeds regardless of which
+    interface the client connects through.
+
+    Args:
+        port: Port the model listens on.
+        timeout: Total time budget for the scrape, shared by all host
+            attempts.
+
+    Returns:
+        A :class:`MetricsSnapshot` with the parsed counters, the failure
+        reason (if any), and whether the values are stale.
+    """
+    host = get_server_host()
+    hosts_to_try = [host]
+    if host != "127.0.0.1":
+        hosts_to_try.append("127.0.0.1")
+
+    deadline = time.monotonic() + timeout
+    error = None
+
+    for try_host in hosts_to_try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        url = f"http://{try_host}:{port}/metrics"
+        try:
+            # Separate connect budget: a host that does not answer at all
+            # must not consume the whole read budget.
+            resp = requests.get(url, timeout=(min(2.0, remaining), remaining))
+            if resp.status_code != 200:
+                error = f"HTTP {resp.status_code} from {try_host}"
+                continue
+            values = _parse_metrics_text(resp.text)
+            if not values:
+                error = f"Empty metrics response from {try_host}"
+                continue
+            with _metrics_snapshots_lock:
+                _metrics_snapshots[port] = {"values": values, "fetched_at": time.time()}
+            return MetricsSnapshot(values=values, error=None, stale=False, age_seconds=None)
+        except Exception as e:
+            error = f"{type(e).__name__} from {try_host}: {e}"
+            log.debug("Failed to fetch metrics from %s:%s: %s", try_host, port, e)
+
+    # The live fetch failed - fall back to the last successful snapshot.
+    with _metrics_snapshots_lock:
+        cached = _metrics_snapshots.get(port)
+    if cached:
+        age = time.time() - cached["fetched_at"]
+        if age <= METRICS_SNAPSHOT_MAX_AGE_SECONDS:
+            return MetricsSnapshot(
+                values=cached["values"], error=error, stale=True, age_seconds=age
+            )
+    return MetricsSnapshot(values={}, error=error, stale=True, age_seconds=None)

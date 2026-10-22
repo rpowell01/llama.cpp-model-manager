@@ -4,12 +4,18 @@ from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
 from config import DEFAULTS, normalize_path_for_binary
+from metrics import fetch_metrics_snapshot
 from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
-from processes import get_server_host
 
 log = getLogger("llamaweb")
 
 models_bp = Blueprint("models", __name__)
+
+# Time budget for scraping a model's /metrics endpoint for the performance
+# graph. A busy llama-server (long prompt processing) can take a while to
+# answer, so the budget is generous; a failed scrape falls back to the last
+# successful snapshot instead of failing the request.
+GET_METRICS_TIMEOUT_SECONDS = 10.0
 
 @models_bp.route("/api/add-model", methods=["POST"])
 def api_add_model():
@@ -462,9 +468,8 @@ def api_export_metrics():
 @models_bp.route("/api/get-metrics", methods=["POST"])
 def api_get_metrics():
     """Get current model metrics for performance graph."""
-    import requests
-    from datetime import datetime
-    
+    from datetime import datetime, timedelta
+
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     if not model:
@@ -485,45 +490,25 @@ def api_get_metrics():
     if not port:
         return jsonify({"error": "Model has no port assigned"}), 400
     
-    # Fetch metrics from the model's port. Try get_server_host() first, then
-    # fall back to 127.0.0.1 (e.g. when get_server_host() returns a WSL/Windows
-    # host IP that is unreachable for a locally-running llama-server). Matches
-    # the multi-host pattern already used in metrics.py and processes.py.
-    host = get_server_host()
-    hosts_to_try = [host]
-    if host != "127.0.0.1":
-        hosts_to_try.append("127.0.0.1")
+    # Fetch metrics from the model's port. fetch_metrics_snapshot tries
+    # get_server_host() first, then 127.0.0.1 (e.g. when get_server_host()
+    # returns a WSL/Windows host IP that is unreachable for a locally-running
+    # llama-server) and finally falls back to the last successful snapshot
+    # when the model is too busy to answer within the timeout.
+    snapshot = fetch_metrics_snapshot(port, timeout=GET_METRICS_TIMEOUT_SECONDS)
 
-    metrics_text = None
-    last_error = None
-    for try_host in hosts_to_try:
-        try:
-            resp = requests.get(f"http://{try_host}:{port}/metrics", timeout=5)
-            if resp.ok:
-                metrics_text = resp.text
-                break
-            last_error = f"HTTP {resp.status_code} from {try_host}"
-        except Exception as e:
-            last_error = f"{type(e).__name__} from {try_host}: {e}"
+    if not snapshot.values:
+        # Nothing to show: the model is not running or did not answer in time.
+        return jsonify({
+            "status": "unavailable",
+            "available": False,
+            "stale": True,
+            "warning": f"Failed to fetch metrics from model: {snapshot.error}",
+            "metrics": {},
+        })
 
-    if metrics_text is None:
-        return jsonify({"error": f"Failed to fetch metrics from model: {last_error}"}), 500
-    
-    # Parse metrics
-    metrics = {}
-    for line in metrics_text.split('\n'):
-        if line.startswith('#') or not line.strip():
-            continue
-        # Simple parsing for Prometheus format
-        parts = line.split()
-        if len(parts) >= 2:
-            name = parts[0]
-            try:
-                value = float(parts[-1])
-                metrics[name] = value
-            except ValueError:
-                pass
-    
+    metrics = snapshot.values
+
     # Calculate derived metrics
     prompt_sec = metrics.get('llamacpp:prompt_seconds_total', 0)
     prompt_tokens = metrics.get('llamacpp:prompt_tokens_total', 0)
@@ -546,9 +531,13 @@ def api_get_metrics():
     speedup = (1 + accepted_per_step) if drafts > 0 else 1
     
     # Prepare the response data
+    sampled_at = datetime.now()
+    if snapshot.age_seconds:
+        # Stale snapshot: report when the data was actually scraped.
+        sampled_at = sampled_at - timedelta(seconds=snapshot.age_seconds)
     response_data = {
         "model": model,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": sampled_at.isoformat(),
         # Prompt metrics
         "prompt_seconds_total": prompt_sec,
         "prompt_tokens_total": prompt_tokens,
@@ -587,6 +576,12 @@ def api_get_metrics():
     
     return jsonify({
         "status": "success",
+        "available": True,
+        "stale": snapshot.stale,
+        "warning": snapshot.error,
+        "cache_age_seconds": (
+            round(snapshot.age_seconds, 1) if snapshot.age_seconds is not None else None
+        ),
         "metrics": response_data
     })
 
