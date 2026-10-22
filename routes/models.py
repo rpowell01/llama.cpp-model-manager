@@ -465,6 +465,80 @@ def api_export_metrics():
     })
 
 
+@models_bp.route("/api/get-metrics-from-csv", methods=["POST"])
+def api_get_metrics_from_csv():
+    """Get historical metrics from CSV for stopped models."""
+    import csv
+    import os
+    from config import BASE_DIR
+    
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    # Case-insensitive lookup
+    model_key = None
+    models = get_models()
+    for k in models:
+        if k.lower() == model.lower():
+            model_key = k
+            break
+    
+    if model_key is None:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    # Construct CSV path
+    csv_dir = BASE_DIR / "metrics_exports"
+    csv_dir.mkdir(exist_ok=True)
+    safe_name = model.replace('/', '_').replace(' ', '_')
+    csv_path = csv_dir / f"{safe_name}_metrics.csv"
+    
+    if not csv_path.exists():
+        return jsonify({
+            "error": f"No historical metrics found for model '{model}'. Please enable metrics export in the configuration and run for at least one iteration.",
+            "models": models,
+        })
+    
+    # Read CSV file
+    metrics_list = []
+    fieldnames = None
+    with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames
+        for row in reader:
+            # Convert string values to appropriate types
+            metrics_list.append({
+                "timestamp": row.get("timestamp", ""),
+                "model": row.get("model", model),
+                "port": int(row.get("port", 0)),
+                "prompt_seconds_total": float(row.get("prompt_seconds_total", 0)),
+                "prompt_tokens_total": float(row.get("prompt_tokens_total", 0)),
+                "prompt_eval_ms_per_token": float(row.get("prompt_eval_ms_per_token", 0)),
+                "prompt_eval_rate_tokens_per_sec": float(row.get("prompt_eval_rate_tokens_per_sec", 0)),
+                "gen_seconds_total": float(row.get("gen_seconds_total", 0)),
+                "gen_tokens_total": float(row.get("gen_tokens_total", 0)),
+                "gen_eval_ms_per_token": float(row.get("gen_eval_ms_per_token", 0)),
+                "gen_rate_tokens_per_sec": float(row.get("gen_rate_tokens_per_sec", 0)),
+                "spec_draft_tokens_total": float(row.get("spec_draft_tokens_total", 0)),
+                "spec_accepted_tokens_total": float(row.get("spec_accepted_tokens_total", 0)),
+                "spec_drafts_total": float(row.get("spec_drafts_total", 0)),
+                "spec_acceptance_rate_pct": float(row.get("spec_acceptance_rate_pct", 0)),
+                "spec_avg_draft_len": float(row.get("spec_avg_draft_len", 0)),
+                "spec_est_speedup": float(row.get("spec_est_speedup", 1)),
+            })
+    
+    if not metrics_list:
+        return jsonify({"error": "CSV file is empty"}), 400
+    
+    return jsonify({
+        "status": "success",
+        "metrics": metrics_list,
+        "csv_path": str(csv_path),
+        "num_rows": len(metrics_list),
+    })
+
+
 @models_bp.route("/api/get-metrics", methods=["POST"])
 def api_get_metrics():
     """Get current model metrics for performance graph."""

@@ -2432,17 +2432,44 @@ async function openPerformanceGraphModal(modelName, port, event) {
     // Set the model in the dropdown (but don't load metrics yet)
     const modelSelect = document.getElementById('model-select');
     if (modelSelect) {
-      // Find or add the model option
-      const options = [...modelSelect.options];
-      const matchingOption = options.find(option => option.textContent.trim() === modelName);
+      // Clear existing options
+      modelSelect.innerHTML = '<option value="">Select a model</option>';
+
+      // Get all model rows from currentModelRows
+      const modelRows = currentModelRows || [];
+
+      // Filter out speculative decoding models
+      const models = modelRows.filter(r => !r.speculative_decoding_model);
+
+      // Separate running and non-running models
+      const runningModels = models.filter(r => r.status && r.status.startsWith("running"));
+      const nonRunningModels = models.filter(r => !r.status || !r.status.startsWith("running"));
+
+      // Combine with running models first, then non-running
+      const sortedModels = [...runningModels, ...nonRunningModels];
+
+      // Build the dropdown options
+      const optionsHtml = sortedModels.map(r => {
+        const isRunning = r.status && r.status.startsWith("running");
+        const indicator = isRunning ? ' ● running' : ' ● stopped';
+        const value = r.model;
+        return `<option value="${he(String(value))}">${he(String(r.model))}${indicator}</option>`;
+      }).join('');
+
+      modelSelect.innerHTML += optionsHtml;
+
+      // Find or add the model option and set it as selected
+      const matchingOption = modelSelect.querySelector(`option[value="${he(String(modelName))}"]`);
       if (matchingOption) {
         matchingOption.selected = true;
       } else {
-        const newOption = document.createElement('option');
-        newOption.value = modelName;
-        newOption.textContent = modelName;
-        modelSelect.appendChild(newOption);
-        modelSelect.value = modelName;
+        // Model not found in the list (e.g., deleted or speculative)
+        // Keep the first model or clear selection
+        if (sortedModels.length > 0) {
+          modelSelect.value = sortedModels[0].model;
+        } else {
+          modelSelect.value = '';
+        }
       }
     }
 
