@@ -320,6 +320,39 @@ let metricSpecSpeedups = [];
 let lastMetricModel = '';
 let currentTimeRange = '24h';
 
+// Auto-refresh interval for the performance graph modal
+let performanceGraphRefreshInterval = null;
+const PERFORMANCE_REFRESH_INTERVAL_MS = 60000; // 60 seconds
+
+// Start auto-refresh for the performance graph modal
+function startPerformanceGraphAutoRefresh() {
+  // Clear any existing interval
+  if (performanceGraphRefreshInterval) {
+    clearInterval(performanceGraphRefreshInterval);
+  }
+  
+  // Set up interval to refresh metrics every 60 seconds
+  performanceGraphRefreshInterval = setInterval(() => {
+    // Only refresh if the modal is currently open and a model is selected
+    const modal = document.getElementById('performance-graph-modal');
+    const isModalOpen = modal && modal.style.display === 'flex';
+    const modelName = modelSelect?.value;
+    
+    if (isModalOpen && modelName) {
+      // Re-load metrics from CSV and update chart
+      loadModelMetrics();
+    }
+  }, PERFORMANCE_REFRESH_INTERVAL_MS);
+}
+
+// Stop auto-refresh for the performance graph modal
+function stopPerformanceGraphAutoRefresh() {
+  if (performanceGraphRefreshInterval) {
+    clearInterval(performanceGraphRefreshInterval);
+    performanceGraphRefreshInterval = null;
+  }
+}
+
 // Initialize the performance graph modal - only model select listener
 function initPerformanceGraphModal() {
   // Model selection event listener
@@ -658,6 +691,9 @@ document.addEventListener('DOMContentLoaded', initPerformanceGraphModal);
 
 // Cleanup function for when modal closes
 function cleanupPerformanceGraph() {
+  // Stop auto-refresh
+  stopPerformanceGraphAutoRefresh();
+  
   if (metricsChart) {
     metricsChart.destroy();
     metricsChart = null;
@@ -679,6 +715,8 @@ function cleanupPerformanceGraph() {
 window.loadModelMetrics = loadModelMetrics;
 window.updateMetricsChart = updateMetricsChart;
 window.cleanupPerformanceGraph = cleanupPerformanceGraph;
+window.startPerformanceGraphAutoRefresh = startPerformanceGraphAutoRefresh;
+window.stopPerformanceGraphAutoRefresh = stopPerformanceGraphAutoRefresh;
 
 // ──────────────────────────────────────────────────────────────
 // Export Configuration Modal

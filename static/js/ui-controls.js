@@ -2482,6 +2482,11 @@ async function openPerformanceGraphModal(modelName, port, event) {
     // This ensures the canvas is visible when Chart.js initializes
     ModalManager.open('performance-graph-modal');
 
+    // Start auto-refresh for the performance graph (60-second interval)
+    if (typeof window.startPerformanceGraphAutoRefresh === 'function') {
+      window.startPerformanceGraphAutoRefresh();
+    }
+
     // NOW load metrics - canvas is visible so Chart.js can size correctly
     if (modelSelect && typeof loadModelMetrics === 'function') {
       loadModelMetrics({ target: modelSelect });
@@ -2519,9 +2524,14 @@ function showPerformanceModal() {
   // Populate dropdown without pre-selection
   populatePerformanceModelDropdown(modelSelect);
   
-  // Show the modal
+// Show the modal
   ModalManager.open('performance-graph-modal');
-  
+
+  // Start auto-refresh for the performance graph (60-second interval)
+  if (typeof window.startPerformanceGraphAutoRefresh === 'function') {
+    window.startPerformanceGraphAutoRefresh();
+  }
+
   // Wait for modal to be visible, then register cleanup
   setTimeout(() => {
     // Register cleanup for this modal
