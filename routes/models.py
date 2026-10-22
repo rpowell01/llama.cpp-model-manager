@@ -1,5 +1,6 @@
 """Model CRUD operations."""
 import requests
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
@@ -474,8 +475,23 @@ def api_get_metrics_from_csv():
     
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
+    time_range = data.get("time_range", "24h")  # Default to last 24 hours
     if not model:
         return jsonify({"error": "Missing model name"}), 400
+
+    # Parse time range and calculate cutoff
+    cutoff = None
+    now = datetime.now()
+    if time_range == "1h":
+        cutoff = now - timedelta(hours=1)
+    elif time_range == "6h":
+        cutoff = now - timedelta(hours=6)
+    elif time_range == "12h":
+        cutoff = now - timedelta(hours=12)
+    elif time_range == "24h":
+        cutoff = now - timedelta(hours=24)
+    elif time_range == "7d":
+        cutoff = now - timedelta(days=7)
     
     # Case-insensitive lookup
     model_key = None
@@ -530,6 +546,24 @@ def api_get_metrics_from_csv():
     
     if not metrics_list:
         return jsonify({"error": "CSV file is empty"}), 400
+    
+    # Filter by time range if cutoff is set
+    if cutoff is not None:
+        filtered_metrics = []
+        for m in metrics_list:
+            ts_str = m.get("timestamp", "")
+            if ts_str:
+                try:
+                    # Try parsing ISO format timestamp
+                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                    if ts >= cutoff:
+                        filtered_metrics.append(m)
+                except ValueError:
+                    # If parsing fails, include the entry (can't filter)
+                    filtered_metrics.append(m)
+            else:
+                filtered_metrics.append(m)
+        metrics_list = filtered_metrics
     
     return jsonify({
         "status": "success",

@@ -343,6 +343,7 @@ function renderTiles(rows, dlMap, query) {
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
         "')\">\u274C Delete</button>" +
+        "</div>" +
         "</div>"
       );
     })
@@ -2404,9 +2405,58 @@ async function exportMetrics(modelName, port) {
 }
 window.exportMetrics = exportMetrics;
 
+// Expose functions globally for use in model-manager.js
+window.showMetricsTooltip = showMetricsTooltip;
+window.hideMetricsTooltip = hideMetricsTooltip;
+window.exportMetrics = exportMetrics;
+window.renderTiles = renderTiles;
+window.updateTilePrefs = updateTilePrefs;
+
 /**
- * Open performance graph modal (called from button click)
- * @param {string} modelName - Model name
+ * Populate the performance graph model dropdown with current models.
+ * Running models appear first (sorted alphabetically), then stopped models (sorted alphabetically).
+ * @param {HTMLSelectElement} modelSelect - The dropdown element
+ * @param {string} [preSelectModel] - Optional model name to pre-select
+ */
+function populatePerformanceModelDropdown(modelSelect, preSelectModel) {
+  if (!modelSelect) return;
+
+  modelSelect.innerHTML = '<option value="">Select a model</option>';
+
+  const modelRows = currentModelRows || [];
+  const models = modelRows.filter(r => !r.speculative_decoding_model);
+
+  const runningModels = models.filter(r => r.status && r.status.startsWith("running"));
+  const nonRunningModels = models.filter(r => !r.status || !r.status.startsWith("running"));
+
+  // Sort alphabetically within each group
+  const sortByName = (a, b) => normalizeModelName(a.model).localeCompare(normalizeModelName(b.model));
+  runningModels.sort(sortByName);
+  nonRunningModels.sort(sortByName);
+
+  const sortedModels = [...runningModels, ...nonRunningModels];
+
+  const optionsHtml = sortedModels.map(r => {
+    const isRunning = r.status && r.status.startsWith("running");
+    const indicator = isRunning ? ' ● running' : ' ● stopped';
+    const value = r.model;
+    return `<option value="${he(String(value))}">${he(String(r.model))}${indicator}</option>`;
+  }).join('');
+
+  modelSelect.innerHTML += optionsHtml;
+
+  // Pre-select model if provided
+  if (preSelectModel) {
+    const matchingOption = modelSelect.querySelector(`option[value="${he(String(preSelectModel))}"]`);
+    if (matchingOption) {
+      matchingOption.selected = true;
+    }
+  }
+}
+
+/**
+ * Show the performance graph modal for a specific model (from tile click)
+ * @param {string} modelName - Model name to show
  * @param {number} port - Model port
  * @param {Event} event - Click event for button state
  */
@@ -2419,49 +2469,8 @@ async function openPerformanceGraphModal(modelName, port, event) {
       btn.textContent = '📈 Loading...';
     }
 
-    // Set the model in the dropdown (but don't load metrics yet)
     const modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-      // Clear existing options
-      modelSelect.innerHTML = '<option value="">Select a model</option>';
-
-      // Get all model rows from currentModelRows
-      const modelRows = currentModelRows || [];
-
-      // Filter out speculative decoding models
-      const models = modelRows.filter(r => !r.speculative_decoding_model);
-
-      // Separate running and non-running models
-      const runningModels = models.filter(r => r.status && r.status.startsWith("running"));
-      const nonRunningModels = models.filter(r => !r.status || !r.status.startsWith("running"));
-
-      // Combine with running models first, then non-running
-      const sortedModels = [...runningModels, ...nonRunningModels];
-
-      // Build the dropdown options
-      const optionsHtml = sortedModels.map(r => {
-        const isRunning = r.status && r.status.startsWith("running");
-        const indicator = isRunning ? ' ● running' : ' ● stopped';
-        const value = r.model;
-        return `<option value="${he(String(value))}">${he(String(r.model))}${indicator}</option>`;
-      }).join('');
-
-      modelSelect.innerHTML += optionsHtml;
-
-      // Find or add the model option and set it as selected
-      const matchingOption = modelSelect.querySelector(`option[value="${he(String(modelName))}"]`);
-      if (matchingOption) {
-        matchingOption.selected = true;
-      } else {
-        // Model not found in the list (e.g., deleted or speculative)
-        // Keep the first model or clear selection
-        if (sortedModels.length > 0) {
-          modelSelect.value = sortedModels[0].model;
-        } else {
-          modelSelect.value = '';
-        }
-      }
-    }
+    populatePerformanceModelDropdown(modelSelect, modelName);
 
     // Re-register cleanup callback for each open/close cycle
     // (ModalManager deletes the callback after close)
@@ -2494,15 +2503,8 @@ async function openPerformanceGraphModal(modelName, port, event) {
 }
 window.openPerformanceGraphModal = openPerformanceGraphModal;
 
-// Expose functions globally for use in model-manager.js
-window.showMetricsTooltip = showMetricsTooltip;
-window.hideMetricsTooltip = hideMetricsTooltip;
-window.exportMetrics = exportMetrics;
-window.renderTiles = renderTiles;
-window.updateTilePrefs = updateTilePrefs;
-
 /**
- * Show the performance graph modal and prompt for model selection
+ * Show the performance graph modal and prompt for model selection (from toolbar)
  */
 function showPerformanceModal() {
   const modelSelect = document.getElementById('model-select');
@@ -2514,30 +2516,14 @@ function showPerformanceModal() {
     return;
   }
   
-  // Clear the modal and prompt for model selection
-  modelSelect.innerHTML = '<option value="">Select a model to view performance metrics</option>';
+  // Populate dropdown without pre-selection
+  populatePerformanceModelDropdown(modelSelect);
   
   // Show the modal
   ModalManager.open('performance-graph-modal');
   
-  // Wait for modal to be visible, then load model list
+  // Wait for modal to be visible, then register cleanup
   setTimeout(() => {
-    const modelRows = currentModelRows || [];
-    const models = modelRows.filter(r => !r.speculative_decoding_model);
-    const runningModels = models.filter(r => r.status && r.status.startsWith("running"));
-    const nonRunningModels = models.filter(r => !r.status || !r.status.startsWith("running"));
-    const sortedModels = [...runningModels, ...nonRunningModels];
-    
-    const optionsHtml = sortedModels.map(r => {
-      const isRunning = r.status && r.status.startsWith("running");
-      const indicator = isRunning ? ' ● running' : ' ● stopped';
-      const value = r.model;
-      return `<option value="${he(String(value))}">${he(String(r.model))}${indicator}</option>`;
-    }).join('');
-    
-    modelSelect.innerHTML += optionsHtml;
-    modelSelect.value = ''; // Deselect any option
-    
     // Register cleanup for this modal
     if (typeof window.cleanupPerformanceGraph === 'function') {
       ModalManager.register('performance-graph-modal', window.cleanupPerformanceGraph);
