@@ -97,7 +97,16 @@
 
 <main>
 
-<div class="toolbar">
+<!-- Action Buttons Row -->
+<div class="toolbar-row buttons-row">
+  <button class="btn-goto" id="refreshBtn" style="background: var(--btn-goto); color: var(--bg);">↻ Refresh</button>
+  <button class="btn-del" id="shutdownBtn" style="background: var(--btn-stop);">⏻ Shutdown</button>
+  <button class="btn-add" id="addModelBtn">➕ Add Model</button>
+  <button class="btn-goto" id="exportStatusBtn" onclick="openExportConfigModal()">📊 Metrics Export Cfg</button>
+</div>
+
+<!-- Filter Controls Row -->
+<div class="toolbar-row">
   <input type="search" id="search" placeholder="Filter models…">
   <label class="toolbar-field" title="Show or hide models that are only used for speculative decoding">
     <input type="checkbox" id="hideSpecModels">
@@ -107,11 +116,6 @@
     <span>Sort</span>
     <select id="tileSortOrder" title="Sort model tiles"></select>
   </label>
-  <button class="btn-goto" id="refreshBtn" style="background: var(--btn-goto); color: var(--bg);">↻ Refresh</button>
-  <button class="btn-del" id="shutdownBtn" style="background: var(--btn-stop);">⏻ Shutdown</button>
-  <button class="btn-add" id="addModelBtn">➕ Add Model</button>
-  <button class="btn-goto" id="exportStatusBtn" onclick="openExportConfigModal()">📊 Export Status</button>
-  <a class="btn-goto" href="/api/logs" target="_blank">📜 Logs</a>
 </div>
 
 <!-- Download Selection Modal -->

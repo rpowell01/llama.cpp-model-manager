@@ -49,3 +49,28 @@ main {
 #content-area.has-panel {
   grid-template-columns: 1fr 340px;
 }
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.toolbar-row.buttons-row {
+  margin-bottom: 1rem;
+}
+
+.toolbar-row.buttons-row button,
+.toolbar-row.buttons-row a {
+  margin-right: 0.25rem;
+}
+
+.toolbar-row.buttons-row .btn-del {
+  margin-right: 0.25rem;
+}
+
+.toolbar-row.buttons-row .btn-goto:last-child,
+.toolbar-row.buttons-row a:last-child {
+  margin-right: 0;
+}
