@@ -383,6 +383,11 @@ async function loadModelMetrics(event) {
     }
 
     if (data.available === false) {
+      // Check if it's a connection timeout error (model not running)
+      if (data.warning && data.warning.includes("ConnectTimeout")) {
+        console.log('Model not running, trying to load historical data from CSV...');
+        return await loadMetricsFromCSV(modelName);
+      }
       console.warn('Metrics unavailable:', data.warning);
       setMetricsStatus(data.warning || 'No metrics data available for this model.');
       renderMetricsChartFromHistory();
