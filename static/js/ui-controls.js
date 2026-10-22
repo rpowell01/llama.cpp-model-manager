@@ -76,6 +76,7 @@ function sortModelRows(rows, order) {
   };
 
   const comparators = {
+    name: byName,
     speed: (a, b) => ratingOf(b, "rating_speed") - ratingOf(a, "rating_speed"),
     coding: (a, b) => ratingOf(b, "rating_coding") - ratingOf(a, "rating_coding"),
     "speed-coding": (a, b) =>
