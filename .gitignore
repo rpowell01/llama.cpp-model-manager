@@ -5,6 +5,7 @@ __pycache__/
 /page_script.js
 /script_part2.txt
 /semver_solution.py
+/.playwright-mcp/
 /venv
 /webapp.log
 /~
