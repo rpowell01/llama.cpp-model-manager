@@ -32,12 +32,28 @@
   margin-bottom: 0;
 }
 
+/* Box outline around each major section */
+.panel-section {
+  position: relative;
+  border: 1px solid var(--panel-border-color);
+  border-radius: 6px;
+  padding: 0.6rem 0.6rem 0.6rem 0.6rem;
+  background: var(--panel-border-color);
+  background: linear-gradient(180deg, transparent 0%, var(--panel-border-color) 100%);
+}
+
 .panel-section h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
+  margin: 0.2rem 0 0.4rem 0.2rem;
+  font-size: 0.82rem;
   color: var(--text2);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+
+/* Remove outline padding from the last section */
+.panel-section:last-child {
+  padding: 0.6rem 0.6rem 0 0.6rem;
 }
 
 /* Grid layout within panel */

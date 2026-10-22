@@ -14,6 +14,7 @@
   --orange: #ff9800;
   --blue: #3498db;
   --border: var(--surface2);
+  --panel-border-color: var(--surface2);
   --btn-run: #27ae60;
   --btn-stop: #e74c3c;
   --btn-download: #ff9800;
@@ -22,7 +23,7 @@
   --btn-search: #3498db;
   --btn-goto: #00bcd4;
   --btn-export: #4a4a4a;
-}
+  }
 
 /* Theme: Dark (default) */
 [data-theme="dark"] {
