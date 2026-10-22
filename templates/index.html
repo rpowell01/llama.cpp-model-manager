@@ -103,6 +103,7 @@
   <button class="btn-del" id="shutdownBtn" style="background: var(--btn-stop);">⏻ Shutdown</button>
   <button class="btn-add" id="addModelBtn">➕ Add Model</button>
   <button class="btn-goto" id="exportStatusBtn" onclick="openExportConfigModal()">📊 Metrics Export Cfg</button>
+  <button class="btn-goto" id="performanceBtn" onclick="showPerformanceModal()">📈 Performance</button>
 </div>
 
 <!-- Filter Controls Row -->
@@ -348,96 +349,36 @@ function setMetricsStatus(message) {
 }
 
 // Load metrics for the selected model and display in the chart
-async function loadModelMetrics(event) {
-  const modelName = (event?.target?.value) || (modelSelect?.value) || '';
-  if (!modelName) return;
+ async function loadModelMetrics(event) {
+   const modelName = (event?.target?.value) || (modelSelect?.value) || '';
+   if (!modelName) return;
 
-  // Clear history when switching models to avoid mixing data
-  if (modelName !== lastMetricModel) {
-    metricTimestamps = [];
-    metricPromptEvalTimes = [];
-    metricPromptEvalRates = [];
-    metricGenEvalTimes = [];
-    metricGenRates = [];
-    metricSpecAcceptanceRates = [];
-    metricSpecSpeedups = [];
-    lastMetricModel = modelName;
-  }
+   // Clear history when switching models to avoid mixing data
+   if (modelName !== lastMetricModel) {
+     metricTimestamps = [];
+     metricPromptEvalTimes = [];
+     metricPromptEvalRates = [];
+     metricGenEvalTimes = [];
+     metricGenRates = [];
+     metricSpecAcceptanceRates = [];
+     metricSpecSpeedups = [];
+     lastMetricModel = modelName;
+   }
 
-  // First, try to get live metrics from the model
-  try {
-    const response = await fetch('/api/get-metrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName })
-    });
-    const data = await response.json();
-    
-    if (data.error) {
-      // Check if it's a "model not running" error, then try CSV
-      if (data.error.includes("not running") || data.error.includes("failed to fetch")) {
-        console.log('Model not running, trying to load historical data from CSV...');
-        return await loadMetricsFromCSV(modelName);
-      }
-      throw new Error(data.error);
-    }
+   // Check if the model is running or stopped using currentModelRows
+   // For running models, use CSV data (same as stopped models per user request)
+   // For stopped models, try live first, then CSV
+   const modelData = currentModelRows?.find(r => r.model === modelName);
+   const isRunning = modelData && modelData.status && modelData.status.startsWith("running");
+   
+   if (!isRunning) {
+     // Model is stopped, use CSV data
+     return await loadMetricsFromCSV(modelName);
+   }
 
-    if (data.available === false) {
-      // Check if it's a connection timeout error (model not running)
-      if (data.warning && data.warning.includes("ConnectTimeout")) {
-        console.log('Model not running, trying to load historical data from CSV...');
-        return await loadMetricsFromCSV(modelName);
-      }
-      console.warn('Metrics unavailable:', data.warning);
-      setMetricsStatus(data.warning || 'No metrics data available for this model.');
-      renderMetricsChartFromHistory();
-      return;
-    }
+   // Model is running, use CSV data (per user request - same logic as stopped models)
+   return await loadMetricsFromCSV(modelName);
 
-    if (data.stale) {
-      console.warn('Showing last known metrics:', data.warning);
-      const age = data.cache_age_seconds != null
-        ? ` (${Math.round(data.cache_age_seconds)}s old)`
-        : '';
-      setMetricsStatus(
-        `Live metrics unavailable${age} - showing the last known values. ${data.warning || ''}`
-      );
-      renderMetricsChartFromHistory();
-      return;
-    }
-
-    setMetricsStatus(null);
-
-    // Extract current values from flat API response and accumulate into history
-    const m = data.metrics || {};
-    const ts = m.timestamp || new Date().toISOString();
-
-    metricTimestamps.push(ts);
-    metricPromptEvalTimes.push(m.prompt_eval_ms_per_token || 0);
-    metricPromptEvalRates.push(m.prompt_rate_tokens_per_sec || 0);
-    metricGenEvalTimes.push(m.gen_eval_ms_per_token || 0);
-    metricGenRates.push(m.gen_rate_tokens_per_sec || 0);
-    metricSpecAcceptanceRates.push(m.spec_acceptance_rate_pct || 0);
-    metricSpecSpeedups.push(m.spec_est_speedup || 0);
-
-    // Trim history to max points
-    if (metricTimestamps.length > MAX_METRIC_POINTS) {
-      metricTimestamps.shift();
-      metricPromptEvalTimes.shift();
-      metricPromptEvalRates.shift();
-      metricGenEvalTimes.shift();
-      metricGenRates.shift();
-      metricSpecAcceptanceRates.shift();
-      metricSpecSpeedups.shift();
-    }
-
-    // Create or update the chart with the accumulated metrics data
-    renderMetricsChartFromHistory();
-  } catch (error) {
-    console.error('Error loading live metrics:', error);
-    // If live metrics failed, try loading from CSV
-    await loadMetricsFromCSV(modelName);
-  }
 }
 
 // Load historical metrics from CSV file for stopped models

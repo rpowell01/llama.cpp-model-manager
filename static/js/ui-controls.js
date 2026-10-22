@@ -343,16 +343,6 @@ function renderTiles(rows, dlMap, query) {
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
         "')\">\u274C Delete</button>" +
-        (running
-          ? ' <button class="chat" onclick="event.stopPropagation(); openChatModal(\'' +
-            jsEscape(r.model) +
-            "')\">\uD83D\uDCA8 Chat</button>" +
-            ' <button class="performance" onclick="event.stopPropagation(); openPerformanceGraphModal(\'' +
-            jsEscape(r.model) +
-            '\', ' + r.port + ', event)\" title="View performance metrics over time">\uD83D\uDCC8 Performance</button>'
-          : "") +
-        "</div>" +
-        progressHtml +
         "</div>"
       );
     })
@@ -2510,3 +2500,49 @@ window.hideMetricsTooltip = hideMetricsTooltip;
 window.exportMetrics = exportMetrics;
 window.renderTiles = renderTiles;
 window.updateTilePrefs = updateTilePrefs;
+
+/**
+ * Show the performance graph modal and prompt for model selection
+ */
+function showPerformanceModal() {
+  const modelSelect = document.getElementById('model-select');
+  const modal = document.getElementById('performance-graph-modal');
+  
+  // If modelSelect doesn't exist (modal hasn't initialized yet), show an error
+  if (!modelSelect) {
+    alert('Performance graph modal not initialized. Please refresh the page.');
+    return;
+  }
+  
+  // Clear the modal and prompt for model selection
+  modelSelect.innerHTML = '<option value="">Select a model to view performance metrics</option>';
+  
+  // Show the modal
+  ModalManager.open('performance-graph-modal');
+  
+  // Wait for modal to be visible, then load model list
+  setTimeout(() => {
+    const modelRows = currentModelRows || [];
+    const models = modelRows.filter(r => !r.speculative_decoding_model);
+    const runningModels = models.filter(r => r.status && r.status.startsWith("running"));
+    const nonRunningModels = models.filter(r => !r.status || !r.status.startsWith("running"));
+    const sortedModels = [...runningModels, ...nonRunningModels];
+    
+    const optionsHtml = sortedModels.map(r => {
+      const isRunning = r.status && r.status.startsWith("running");
+      const indicator = isRunning ? ' ● running' : ' ● stopped';
+      const value = r.model;
+      return `<option value="${he(String(value))}">${he(String(r.model))}${indicator}</option>`;
+    }).join('');
+    
+    modelSelect.innerHTML += optionsHtml;
+    modelSelect.value = ''; // Deselect any option
+    
+    // Register cleanup for this modal
+    if (typeof window.cleanupPerformanceGraph === 'function') {
+      ModalManager.register('performance-graph-modal', window.cleanupPerformanceGraph);
+    }
+  }, 100);
+}
+
+window.showPerformanceModal = showPerformanceModal;
