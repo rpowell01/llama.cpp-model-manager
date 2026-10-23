@@ -609,29 +609,31 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if meta.get("reasoning_preserve", DEFAULTS["reasoning_preserve"]):
         cmd += ["--reasoning-preserve"]
     
-    # Generation / Sampling parameters (always include)
-    cmd += ["--temp", str(meta.get("temperature", DEFAULTS["temperature"]))]
-    cmd += ["--top-k", str(meta.get("top_k", DEFAULTS["top_k"]))]
-    cmd += ["--top-p", str(meta.get("top_p", DEFAULTS["top_p"]))]
-    cmd += ["--min-p", str(meta.get("min_p", DEFAULTS["min_p"]))]
-    cmd += ["--repeat-penalty", str(meta.get("repeat_penalty", DEFAULTS["repeat_penalty"]))]
-    cmd += ["--presence-penalty", str(meta.get("presence_penalty", DEFAULTS["presence_penalty"]))]
-    
-    reasoning = meta.get("reasoning", DEFAULTS["reasoning"])
-    if reasoning:
-        cmd += ["--reasoning", reasoning]
-    
-    reasoning_effort = meta.get("reasoning_effort", DEFAULTS["reasoning_effort"])
-    if reasoning_effort:
-        cmd += ["--reasoning-effort", reasoning_effort]
-    
-    reasoning_budget = meta.get("reasoning_budget", DEFAULTS["reasoning_budget"])
-    if reasoning_budget is not None:
-        cmd += ["--reasoning-budget", str(reasoning_budget)]
-    
-    reasoning_budget_message = meta.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])
-    if reasoning_budget_message:
-        cmd += ["--reasoning-budget-message", reasoning_budget_message]
+    # Generation / Sampling parameters (only include if use_generation_params is True)
+    use_gen_params = meta.get("use_generation_params", DEFAULTS["use_generation_params"])
+    if use_gen_params:
+        cmd += ["--temp", str(meta.get("temperature", DEFAULTS["temperature"]))]
+        cmd += ["--top-k", str(meta.get("top_k", DEFAULTS["top_k"]))]
+        cmd += ["--top-p", str(meta.get("top_p", DEFAULTS["top_p"]))]
+        cmd += ["--min-p", str(meta.get("min_p", DEFAULTS["min_p"]))]
+        cmd += ["--repeat-penalty", str(meta.get("repeat_penalty", DEFAULTS["repeat_penalty"]))]
+        cmd += ["--presence-penalty", str(meta.get("presence_penalty", DEFAULTS["presence_penalty"]))]
+        
+        reasoning = meta.get("reasoning", DEFAULTS["reasoning"])
+        if reasoning:
+            cmd += ["--reasoning", reasoning]
+        
+        reasoning_effort = meta.get("reasoning_effort", DEFAULTS["reasoning_effort"])
+        if reasoning_effort:
+            cmd += ["--reasoning-effort", reasoning_effort]
+        
+        reasoning_budget = meta.get("reasoning_budget", DEFAULTS["reasoning_budget"])
+        if reasoning_budget is not None:
+            cmd += ["--reasoning-budget", str(reasoning_budget)]
+        
+        reasoning_budget_message = meta.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])
+        if reasoning_budget_message:
+            cmd += ["--reasoning-budget-message", reasoning_budget_message]
     
     # CPU-only optimizations
     gpu_layers = meta.get("gpu_layers", DEFAULTS["gpu_layers"])

@@ -271,6 +271,7 @@ def api_start():
             # Chat template
             "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
             # Generation / Sampling parameters
+            "use_generation_params": getattr(model_dict, 'use_generation_params', True),
             "temperature": getattr(model_dict, 'temperature', 0.7),
             "top_k": getattr(model_dict, 'top_k', 40),
             "top_p": getattr(model_dict, 'top_p', 0.9),

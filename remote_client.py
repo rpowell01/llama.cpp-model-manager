@@ -131,6 +131,7 @@ class Model:
     # Chat template
     chat_template_file: str = ""
     # Generation / Sampling parameters
+    use_generation_params: bool = True
     temperature: float = 0.7
     top_k: int = 40
     top_p: float = 0.9
@@ -225,6 +226,7 @@ class Model:
             # Chat template
             chat_template_file=data.get("chat_template_file", ""),
             # Generation / Sampling parameters
+            use_generation_params=data.get("use_generation_params", True),
             temperature=data.get("temperature", 0.7),
             top_k=data.get("top_k", 40),
             top_p=data.get("top_p", 0.9),

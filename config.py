@@ -181,6 +181,7 @@ DEFAULTS: dict[str, Any] = {
     "custom_header_key": "",
     "custom_header_value": "",
     # Generation / Sampling parameters
+    "use_generation_params": True,
     "temperature": 0.7,
     "top_k": 40,
     "top_p": 0.9,
