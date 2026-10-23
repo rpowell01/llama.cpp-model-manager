@@ -6,7 +6,7 @@
  * Generate Kilo Code provider configuration
  * @param {Object} modelData - Model data
  * @param {string} modelName - Model name
- * @returns {Object} Configuration object
+ * @returns {Object} Configuration object (provider config without outer braces)
  */
 function generateKiloCodeConfig(modelData, modelName) {
   // Provider key: llama_cpp_<MODEL_NAME_UPPER>
@@ -28,36 +28,50 @@ function generateKiloCodeConfig(modelData, modelName) {
     headers[headerKey] = headerValue;
   }
 
+  // Supported parameters for the model
+  const supportedParameters = [
+    "include_reasoning",
+    "max_tokens",
+    "reasoning",
+    "temperature",
+    "tool_choice",
+    "tools"
+  ];
+
+  // Default parameters (use null for unset values)
+  const defaultParameters = {
+    temperature: modelData.temperature !== undefined ? modelData.temperature : null,
+    top_p: modelData.top_p !== undefined ? modelData.top_p : null,
+    top_k: modelData.top_k !== undefined ? modelData.top_k : null,
+    frequency_penalty: null, // Not currently supported in llama.cpp
+    presence_penalty: modelData.presence_penalty !== undefined ? modelData.presence_penalty : null,
+    repetition_penalty: modelData.repeat_penalty !== undefined ? modelData.repeat_penalty : null,
+    reasoning: modelData.reasoning !== undefined ? modelData.reasoning : null,
+    reasoning_effort: modelData.reasoning_effort !== undefined ? modelData.reasoning_effort : null,
+    reasoning_budget: modelData.reasoning_budget !== undefined ? modelData.reasoning_budget : null,
+    min_p: modelData.min_p !== undefined ? modelData.min_p : null,
+  };
+
+  // Return provider config object (without outer key wrapper)
   return {
-    [key]: {
-      name: providerName,
-      npm: npm,
-      options: {
-        baseURL: baseURL,
-        apiKey: '${LLAMA_CPP_API_KEY}',
-        rateLimitSeconds: 0.1,
-        maxRetries: 3,
-        ...(Object.keys(headers).length > 0 ? { headers } : {})
-      },
-      models: {
-        [modelName]: {
-          limit: {
-            context: context,
-            input: inputLimit,
-            output: outputLimit
-          },
-          // Generation / Sampling parameters (passed as default request parameters)
-          ...(modelData.temperature !== undefined && modelData.temperature !== 0.7 ? { temperature: modelData.temperature } : {}),
-          ...(modelData.top_k !== undefined && modelData.top_k !== 40 ? { topK: modelData.top_k } : {}),
-          ...(modelData.top_p !== undefined && modelData.top_p !== 0.9 ? { topP: modelData.top_p } : {}),
-          ...(modelData.min_p !== undefined && modelData.min_p !== 0.05 ? { minP: modelData.min_p } : {}),
-          ...(modelData.repeat_penalty !== undefined && modelData.repeat_penalty !== 1.1 ? { repetitionPenalty: modelData.repeat_penalty } : {}),
-          ...(modelData.presence_penalty !== undefined && modelData.presence_penalty !== 0.0 ? { presencePenalty: modelData.presence_penalty } : {}),
-          ...(modelData.reasoning !== undefined && modelData.reasoning !== "auto" ? { reasoning: modelData.reasoning } : {}),
-          ...(modelData.reasoning_effort !== undefined && modelData.reasoning_effort !== "default" ? { reasoningEffort: modelData.reasoning_effort } : {}),
-          ...(modelData.reasoning_budget !== undefined && modelData.reasoning_budget !== -1 ? { reasoningBudget: modelData.reasoning_budget } : {}),
-          ...(modelData.reasoning_budget_message !== undefined && modelData.reasoning_budget_message !== "" ? { reasoningBudgetMessage: modelData.reasoning_budget_message } : {}),
-        }
+    name: providerName,
+    npm: npm,
+    options: {
+      baseURL: baseURL,
+      apiKey: '${LLAMA_CPP_API_KEY}',
+      rateLimitSeconds: 0.1,
+      maxRetries: 3,
+      ...(Object.keys(headers).length > 0 ? { headers } : {})
+    },
+    models: {
+      [modelName]: {
+        limit: {
+          context: context,
+          input: inputLimit,
+          output: outputLimit
+        },
+        supported_parameters: supportedParameters,
+        default_parameters: defaultParameters
       }
     }
   };
