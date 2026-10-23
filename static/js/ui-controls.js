@@ -582,9 +582,12 @@ async function renderPanelProperties(data, modelName) {
             // Use custom File Browser module for File System Access API
             // This maintains an in-memory path stack to return full paths
             else if ('showDirectoryPicker' in window) {
-              if (window.FileBrowser && typeof window.FileBrowser.open === 'function') {
-                window.FileBrowser.open({
+              if (window.FileBrowser && typeof window.FileBrowser.openWithStartPath === 'function') {
+                // Use current input value as start path hint (may contain full path like C:/folder)
+                const startPath = input.value || undefined;
+                window.FileBrowser.openWithStartPath({
                   type: browseType,
+                  startPath: startPath,
                   onSelect: (fullPath, entry) => {
                     input.value = fullPath;
                     // Trigger change event so any listeners know the value changed

@@ -666,8 +666,12 @@ const FileBrowser = (function() {
     if (entry && !entry.isParent) {
       pathParts.push(entry.name);
     }
-    // Return as-is (relative to root) or with leading slash
-    return pathParts.join('/');
+    let path = pathParts.join('/');
+    // If we have a root path prefix (e.g., "C:" on Windows), prepend it
+    if (state.rootPathPrefix) {
+      path = state.rootPathPrefix + '/' + path;
+    }
+    return path;
   }
 
   /**
@@ -766,6 +770,10 @@ const FileBrowser = (function() {
         mode: 'read'
       });
       // Store the root handle and its name
+      // Store the full path prefix for Windows paths
+      state.rootPathPrefix = '';
+      // On Windows, the directory picker returns just the folder name
+      // We need to construct the full path - the handle doesn't provide full path
       state.pathStack = [{ name: state.currentDirHandle.name, handle: state.currentDirHandle }];
       await renderList();
     } catch (err) {
@@ -775,6 +783,76 @@ const FileBrowser = (function() {
         closeModal();
       }
     }
+  }
+
+  /**
+   * Open the file browser with a specific starting path
+   * Used when full path is known (e.g., from Electron API or manual entry)
+   * @param {Object} options - Configuration options
+   * @param {string} options.type - 'file', 'directory', or 'model-file'
+   * @param {Function} options.onSelect - Callback function(fullPath, entry)
+   * @param {string} [options.startPath] - Optional starting path
+   * @param {Array} [options.filters] - File filters for model-file type
+   */
+  async function openWithStartPath(options = {}) {
+    if (!options.startPath) {
+      return open(options);
+    }
+
+    // Initialize state with the known path
+    state.browseType = options.type || 'file';
+    state.onSelect = options.onSelect;
+    state.filter = options.filters;
+    state.rootPathPrefix = getRootPathPrefix(options.startPath);
+    state.pathStack = [];
+    state.currentDirHandle = null;
+
+    injectStyles();
+    state.modal = createModal();
+    document.body.appendChild(state.modal);
+
+    const titleEl = document.getElementById('file-browser-title');
+    if (titleEl) {
+      switch (state.browseType) {
+        case 'directory':
+          titleEl.textContent = 'Select Folder';
+          break;
+        case 'model-file':
+          titleEl.textContent = 'Select Model File (GGUF)';
+          break;
+        default:
+          titleEl.textContent = 'Select File';
+      }
+    }
+
+    setupModalHandlers();
+
+    // Try to get directory handle from the known path
+    // Since we can't get handle from path directly with FSA API,
+    // we fall back to showing the directory picker but with the path as context
+    try {
+      // We still need to use showDirectoryPicker, but we can inform user
+      // For now, use the standard picker
+      state.currentDirHandle = await window.showDirectoryPicker({
+        mode: 'read'
+      });
+      state.pathStack = [{ name: state.currentDirHandle.name, handle: state.currentDirHandle }];
+      await renderList();
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error opening directory picker:', err);
+        logError('Error opening directory picker: ' + err.message);
+        closeModal();
+      }
+    }
+  }
+
+  /**
+   * Extract root path prefix from a full path (e.g., "C:" from "C:/folder/subfolder")
+   */
+  function getRootPathPrefix(fullPath) {
+    const match = fullPath.match(/^([A-Za-z]:)/);
+    return match ? match[1] : '';
   }
 
   /**
@@ -877,6 +955,7 @@ const FileBrowser = (function() {
   // Public API
   return {
     open,
+    openWithStartPath,
     close: closeModal
   };
 })();
