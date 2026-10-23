@@ -388,13 +388,27 @@ const FileBrowser = (function() {
    */
   async function renderList() {
     const contentEl = document.getElementById('file-browser-content');
-    const loadingEl = document.getElementById('file-browser-loading');
     if (!contentEl) return;
 
-    // Show loading
-    if (loadingEl) loadingEl.style.display = 'flex';
+    // Create or get loading element
+    let loadingEl = document.getElementById('file-browser-loading');
+    if (!loadingEl) {
+      loadingEl = document.createElement('div');
+      loadingEl.id = 'file-browser-loading';
+      loadingEl.className = 'file-browser-loading';
+      loadingEl.textContent = 'Loading...';
+    }
+    loadingEl.style.display = 'flex';
     contentEl.innerHTML = '';
-    contentEl.appendChild(loadingEl);
+    try {
+      if (contentEl.contains(loadingEl)) {
+        // Already in DOM
+      }
+      contentEl.appendChild(loadingEl);
+    } catch (e) {
+      // Fallback
+      contentEl.appendChild(loadingEl);
+    }
 
     try {
       state.isLoading = true;
@@ -415,27 +429,32 @@ const FileBrowser = (function() {
         // Clear handle map for new directory
         state.handleMap.clear();
         
-        for await (const [name, handle] of state.currentDirHandle.entries()) {
-          // Skip hidden files
-          if (name.startsWith('.')) continue;
+        try {
+          for await (const [name, handle] of state.currentDirHandle.entries()) {
+            // Skip hidden files
+            if (name.startsWith('.')) continue;
 
-          const isDirectory = handle.kind === 'directory';
-          
-          // Apply filter for model-file type
-          if (state.browseType === 'model-file' && !isDirectory) {
-            const ext = name.split('.').pop().toLowerCase();
-            if (ext !== 'gguf') continue;
+            const isDirectory = handle.kind === 'directory';
+            
+            // Apply filter for model-file type
+            if (state.browseType === 'model-file' && !isDirectory) {
+              const ext = name.split('.').pop().toLowerCase();
+              if (ext !== 'gguf') continue;
+            }
+
+            // Store handle in map for later navigation
+            state.handleMap.set(name, handle);
+
+            entries.push({
+              name,
+              isDirectory,
+              isParent: false,
+              handle
+            });
           }
-
-          // Store handle in map for later navigation
-          state.handleMap.set(name, handle);
-
-          entries.push({
-            name,
-            isDirectory,
-            isParent: false,
-            handle
-          });
+        } catch (e) {
+          console.error('Error iterating directory:', e);
+          throw e;
         }
       }
 
@@ -449,71 +468,77 @@ const FileBrowser = (function() {
         return a.name.localeCompare(b.name);
       });
 
-      // Create list
-      const list = document.createElement('ul');
-      list.className = 'file-browser-list';
-      list.setAttribute('role', 'listbox');
+        // Create list
+        const list = document.createElement('ul');
+        list.className = 'file-browser-list';
+        list.setAttribute('role', 'listbox');
 
-      let selectedItem = null;
+        entries.forEach((entry, index) => {
+          const item = document.createElement('li');
+          item.className = `file-browser-item ${entry.isDirectory ? 'directory' : 'file'} ${entry.isParent ? 'parent' : ''}`;
+          item.setAttribute('role', 'option');
+          item.setAttribute('tabindex', '0');
+          item.dataset.index = index;
+          item.dataset.name = entry.name;
+          item.dataset.isDirectory = entry.isDirectory ? 'true' : 'false';
+          item.dataset.isParent = entry.isParent ? 'true' : 'false';
 
-      entries.forEach((entry, index) => {
-        const item = document.createElement('li');
-        item.className = `file-browser-item ${entry.isDirectory ? 'directory' : 'file'} ${entry.isParent ? 'parent' : ''}`;
-        item.setAttribute('role', 'option');
-        item.setAttribute('tabindex', '0');
-        item.dataset.index = index;
-        item.dataset.name = entry.name;
-        item.dataset.isDirectory = entry.isDirectory;
-        item.dataset.isParent = entry.isParent;
+          const icon = entry.isParent 
+            ? '⬆' 
+            : entry.isDirectory 
+              ? '📁' 
+              : '📄';
 
-        const icon = entry.isParent 
-          ? '⬆' 
-          : entry.isDirectory 
-            ? '📁' 
-            : '📄';
+          const meta = entry.isDirectory ? 'Folder' : 'File';
 
-        const meta = entry.isDirectory ? 'Folder' : 'File';
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'file-browser-item-icon';
+          iconSpan.textContent = icon;
+          
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'file-browser-item-name';
+          nameSpan.textContent = entry.name;
+          
+          const metaSpan = document.createElement('span');
+          metaSpan.className = 'file-browser-item-meta';
+          metaSpan.textContent = meta;
+          
+          item.appendChild(iconSpan);
+          item.appendChild(nameSpan);
+          item.appendChild(metaSpan);
 
-        item.innerHTML = `
-          <span class="file-browser-item-icon">${icon}</span>
-          <span class="file-browser-item-name">${escapeHtml(entry.name)}</span>
-          <span class="file-browser-item-meta">${meta}</span>
-        `;
+          // Store handle in dataset for later retrieval
+          if (entry.handle) {
+            item.dataset.handleId = entry.name;
+            state.handleMap.set(entry.name, entry.handle);
+          }
 
-        // Store handle in dataset for later retrieval
-        if (entry.handle) {
-          item.dataset.handle = JSON.stringify({
-            name: entry.name,
-            kind: entry.isDirectory ? 'directory' : 'file'
-          });
+          item.addEventListener('click', () => handleItemClick(item, entry));
+          item.addEventListener('keydown', (e) => handleItemKeydown(e, item, entry));
+          item.addEventListener('dblclick', () => handleItemDblClick(item, entry));
+
+          list.appendChild(item);
+        });
+
+        contentEl.innerHTML = '';
+        if (entries.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'file-browser-empty';
+          empty.textContent = 'This folder is empty';
+          contentEl.appendChild(empty);
+        } else {
+          contentEl.appendChild(list);
         }
-
-        item.addEventListener('click', () => handleItemClick(item, entry));
-        item.addEventListener('keydown', (e) => handleItemKeydown(e, item, entry));
-        item.addEventListener('dblclick', () => handleItemDblClick(item, entry));
-
-        list.appendChild(item);
-      });
-
-      contentEl.innerHTML = '';
-      if (entries.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'file-browser-empty';
-        empty.textContent = 'This folder is empty';
-        contentEl.appendChild(empty);
-      } else {
-        contentEl.appendChild(list);
-      }
 
       updateSelectButton();
 
     } catch (err) {
       console.error('Error reading directory:', err);
-      contentEl.innerHTML = `
-        <div class="file-browser-error">
-          Error reading directory: ${escapeHtml(err.message)}
-        </div>
-      `;
+      contentEl.innerHTML = '';
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'file-browser-error';
+      errorDiv.textContent = 'Error reading directory: ' + err.message;
+      contentEl.appendChild(errorDiv);
     } finally {
       state.isLoading = false;
       if (loadingEl) loadingEl.style.display = 'none';
@@ -624,7 +649,7 @@ const FileBrowser = (function() {
       await renderList();
     } catch (err) {
       console.error('Error navigating up:', err);
-      logError('Error navigating up: ' + err.message);
+      // Don't log error for up navigation issues
     } finally {
       state.isLoading = false;
     }
