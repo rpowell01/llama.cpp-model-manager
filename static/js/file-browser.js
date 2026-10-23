@@ -350,15 +350,18 @@ const FileBrowser = (function() {
 
     if (state.pathStack.length === 0) {
       pathEl.textContent = '/ (root)';
+    } else if (state.pathStack.length === 1) {
+      // At root directory
+      pathEl.textContent = state.pathStack[0].name + ' (root)';
     } else {
-      const path = '/' + state.pathStack.map(p => p.name).join('/');
+      const path = state.pathStack.map(p => p.name).join('/');
       pathEl.textContent = path;
     }
 
     // Update up button state
     const upBtn = document.getElementById('file-browser-up');
     if (upBtn) {
-      upBtn.disabled = state.pathStack.length === 0;
+      upBtn.disabled = state.pathStack.length <= 1;
     }
   }
 
@@ -637,14 +640,12 @@ const FileBrowser = (function() {
    * Navigate up one level
    */
   async function navigateUp() {
-    if (state.pathStack.length === 0) return;
+    if (state.pathStack.length <= 1) return; // Can't go above root
 
     try {
       state.isLoading = true;
       state.pathStack.pop();
-      state.currentDirHandle = state.pathStack.length > 0 
-        ? state.pathStack[state.pathStack.length - 1].handle 
-        : null;
+      state.currentDirHandle = state.pathStack[state.pathStack.length - 1].handle;
       updatePathDisplay();
       await renderList();
     } catch (err) {
@@ -659,11 +660,14 @@ const FileBrowser = (function() {
    * Build full path from path stack
    */
   function buildFullPath(entry) {
+    // pathStack[0] is the root directory the user initially picked
+    // We build the path from root's name + subsequent directories
     const pathParts = state.pathStack.map(p => p.name);
     if (entry && !entry.isParent) {
       pathParts.push(entry.name);
     }
-    return '/' + pathParts.join('/');
+    // Return as-is (relative to root) or with leading slash
+    return pathParts.join('/');
   }
 
   /**
@@ -761,6 +765,8 @@ const FileBrowser = (function() {
       state.currentDirHandle = await window.showDirectoryPicker({
         mode: 'read'
       });
+      // Store the root handle and its name
+      state.pathStack = [{ name: state.currentDirHandle.name, handle: state.currentDirHandle }];
       await renderList();
     } catch (err) {
       if (err.name !== 'AbortError') {
