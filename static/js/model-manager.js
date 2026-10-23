@@ -247,6 +247,9 @@ function selectModel(modelName) {
   const displayName = modelData.model;
   selectedModel = displayName;
   
+  // Update tile selection visual state
+  updateTileSelection(displayName);
+  
   const panel = document.getElementById('properties-panel');
   const contentArea = document.getElementById('content-area');
   panel.style.display = 'block';
@@ -255,6 +258,24 @@ function selectModel(modelName) {
 
   document.getElementById('panel-model-name').textContent = displayName;
   renderPanelProperties(modelData, displayName);
+}
+
+/**
+ * Update tile selection visual state
+ * @param {string} modelName - Model name to mark as selected
+ */
+function updateTileSelection(modelName) {
+  // Remove selected class from all tiles
+  document.querySelectorAll('.tile').forEach(tile => {
+    tile.classList.remove('selected');
+  });
+  
+  // Add selected class to the clicked tile
+  const normalizedModelName = modelName.trim().toLowerCase();
+  const selectedTile = document.querySelector(`.tile[data-model="${normalizedModelName}"]`);
+  if (selectedTile) {
+    selectedTile.classList.add('selected');
+  }
 }
 
 /**
@@ -271,6 +292,10 @@ function normalizeModelName(name) {
  */
 function closePanel() {
   selectedModel = null;
+  // Clear tile selection visual state
+  document.querySelectorAll('.tile').forEach(tile => {
+    tile.classList.remove('selected');
+  });
   const panel = document.getElementById('properties-panel');
   const contentArea = document.getElementById('content-area');
   panel.style.display = 'none';
@@ -357,6 +382,9 @@ async function refresh(showLoading = true) {
       renderTiles(deduplicated, dlMap, document.getElementById('search').value.toLowerCase());
 
       if (selectedModel) {
+        // Re-apply tile selection after re-render
+        updateTileSelection(selectedModel);
+        
         // Use normalized comparison to find the model
         const normalizedSelected = normalizeModelName(selectedModel);
         const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedSelected);
