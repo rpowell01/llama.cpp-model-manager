@@ -270,6 +270,17 @@ def api_start():
             "swa_full": getattr(model_dict, 'swa_full', False),
             # Chat template
             "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
+            # Generation / Sampling parameters
+            "temperature": getattr(model_dict, 'temperature', 0.7),
+            "top_k": getattr(model_dict, 'top_k', 40),
+            "top_p": getattr(model_dict, 'top_p', 0.9),
+            "min_p": getattr(model_dict, 'min_p', 0.05),
+            "repeat_penalty": getattr(model_dict, 'repeat_penalty', 1.1),
+            "presence_penalty": getattr(model_dict, 'presence_penalty', 0.0),
+            "reasoning": getattr(model_dict, 'reasoning', 'auto'),
+            "reasoning_effort": getattr(model_dict, 'reasoning_effort', 'default'),
+            "reasoning_budget": getattr(model_dict, 'reasoning_budget', -1),
+            "reasoning_budget_message": getattr(model_dict, 'reasoning_budget_message', ''),
         }
 
         # Check if already running

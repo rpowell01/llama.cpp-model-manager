@@ -130,6 +130,17 @@ class Model:
     swa_full: bool = False
     # Chat template
     chat_template_file: str = ""
+    # Generation / Sampling parameters
+    temperature: float = 0.7
+    top_k: int = 40
+    top_p: float = 0.9
+    min_p: float = 0.05
+    repeat_penalty: float = 1.1
+    presence_penalty: float = 0.0
+    reasoning: str = "auto"
+    reasoning_effort: str = "default"
+    reasoning_budget: int = -1
+    reasoning_budget_message: str = ""
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -213,6 +224,17 @@ class Model:
             swa_full=data.get("swa_full", False),
             # Chat template
             chat_template_file=data.get("chat_template_file", ""),
+            # Generation / Sampling parameters
+            temperature=data.get("temperature", 0.7),
+            top_k=data.get("top_k", 40),
+            top_p=data.get("top_p", 0.9),
+            min_p=data.get("min_p", 0.05),
+            repeat_penalty=data.get("repeat_penalty", 1.1),
+            presence_penalty=data.get("presence_penalty", 0.0),
+            reasoning=data.get("reasoning", "auto"),
+            reasoning_effort=data.get("reasoning_effort", "default"),
+            reasoning_budget=data.get("reasoning_budget", -1),
+            reasoning_budget_message=data.get("reasoning_budget_message", ""),
         )
 
 
