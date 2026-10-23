@@ -609,41 +609,24 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if meta.get("reasoning_preserve", DEFAULTS["reasoning_preserve"]):
         cmd += ["--reasoning-preserve"]
     
-    # Generation / Sampling parameters
-    temp = meta.get("temperature", DEFAULTS["temperature"])
-    if temp is not None and temp != 0.7:
-        cmd += ["--temp", str(temp)]
-    
-    top_k = meta.get("top_k", DEFAULTS["top_k"])
-    if top_k is not None and top_k != 40:
-        cmd += ["--top-k", str(top_k)]
-    
-    top_p = meta.get("top_p", DEFAULTS["top_p"])
-    if top_p is not None and top_p != 0.9:
-        cmd += ["--top-p", str(top_p)]
-    
-    min_p = meta.get("min_p", DEFAULTS["min_p"])
-    if min_p is not None and min_p != 0.05:
-        cmd += ["--min-p", str(min_p)]
-    
-    repeat_penalty = meta.get("repeat_penalty", DEFAULTS["repeat_penalty"])
-    if repeat_penalty is not None and repeat_penalty != 1.1:
-        cmd += ["--repeat-penalty", str(repeat_penalty)]
-    
-    presence_penalty = meta.get("presence_penalty", DEFAULTS["presence_penalty"])
-    if presence_penalty is not None and presence_penalty != 0.0:
-        cmd += ["--presence-penalty", str(presence_penalty)]
+    # Generation / Sampling parameters (always include)
+    cmd += ["--temp", str(meta.get("temperature", DEFAULTS["temperature"]))]
+    cmd += ["--top-k", str(meta.get("top_k", DEFAULTS["top_k"]))]
+    cmd += ["--top-p", str(meta.get("top_p", DEFAULTS["top_p"]))]
+    cmd += ["--min-p", str(meta.get("min_p", DEFAULTS["min_p"]))]
+    cmd += ["--repeat-penalty", str(meta.get("repeat_penalty", DEFAULTS["repeat_penalty"]))]
+    cmd += ["--presence-penalty", str(meta.get("presence_penalty", DEFAULTS["presence_penalty"]))]
     
     reasoning = meta.get("reasoning", DEFAULTS["reasoning"])
-    if reasoning and reasoning != "auto":
+    if reasoning:
         cmd += ["--reasoning", reasoning]
     
     reasoning_effort = meta.get("reasoning_effort", DEFAULTS["reasoning_effort"])
-    if reasoning_effort and reasoning_effort != "default":
+    if reasoning_effort:
         cmd += ["--reasoning-effort", reasoning_effort]
     
     reasoning_budget = meta.get("reasoning_budget", DEFAULTS["reasoning_budget"])
-    if reasoning_budget is not None and reasoning_budget != -1:
+    if reasoning_budget is not None:
         cmd += ["--reasoning-budget", str(reasoning_budget)]
     
     reasoning_budget_message = meta.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])
