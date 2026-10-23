@@ -892,15 +892,15 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Custom Header Value", "custom_header_value", data.custom_header_value || "", "text");
     
     // Generation / Sampling Parameters
-    addEditable("Temperature (--temp)", "temperature", data.temperature, "number", 0.1, 0, 2);
-    addEditable("Top-K (--top-k)", "top_k", data.top_k, "number", 1, 0);
-    addEditable("Top-P (--top-p)", "top_p", data.top_p, "number", 0.01, 0, 1);
-    addEditable("Min-P (--min-p)", "min_p", data.min_p, "number", 0.01, 0, 1);
-    addEditable("Repeat Penalty (--repeat-penalty)", "repeat_penalty", data.repeat_penalty, "number", 0.01, 0, 2);
-    addEditable("Presence Penalty (--presence-penalty)", "presence_penalty", data.presence_penalty, "number", 0.01, 0, 2);
+    addEditable("Temperature (--temp)", "temperature", data.temperature ?? 0.7, "number", 0.1, 0, 2);
+    addEditable("Top-K (--top-k)", "top_k", data.top_k ?? 40, "number", 1, 0);
+    addEditable("Top-P (--top-p)", "top_p", data.top_p ?? 0.9, "number", 0.01, 0, 1);
+    addEditable("Min-P (--min-p)", "min_p", data.min_p ?? 0.05, "number", 0.01, 0, 1);
+    addEditable("Repeat Penalty (--repeat-penalty)", "repeat_penalty", data.repeat_penalty ?? 1.1, "number", 0.01, 0, 2);
+    addEditable("Presence Penalty (--presence-penalty)", "presence_penalty", data.presence_penalty ?? 0.0, "number", 0.01, 0, 2);
     
     // Reasoning dropdown
-    const reasoningVal = data.reasoning == null ? "auto" : data.reasoning;
+    const reasoningVal = data.reasoning ?? "auto";
     let reasoningSelect = `<select class="meta-input" data-field="reasoning">`;
     ["auto", "on", "off"].forEach((val) => {
       reasoningSelect += `<option value="${val}" ${reasoningVal === val ? "selected" : ""}>${val}</option>`;
@@ -912,7 +912,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     </div>`;
     
     // Reasoning Effort dropdown
-    const reasoningEffortVal = data.reasoning_effort == null ? "default" : data.reasoning_effort;
+    const reasoningEffortVal = data.reasoning_effort ?? "default";
     let reasoningEffortSelect = `<select class="meta-input" data-field="reasoning_effort">`;
     ["default", "minimal", "low", "medium", "high", "xhigh", "max"].forEach((val) => {
       reasoningEffortSelect += `<option value="${val}" ${reasoningEffortVal === val ? "selected" : ""}>${val}</option>`;
@@ -923,8 +923,8 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       <span class="value">${reasoningEffortSelect}</span>
     </div>`;
     
-    addEditable("Reasoning Budget (--reasoning-budget)", "reasoning_budget", data.reasoning_budget, "number", 1, -1);
-    addEditable("Reasoning Budget Message (--reasoning-budget-message)", "reasoning_budget_message", data.reasoning_budget_message, "text");
+    addEditable("Reasoning Budget (--reasoning-budget)", "reasoning_budget", data.reasoning_budget ?? -1, "number", 1, -1);
+    addEditable("Reasoning Budget Message (--reasoning-budget-message)", "reasoning_budget_message", data.reasoning_budget_message ?? "", "text");
     
     html += `</div></div>`;
 
@@ -1063,7 +1063,11 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           "spec_ngram_min_hits",
           "grp_attn_n",
           "warmup_max_tokens",
-          "rating_speed", "rating_coding"
+          "rating_speed", "rating_coding",
+          // Generation / Sampling parameters
+          "temperature", "top_k", "top_p", "min_p",
+          "repeat_penalty", "presence_penalty",
+          "reasoning_budget"
         ];
         if (numericFields.includes(field)) {
           value = Number(value);
