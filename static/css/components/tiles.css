@@ -84,8 +84,12 @@
   box-shadow: 0 0 0 3px rgba(0, 200, 0, 0.3);
 }
 
-.tile:hover {
+.tile:hover:not(.selected):not(.running) {
   border-color: var(--surface2);
+}
+
+.tile.running:hover:not(.selected) {
+  border-color: var(--green);
 }
 
 .tile:focus-visible {
