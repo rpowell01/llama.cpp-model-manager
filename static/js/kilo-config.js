@@ -28,6 +28,9 @@ function generateKiloCodeConfig(modelData, modelName) {
     headers[headerKey] = headerValue;
   }
 
+  // Check if generation parameters should be used
+  const useGenParams = modelData.use_generation_params !== false; // Default to true for backward compatibility
+
   // Supported parameters for the model
   const supportedParameters = [
     "include_reasoning",
@@ -39,7 +42,8 @@ function generateKiloCodeConfig(modelData, modelName) {
   ];
 
   // Default parameters (use null for unset values)
-  const defaultParameters = {
+  // Only include generation parameters if use_generation_params is enabled
+  const defaultParameters = useGenParams ? {
     temperature: modelData.temperature !== undefined ? modelData.temperature : null,
     top_p: modelData.top_p !== undefined ? modelData.top_p : null,
     top_k: modelData.top_k !== undefined ? modelData.top_k : null,
@@ -50,6 +54,9 @@ function generateKiloCodeConfig(modelData, modelName) {
     reasoning_effort: modelData.reasoning_effort !== undefined ? modelData.reasoning_effort : null,
     reasoning_budget: modelData.reasoning_budget !== undefined ? modelData.reasoning_budget : null,
     min_p: modelData.min_p !== undefined ? modelData.min_p : null,
+  } : {
+    // When generation parameters are disabled, only include non-generation parameters
+    frequency_penalty: null,
   };
 
   // Return provider config object (without outer key wrapper)

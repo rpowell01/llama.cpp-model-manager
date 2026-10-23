@@ -244,6 +244,7 @@ def api_update_model_meta():
     "custom_header_key": str,
     "custom_header_value": str,
     # Generation / Sampling parameters
+    "use_generation_params": bool,
     "temperature": float,
     "top_k": int,
     "top_p": float,
@@ -282,6 +283,12 @@ def api_update_model_meta():
     for field, typ in allowed_fields.items():
         if field in data:
             value = data[field]
+            # Handle null as "delete this field" - use server default
+            if value is None:
+                if field in meta:
+                    del meta[field]
+                    changes[field] = None
+                continue
             try:
                 if typ is int:
                     value = int(value)

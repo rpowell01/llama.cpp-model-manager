@@ -574,21 +574,42 @@ async function renderPanelProperties(data, modelName) {
               } else if (browseType === "model-file") {
                 result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
               }
+              
+              if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+                input.value = result.filePaths[0];
+              }
             } 
-            // Fallback to File System Access API (modern browsers)
-            // Note: This API only provides file handles, not full paths due to security restrictions
-            else if ('showDirectoryPicker' in window || 'showOpenFilePicker' in window) {
-              if (browseType === "directory" && 'showDirectoryPicker' in window) {
-                const dirHandle = await window.showDirectoryPicker();
-                result = { canceled: false, filePaths: [dirHandle.name] }; // Note: only name available
-              } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
-                const options = browseType === "model-file" 
-                  ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
-                  : { types: [{ description: "All Files", accept: { "*/*": ["*"] } }] };
-                const fileHandles = await window.showOpenFilePicker(options);
-                if (fileHandles.length > 0) {
-                  const file = await fileHandles[0].getFile();
-                  result = { canceled: false, filePaths: [file.name] }; // Note: only name available
+            // Use custom File Browser module for File System Access API
+            // This maintains an in-memory path stack to return full paths
+            else if ('showDirectoryPicker' in window) {
+              if (window.FileBrowser && typeof window.FileBrowser.open === 'function') {
+                window.FileBrowser.open({
+                  type: browseType,
+                  onSelect: (fullPath, entry) => {
+                    input.value = fullPath;
+                    // Trigger change event so any listeners know the value changed
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                });
+              } else {
+                // Fallback if FileBrowser module not loaded
+                console.warn('FileBrowser module not available, falling back to native picker');
+                if (browseType === "directory" && 'showDirectoryPicker' in window) {
+                  const dirHandle = await window.showDirectoryPicker();
+                  result = { canceled: false, filePaths: [dirHandle.name] };
+                } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
+                  const options = browseType === "model-file" 
+                    ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
+                    : { types: [{ description: "All Files", accept: { "*/*": ["*"] } }] };
+                  const fileHandles = await window.showOpenFilePicker(options);
+                  if (fileHandles.length > 0) {
+                    const file = await fileHandles[0].getFile();
+                    result = { canceled: false, filePaths: [file.name] };
+                  }
+                }
+                
+                if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+                  input.value = result.filePaths[0];
                 }
               }
             }
@@ -602,11 +623,8 @@ async function renderPanelProperties(data, modelName) {
               const path = prompt(message, input.value);
               if (path) {
                 result = { canceled: false, filePaths: [path] };
+                input.value = result.filePaths[0];
               }
-            }
-            
-            if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-              input.value = result.filePaths[0];
             }
           } catch (err) {
             console.error("Browse error:", err);
@@ -891,44 +909,91 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
     addEditable("Custom Header Value", "custom_header_value", data.custom_header_value || "", "text");
     
-    // Generation / Sampling Parameters
-    addEditable("Temperature (--temp)", "temperature", data.temperature ?? 0.7, "number", 0.1, 0, 2);
-    addEditable("Top-K (--top-k)", "top_k", data.top_k ?? 40, "number", 1, 0);
-    addEditable("Top-P (--top-p)", "top_p", data.top_p ?? 0.9, "number", 0.01, 0, 1);
-    addEditable("Min-P (--min-p)", "min_p", data.min_p ?? 0.05, "number", 0.01, 0, 1);
-    addEditable("Repeat Penalty (--repeat-penalty)", "repeat_penalty", data.repeat_penalty ?? 1.1, "number", 0.01, 0, 2);
-    addEditable("Presence Penalty (--presence-penalty)", "presence_penalty", data.presence_penalty ?? 0.0, "number", 0.01, 0, 2);
+    // Use Generation Parameters checkbox
+    const useGenParams = data.use_generation_params ?? true;
+    addEditable("Use Generation Parameters", "use_generation_params", useGenParams, "checkbox");
     
-    // Reasoning dropdown
-    const reasoningVal = data.reasoning ?? "auto";
-    let reasoningSelect = `<select class="meta-input" data-field="reasoning">`;
-    ["auto", "on", "off"].forEach((val) => {
-      reasoningSelect += `<option value="${val}" ${reasoningVal === val ? "selected" : ""}>${val}</option>`;
-    });
-    reasoningSelect += `</select>`;
-    html += `<div class="panel-item">
-      <span class="label">Reasoning (--reasoning)</span>
-      <span class="value">${reasoningSelect}</span>
+    // Generation / Sampling Parameters (wrapped in a container for show/hide)
+    html += `<div class="panel-item" id="generation-params-container" style="${useGenParams ? '' : 'display: none;'}">`;
+    html += `<span class="label">Generation Parameters</span>
+      <span class="value"><em style="color: var(--muted); font-size: 0.85rem;">Configure sampling parameters below</em></span>
     </div>`;
     
-    // Reasoning Effort dropdown
-    const reasoningEffortVal = data.reasoning_effort ?? "default";
-    let reasoningEffortSelect = `<select class="meta-input" data-field="reasoning_effort">`;
-    ["default", "minimal", "low", "medium", "high", "xhigh", "max"].forEach((val) => {
-      reasoningEffortSelect += `<option value="${val}" ${reasoningEffortVal === val ? "selected" : ""}>${val}</option>`;
-    });
-    reasoningEffortSelect += `</select>`;
-    html += `<div class="panel-item">
-      <span class="label">Reasoning Effort (--reasoning-effort)</span>
-      <span class="value">${reasoningEffortSelect}</span>
-    </div>`;
+    const genParamsHtml = `
+      <div class="panel-item generation-param" data-field="temperature">
+        <span class="label">Temperature (--temp)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="temperature" value="${data.temperature !== undefined ? data.temperature : ''}" step="0.1" min="0" max="2" placeholder="0.7 (server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="top_k">
+        <span class="label">Top-K (--top-k)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="top_k" value="${data.top_k !== undefined ? data.top_k : ''}" step="1" min="0" placeholder="40 (server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="top_p">
+        <span class="label">Top-P (--top-p)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="top_p" value="${data.top_p !== undefined ? data.top_p : ''}" step="0.01" min="0" max="1" placeholder="0.9 (server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="min_p">
+        <span class="label">Min-P (--min-p)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="min_p" value="${data.min_p !== undefined ? data.min_p : ''}" step="0.01" min="0" max="1" placeholder="0.05 (server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="repeat_penalty">
+        <span class="label">Repeat Penalty (--repeat-penalty)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="repeat_penalty" value="${data.repeat_penalty !== undefined ? data.repeat_penalty : ''}" step="0.01" min="0" max="2" placeholder="1.1 (server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="presence_penalty">
+        <span class="label">Presence Penalty (--presence-penalty)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="presence_penalty" value="${data.presence_penalty !== undefined ? data.presence_penalty : ''}" step="0.01" min="0" max="2" placeholder="0.0 (server default)"></span>
+      </div>
+      
+      <div class="panel-item generation-param" data-field="reasoning">
+        <span class="label">Reasoning (--reasoning)</span>
+        <span class="value">
+          <select class="meta-input" data-field="reasoning">
+            <option value="auto" ${(data.reasoning ?? "auto") === "auto" ? "selected" : ""}>auto (server default)</option>
+            <option value="on" ${(data.reasoning ?? "auto") === "on" ? "selected" : ""}>on</option>
+            <option value="off" ${(data.reasoning ?? "auto") === "off" ? "selected" : ""}>off</option>
+          </select>
+        </span>
+      </div>
+      <div class="panel-item generation-param" data-field="reasoning_effort">
+        <span class="label">Reasoning Effort (--reasoning-effort)</span>
+        <span class="value">
+          <select class="meta-input" data-field="reasoning_effort">
+            <option value="default" ${(data.reasoning_effort ?? "default") === "default" ? "selected" : ""}>default (server default)</option>
+            <option value="minimal" ${(data.reasoning_effort ?? "default") === "minimal" ? "selected" : ""}>minimal</option>
+            <option value="low" ${(data.reasoning_effort ?? "default") === "low" ? "selected" : ""}>low</option>
+            <option value="medium" ${(data.reasoning_effort ?? "default") === "medium" ? "selected" : ""}>medium</option>
+            <option value="high" ${(data.reasoning_effort ?? "default") === "high" ? "selected" : ""}>high</option>
+            <option value="xhigh" ${(data.reasoning_effort ?? "default") === "xhigh" ? "selected" : ""}>xhigh</option>
+            <option value="max" ${(data.reasoning_effort ?? "default") === "max" ? "selected" : ""}>max</option>
+          </select>
+        </span>
+      </div>
+      <div class="panel-item generation-param" data-field="reasoning_budget">
+        <span class="label">Reasoning Budget (--reasoning-budget)</span>
+        <span class="value"><input type="number" class="meta-input" data-field="reasoning_budget" value="${data.reasoning_budget !== undefined ? data.reasoning_budget : ''}" step="1" min="-1" placeholder="-1 (disabled, server default)"></span>
+      </div>
+      <div class="panel-item generation-param" data-field="reasoning_budget_message">
+        <span class="label">Reasoning Budget Message (--reasoning-budget-message)</span>
+        <span class="value"><input type="text" class="meta-input" data-field="reasoning_budget_message" value="${he(String(data.reasoning_budget_message ?? ""))}" placeholder="(empty, server default)"></span>
+      </div>
+    `;
     
-    addEditable("Reasoning Budget (--reasoning-budget)", "reasoning_budget", data.reasoning_budget ?? -1, "number", 1, -1);
-    addEditable("Reasoning Budget Message (--reasoning-budget-message)", "reasoning_budget_message", data.reasoning_budget_message ?? "", "text");
+html += genParamsHtml;
+    
+    // Reset to Defaults button for generation parameters
+    html += `<div class="panel-item generation-param" style="margin-top: 0.5rem;">
+      <span class="label"></span>
+      <span class="value">
+        <button type="button" class="btn-secondary" id="reset-gen-params-${modelSafeId}" style="padding: 0.375rem 0.75rem; font-size: 0.85rem;">
+          🔄 Reset Generation Parameters to Server Defaults
+        </button>
+      </span>
+    </div>`;
     
     html += `</div></div>`;
 
-// Save/Cancel buttons
+ // Save/Cancel buttons
    html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
      <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
      <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
@@ -1027,6 +1092,47 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
   // Initialize browse buttons
   initBrowseButtons(content);
 
+  // Initialize Use Generation Parameters checkbox toggle
+  const useGenParamsCheckbox = content.querySelector('.meta-input[data-field="use_generation_params"]');
+  const genParamsContainer = content.querySelector('#generation-params-container');
+  if (useGenParamsCheckbox && genParamsContainer) {
+    const toggleGenParams = () => {
+      const show = useGenParamsCheckbox.checked;
+      genParamsContainer.style.display = show ? '' : 'none';
+      // Also hide/show all generation-param items
+      content.querySelectorAll('.generation-param').forEach(el => {
+        el.style.display = show ? '' : 'none';
+      });
+    };
+    useGenParamsCheckbox.addEventListener('change', toggleGenParams);
+    // Initial state
+    toggleGenParams();
+  }
+
+  // Reset Generation Parameters button handler
+  const resetGenParamsBtn = document.getElementById(`reset-gen-params-${modelSafeId}`);
+  if (resetGenParamsBtn) {
+    resetGenParamsBtn.addEventListener("click", () => {
+      // Clear all generation parameter inputs (empty = use server defaults)
+      const genParamFields = [
+        "temperature", "top_k", "top_p", "min_p", 
+        "repeat_penalty", "presence_penalty",
+        "reasoning_budget", "reasoning_budget_message"
+      ];
+      genParamFields.forEach(field => {
+        const input = content.querySelector(`.meta-input[data-field="${field}"]`);
+        if (input) {
+          input.value = "";
+        }
+      });
+      // Reset dropdowns to server defaults
+      const reasoningSelect = content.querySelector(`.meta-input[data-field="reasoning"]`);
+      if (reasoningSelect) reasoningSelect.value = "auto";
+      const reasoningEffortSelect = content.querySelector(`.meta-input[data-field="reasoning_effort"]`);
+      if (reasoningEffortSelect) reasoningEffortSelect.value = "default";
+    });
+  }
+
   // Attach meta input listeners (no auto-save - values collected on Save)
   content.closest(".properties-panel").dataset.modelName = modelName;
 
@@ -1070,7 +1176,8 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
           "reasoning_budget"
         ];
         if (numericFields.includes(field)) {
-          value = Number(value);
+          // If empty string, treat as null (to clear the field)
+          value = value === "" ? null : Number(value);
         }
 
         // Only include changed values
@@ -1079,8 +1186,17 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
         const isChanged = field === "parallel" 
           ? String(value) !== String(originalValue)
           : value !== originalValue;
+        
+        // For generation parameters:
+        // - Empty string/null means "use server default" - send null to clear the field
+        // - Only include if changed (including clearing a previously set value)
+        const genParamFields = ["temperature", "top_k", "top_p", "min_p", "repeat_penalty", "presence_penalty", "reasoning", "reasoning_effort", "reasoning_budget", "reasoning_budget_message"];
+        const isGenParam = genParamFields.includes(field);
+        const isGenParamCleared = isGenParam && (value === "" || value === null);
+        
         if (isChanged) {
-          payload[field] = value;
+          // For cleared generation params, send null to delete the field
+          payload[field] = isGenParamCleared ? null : value;
           hasChanges = true;
         }
       });
