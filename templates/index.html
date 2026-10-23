@@ -455,10 +455,19 @@ async function loadMetricsFromCSV(modelName) {
       return;
     }
 
+    // Clear history before loading new data (CSV returns full history for time range)
+    metricTimestamps = [];
+    metricPromptEvalTimes = [];
+    metricPromptEvalRates = [];
+    metricGenEvalTimes = [];
+    metricGenRates = [];
+    metricSpecAcceptanceRates = [];
+    metricSpecSpeedups = [];
+
     if (data.metrics && data.metrics.length > 0) {
       setMetricsStatus(`Loaded ${data.num_rows} historical metric records from CSV file.`);
       
-      // Extract historical values and accumulate into history
+      // Extract historical values into history arrays
       data.metrics.forEach(m => {
         const ts = m.timestamp || new Date().toISOString();
         
@@ -471,18 +480,19 @@ async function loadMetricsFromCSV(modelName) {
         metricSpecSpeedups.push(m.spec_est_speedup || 0);
       });
 
-      // Trim history to max points
+      // Trim history to max points (in case CSV returns more than MAX_METRIC_POINTS)
       if (metricTimestamps.length > MAX_METRIC_POINTS) {
-        metricTimestamps.shift();
-        metricPromptEvalTimes.shift();
-        metricPromptEvalRates.shift();
-        metricGenEvalTimes.shift();
-        metricGenRates.shift();
-        metricSpecAcceptanceRates.shift();
-        metricSpecSpeedups.shift();
+        const excess = metricTimestamps.length - MAX_METRIC_POINTS;
+        metricTimestamps = metricTimestamps.slice(excess);
+        metricPromptEvalTimes = metricPromptEvalTimes.slice(excess);
+        metricPromptEvalRates = metricPromptEvalRates.slice(excess);
+        metricGenEvalTimes = metricGenEvalTimes.slice(excess);
+        metricGenRates = metricGenRates.slice(excess);
+        metricSpecAcceptanceRates = metricSpecAcceptanceRates.slice(excess);
+        metricSpecSpeedups = metricSpecSpeedups.slice(excess);
       }
 
-      // Create or update the chart with the accumulated historical metrics data
+      // Create or update the chart with the historical metrics data
       renderMetricsChartFromHistory();
     } else {
       setMetricsStatus('No historical metrics data available for this model. Please run the model for at least one iteration to generate metrics.');
