@@ -682,12 +682,15 @@ const FileBrowser = (function() {
 
     const fullPath = buildFullPath(entry);
     
+    // Store callback before closing modal (closeModal resets state.onSelect to null)
+    const callback = state.onSelect;
+    
     // Close modal
     closeModal();
 
     // Call the callback with the full path
-    if (state.onSelect) {
-      state.onSelect(fullPath, entry);
+    if (callback) {
+      callback(fullPath, entry);
     }
   }
 
@@ -875,9 +878,13 @@ const FileBrowser = (function() {
       if (state.browseType === 'directory') {
         // Select current directory
         const fullPath = buildFullPath(null);
+        
+        // Store callback before closing modal (closeModal resets state.onSelect to null)
+        const callback = state.onSelect;
         closeModal();
-        if (state.onSelect) {
-          state.onSelect(fullPath, { name: state.pathStack.length > 0 ? state.pathStack[state.pathStack.length - 1].name : 'root', isDirectory: true });
+        
+        if (callback) {
+          callback(fullPath, { name: state.pathStack.length > 0 ? state.pathStack[state.pathStack.length - 1].name : 'root', isDirectory: true });
         }
         return;
       }
