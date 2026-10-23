@@ -891,6 +891,41 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
     addEditable("Custom Header Value", "custom_header_value", data.custom_header_value || "", "text");
     
+    // Generation / Sampling Parameters
+    addEditable("Temperature (--temp)", "temperature", data.temperature, "number", 0.1, 0, 2);
+    addEditable("Top-K (--top-k)", "top_k", data.top_k, "number", 1, 0);
+    addEditable("Top-P (--top-p)", "top_p", data.top_p, "number", 0.01, 0, 1);
+    addEditable("Min-P (--min-p)", "min_p", data.min_p, "number", 0.01, 0, 1);
+    addEditable("Repeat Penalty (--repeat-penalty)", "repeat_penalty", data.repeat_penalty, "number", 0.01, 0, 2);
+    addEditable("Presence Penalty (--presence-penalty)", "presence_penalty", data.presence_penalty, "number", 0.01, 0, 2);
+    
+    // Reasoning dropdown
+    const reasoningVal = data.reasoning == null ? "auto" : data.reasoning;
+    let reasoningSelect = `<select class="meta-input" data-field="reasoning">`;
+    ["auto", "on", "off"].forEach((val) => {
+      reasoningSelect += `<option value="${val}" ${reasoningVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    reasoningSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Reasoning (--reasoning)</span>
+      <span class="value">${reasoningSelect}</span>
+    </div>`;
+    
+    // Reasoning Effort dropdown
+    const reasoningEffortVal = data.reasoning_effort == null ? "default" : data.reasoning_effort;
+    let reasoningEffortSelect = `<select class="meta-input" data-field="reasoning_effort">`;
+    ["default", "minimal", "low", "medium", "high", "xhigh", "max"].forEach((val) => {
+      reasoningEffortSelect += `<option value="${val}" ${reasoningEffortVal === val ? "selected" : ""}>${val}</option>`;
+    });
+    reasoningEffortSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label">Reasoning Effort (--reasoning-effort)</span>
+      <span class="value">${reasoningEffortSelect}</span>
+    </div>`;
+    
+    addEditable("Reasoning Budget (--reasoning-budget)", "reasoning_budget", data.reasoning_budget, "number", 1, -1);
+    addEditable("Reasoning Budget Message (--reasoning-budget-message)", "reasoning_budget_message", data.reasoning_budget_message, "text");
+    
     html += `</div></div>`;
 
 // Save/Cancel buttons

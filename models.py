@@ -232,6 +232,17 @@ def add_model_entry(
     # Custom HTTP Header for Kilo Code Config
     custom_header_key: str = "",
     custom_header_value: str = "",
+    # Generation / Sampling parameters
+    temperature: float = 0.7,
+    top_k: int = 40,
+    top_p: float = 0.9,
+    min_p: float = 0.05,
+    repeat_penalty: float = 1.1,
+    presence_penalty: float = 0.0,
+    reasoning: str = "auto",
+    reasoning_effort: str = "default",
+    reasoning_budget: int = -1,
+    reasoning_budget_message: str = "",
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -325,6 +336,17 @@ def add_model_entry(
             # Custom HTTP Header for Kilo Code Config
             "custom_header_key": custom_header_key,
             "custom_header_value": custom_header_value,
+            # Generation / Sampling parameters
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "min_p": min_p,
+            "repeat_penalty": repeat_penalty,
+            "presence_penalty": presence_penalty,
+            "reasoning": reasoning,
+            "reasoning_effort": reasoning_effort,
+            "reasoning_budget": reasoning_budget,
+            "reasoning_budget_message": reasoning_budget_message,
             # User rating fields
             "comment": "",
             "rating_speed": 0,

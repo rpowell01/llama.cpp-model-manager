@@ -91,6 +91,17 @@ def api_add_model():
         slot_save_path=str(data.get("slot_save_path", DEFAULTS["slot_save_path"])),
         cache_reuse=int(data.get("cache_reuse", DEFAULTS["cache_reuse"])),
         swa_full=bool(data.get("swa_full", DEFAULTS["swa_full"])),
+        # Generation / Sampling parameters
+        temperature=float(data.get("temperature", DEFAULTS["temperature"])),
+        top_k=int(data.get("top_k", DEFAULTS["top_k"])),
+        top_p=float(data.get("top_p", DEFAULTS["top_p"])),
+        min_p=float(data.get("min_p", DEFAULTS["min_p"])),
+        repeat_penalty=float(data.get("repeat_penalty", DEFAULTS["repeat_penalty"])),
+        presence_penalty=float(data.get("presence_penalty", DEFAULTS["presence_penalty"])),
+        reasoning=str(data.get("reasoning", DEFAULTS["reasoning"])),
+        reasoning_effort=str(data.get("reasoning_effort", DEFAULTS["reasoning_effort"])),
+        reasoning_budget=int(data.get("reasoning_budget", DEFAULTS["reasoning_budget"])),
+        reasoning_budget_message=str(data.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])),
     # Chat template
     chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
     # Custom HTTP Header for Kilo Code Config
@@ -232,6 +243,17 @@ def api_update_model_meta():
     # Custom HTTP Header for Kilo Code Config
     "custom_header_key": str,
     "custom_header_value": str,
+    # Generation / Sampling parameters
+    "temperature": float,
+    "top_k": int,
+    "top_p": float,
+    "min_p": float,
+    "repeat_penalty": float,
+    "presence_penalty": float,
+    "reasoning": str,
+    "reasoning_effort": str,
+    "reasoning_budget": int,
+    "reasoning_budget_message": str,
     }
     # Validate rating fields before any mutation: an invalid rating must be
     # rejected without leaving a bad value behind in the cached model meta.

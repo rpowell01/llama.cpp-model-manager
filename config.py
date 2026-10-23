@@ -180,6 +180,17 @@ DEFAULTS: dict[str, Any] = {
     # Custom HTTP Header for Kilo Code Config
     "custom_header_key": "",
     "custom_header_value": "",
+    # Generation / Sampling parameters
+    "temperature": 0.7,
+    "top_k": 40,
+    "top_p": 0.9,
+    "min_p": 0.05,
+    "repeat_penalty": 1.1,
+    "presence_penalty": 0.0,
+    "reasoning": "auto",
+    "reasoning_effort": "default",
+    "reasoning_budget": -1,
+    "reasoning_budget_message": "",
 }
 
 # Flask server port (set by main.py at runtime)

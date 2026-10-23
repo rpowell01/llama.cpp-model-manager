@@ -44,7 +44,18 @@ function generateKiloCodeConfig(modelData, modelName) {
             context: context,
             input: inputLimit,
             output: 16384
-          }
+          },
+          // Generation / Sampling parameters (passed as default request parameters)
+          ...(modelData.temperature !== undefined && modelData.temperature !== 0.7 ? { temperature: modelData.temperature } : {}),
+          ...(modelData.top_k !== undefined && modelData.top_k !== 40 ? { topK: modelData.top_k } : {}),
+          ...(modelData.top_p !== undefined && modelData.top_p !== 0.9 ? { topP: modelData.top_p } : {}),
+          ...(modelData.min_p !== undefined && modelData.min_p !== 0.05 ? { minP: modelData.min_p } : {}),
+          ...(modelData.repeat_penalty !== undefined && modelData.repeat_penalty !== 1.1 ? { repetitionPenalty: modelData.repeat_penalty } : {}),
+          ...(modelData.presence_penalty !== undefined && modelData.presence_penalty !== 0.0 ? { presencePenalty: modelData.presence_penalty } : {}),
+          ...(modelData.reasoning !== undefined && modelData.reasoning !== "auto" ? { reasoning: modelData.reasoning } : {}),
+          ...(modelData.reasoning_effort !== undefined && modelData.reasoning_effort !== "default" ? { reasoningEffort: modelData.reasoning_effort } : {}),
+          ...(modelData.reasoning_budget !== undefined && modelData.reasoning_budget !== -1 ? { reasoningBudget: modelData.reasoning_budget } : {}),
+          ...(modelData.reasoning_budget_message !== undefined && modelData.reasoning_budget_message !== "" ? { reasoningBudgetMessage: modelData.reasoning_budget_message } : {}),
         }
       }
     }
