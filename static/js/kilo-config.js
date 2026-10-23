@@ -17,7 +17,8 @@ function generateKiloCodeConfig(modelData, modelName) {
 
   // Use actual context length from model data
   const context = modelData.ctx_size || 16384;
-  const inputLimit = context - 16384;
+  const inputLimit = Math.round(context * 0.85);
+  const outputLimit = Math.round(context * 0.15);
 
   // Build headers object from custom header fields
   const headers = {};
@@ -43,7 +44,7 @@ function generateKiloCodeConfig(modelData, modelName) {
           limit: {
             context: context,
             input: inputLimit,
-            output: 16384
+            output: outputLimit
           },
           // Generation / Sampling parameters (passed as default request parameters)
           ...(modelData.temperature !== undefined && modelData.temperature !== 0.7 ? { temperature: modelData.temperature } : {}),
