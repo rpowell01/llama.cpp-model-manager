@@ -17,8 +17,13 @@
 }
 
 .tile.running {
-  border-left: 4px solid var(--green);
+  border: 2px solid var(--green);
   opacity: 0.98;
+}
+
+.tile.running.selected {
+  border: 3px solid var(--green);
+  box-shadow: 0 0 0 3px rgba(0, 200, 0, 0.3);
 }
 
 /* Speculative decoding models are never used as a primary model.
@@ -70,8 +75,13 @@
 
 /* Tile selection and interaction states */
 .tile.selected {
-  border: 2px solid var(--blue) !important;
+  border: 2px solid var(--blue);
   box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+}
+
+.tile.running.selected {
+  border: 3px solid var(--green);
+  box-shadow: 0 0 0 3px rgba(0, 200, 0, 0.3);
 }
 
 .tile:hover {
