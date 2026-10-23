@@ -542,75 +542,81 @@ function updateMetricsChart(metricsData) {
           data: {
             labels: labels,
             datasets: [
-              {
-                label: 'Avg Prompt Eval Time (ms/token)',
-                data: promptEvalTimes,
-                borderColor: 'rgb(255, 99, 132)', // Red
-                backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                yAxisID: 'y1',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              },
-              {
-                label: 'Avg Prompt Eval Rate (tokens/s)',
-                data: promptEvalRates,
-                borderColor: 'rgb(255, 159, 64)', // Orange
-                backgroundColor: 'rgba(255, 159, 64, 0.1)',
-                yAxisID: 'y2',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              },
-              {
-                label: 'Avg Gen Eval Time (ms/token)',
-                data: genEvalTimes,
-                borderColor: 'rgb(54, 235, 162)', // Green
-                backgroundColor: 'rgba(54, 235, 162, 0.1)',
-                yAxisID: 'y1',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              },
-              {
-                label: 'Avg Gen Rate (tokens/s)',
-                data: genRates,
-                borderColor: 'rgb(255, 205, 86)', // Yellow
-                backgroundColor: 'rgba(255, 205, 86, 0.1)',
-                yAxisID: 'y2',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              },
-              {
-                label: 'Speculative Decoding Acceptance Rate (%)',
-                data: specAcceptanceRates,
-                borderColor: 'rgb(75, 192, 192)', // Teal
-                backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                yAxisID: 'y2',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              },
-              {
-                label: 'Speculative Decoding Est. Speedup (%)',
-                data: specSpeedups,
-                borderColor: 'rgb(153, 102, 255)', // Purple
-                backgroundColor: 'rgba(153, 102, 255, 0.1)',
-                yAxisID: 'y2',
-                tension: 0.1,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                pointHoverRadius: 5
-              }
-          ],
-          },
-options: {
+               {
+                 label: 'Avg Prompt Eval Time (ms/token)',
+                 data: promptEvalTimes,
+                 borderColor: 'rgb(255, 99, 132)', // Red
+                 backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                 yAxisID: 'y1',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               },
+               {
+                 label: 'Avg Prompt Eval Rate (tokens/s)',
+                 data: promptEvalRates,
+                 borderColor: 'rgb(255, 159, 64)', // Orange
+                 backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                 yAxisID: 'y2',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               },
+               {
+                 label: 'Avg Gen Eval Time (ms/token)',
+                 data: genEvalTimes,
+                 borderColor: 'rgb(54, 235, 162)', // Green
+                 backgroundColor: 'rgba(54, 235, 162, 0.1)',
+                 yAxisID: 'y1',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               },
+               {
+                 label: 'Avg Gen Rate (tokens/s)',
+                 data: genRates,
+                 borderColor: 'rgb(255, 205, 86)', // Yellow
+                 backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                 yAxisID: 'y2',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               },
+               {
+                 label: 'Speculative Decoding Acceptance Rate (%)',
+                 data: specAcceptanceRates,
+                 borderColor: 'rgb(75, 192, 192)', // Teal
+                 backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                 yAxisID: 'y2',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               },
+               {
+                 label: 'Speculative Decoding Est. Speedup (%)',
+                 data: specSpeedups,
+                 borderColor: 'rgb(153, 102, 255)', // Purple
+                 backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                 yAxisID: 'y2',
+                 tension: 0.1,
+                 borderDash: [5, 5],
+                 pointRadius: 0,
+                 pointHoverRadius: 5,
+                 pointHitRadius: 10
+               }
+          ]
+        },
+        options: {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
@@ -621,6 +627,47 @@ options: {
                 right: 4
               }
             },
+            onClick: (e, elements) => {
+              // If no elements clicked (e.g., clicked on background), reset all point radii
+              if (!elements.length) {
+                // Reset all datasets to no visible points
+                metricsChart.data.datasets.forEach(dataset => {
+                  dataset.pointRadius = 0;
+                });
+                metricsChart.update();
+                return;
+              }
+              
+              // Find which dataset was clicked
+              const datasetIndex = elements[0].datasetIndex;
+              const clickedDataset = metricsChart.data.datasets[datasetIndex];
+              
+              if (clickedDataset) {
+                // Check if this is a different dataset than the one we're highlighting
+                const currentlyHighlighted = metricsChart.data.datasets.find(d => d.pointRadius === 5);
+                
+                if (currentlyHighlighted !== clickedDataset) {
+                  // Update the point radius for the clicked dataset
+                  clickedDataset.pointRadius = 5;
+                  
+                  // Reset previously highlighted dataset
+                  if (currentlyHighlighted) {
+                    currentlyHighlighted.pointRadius = 0;
+                  }
+                  
+                  // Update the chart
+                  metricsChart.update();
+                  
+                  // Optionally, log which line was clicked
+                  console.log('Line clicked:', clickedDataset.label);
+                }
+              }
+            },
+            elements: {
+              point: {
+                hitRadius: 10
+              }
+            }
             plugins: {
                 title: {
                   display: false
@@ -634,6 +681,11 @@ options: {
                     usePointStyle: true,
                     pointStyleWidth: 8
                   }
+                },
+                tooltip: {
+                  enabled: true,
+                  mode: 'index',
+                  intersect: false
                 }
               },
               scales: {
