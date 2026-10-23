@@ -7,7 +7,7 @@
 
 /* Individual tile card */
 .tile {
-  background: var(--surface);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
   border: 1px solid var(--surface2);
   border-radius: 8px;
   padding: 1rem;
@@ -22,9 +22,9 @@
 }
 
 /* Speculative decoding models are never used as a primary model.
-   Give them a distinct background + dashed border so they stand out. */
+    Give them a distinct background + dashed border so they stand out. */
 .tile.spec-model {
-  background: var(--surface-spec);
+  background: linear-gradient(135deg, var(--surface-spec) 0%, #3e3567 100%);
   border-style: dashed;
   border-color: var(--btn-add);
 }
@@ -66,6 +66,21 @@
   gap: 0.4rem;
   flex-wrap: wrap;
   margin-top: 0.1rem;
+}
+
+/* Tile selection and interaction states */
+.tile.selected {
+  border: 2px solid var(--blue) !important;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+}
+
+.tile:hover {
+  border-color: var(--surface2);
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
 }
 
 /* Tile rating display */
