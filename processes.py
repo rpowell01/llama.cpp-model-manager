@@ -685,10 +685,10 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["--cache-reuse", str(cache_reuse)]
     
     # Enable --swa-full only if explicitly requested (for sliding window attention models)
-    # and slot_save_path is provided with cache_reuse > 0
+    # The flag is independent of slot_save_path and cache_reuse
     slot_save_path = meta.get("slot_save_path", DEFAULTS["slot_save_path"])
     use_swa_full = meta.get("swa_full", False)
-    if use_swa_full and slot_save_path and cache_reuse:
+    if use_swa_full:
         cmd += ["--swa-full"]
     
     batch_size = meta.get("batch_size", DEFAULTS["batch_size"])
