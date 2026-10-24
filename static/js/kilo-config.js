@@ -9,9 +9,14 @@
  * @returns {Object} Configuration object (provider config without outer braces)
  */
 function generateKiloCodeConfig(modelData, modelName) {
-  // Provider key: llama_cpp_<MODEL_NAME_UPPER>
-  const key = 'llama_cpp_' + modelName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  const providerName = `Llama.cpp ${modelName}`;
+  // Sanitize model name for provider key: replace spaces/special chars with underscores
+  // e.g., "Llama.cpp qwen36-35b-iq4-xs" -> "Llama_cpp_qwen36_35b_iq4_xs"
+  const providerName = modelName
+    .replace(/\s+/g, '_')  // spaces to underscores
+    .replace(/\./g, '_')   // dots to underscores
+    .replace(/-/g, '_')    // hyphens to underscores
+    .replace(/[^A-Za-z0-9_]/g, ''); // remove any other special chars
+  
   const npm = '@ai-sdk/openai-compatible';
   const baseURL = `http://${HOST}:${modelData.port || 8080}/v1`;
 
@@ -72,6 +77,13 @@ function generateKiloCodeConfig(modelData, modelName) {
     },
     models: {
       [modelName]: {
+        // Model capabilities
+        attachment: true,
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        temperature: true,
+        // Context limits
         limit: {
           context: context,
           input: inputLimit,
