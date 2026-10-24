@@ -183,10 +183,12 @@ def api_update_model_meta():
         # Agent/Tool parameters
         "jinja": bool,
         "reasoning_preserve": bool,
-        # CPU-only optimizations
-        "gpu_layers": int,
-        "cache_type_k": str,
-        "cache_type_v": str,
+# CPU-only optimizations
+    "gpu_layers": int,
+    "cpu_moe": bool,
+    "n_cpu_moe": int,
+    "cache_type_k": str,
+    "cache_type_v": str,
         "numa": bool,
         "numa_value": str,
         "cpu_affinity": str,

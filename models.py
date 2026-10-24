@@ -179,6 +179,8 @@ def add_model_entry(
     reasoning_preserve: bool = True,
     # CPU-only optimizations
     gpu_layers: int = 0,
+    cpu_moe: bool = False,
+    n_cpu_moe: int = 0,
     cache_type_k: str = "f16",
     cache_type_v: str = "f16",
     numa: bool = True,
@@ -283,6 +285,8 @@ def add_model_entry(
             "reasoning_preserve": reasoning_preserve,
             # CPU-only optimizations
             "gpu_layers": gpu_layers,
+            "cpu_moe": cpu_moe,
+            "n_cpu_moe": n_cpu_moe,
             "cache_type_k": cache_type_k,
             "cache_type_v": cache_type_v,
             "numa": numa,
@@ -480,6 +484,8 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "jinja": DEFAULTS["jinja"],
         "reasoning_preserve": DEFAULTS["reasoning_preserve"],
         "gpu_layers": DEFAULTS["gpu_layers"],
+        "cpu_moe": DEFAULTS["cpu_moe"],
+        "n_cpu_moe": DEFAULTS["n_cpu_moe"],
         "cache_type_k": DEFAULTS["cache_type_k"],
         "cache_type_v": DEFAULTS["cache_type_v"],
         "numa": DEFAULTS["numa"],

@@ -120,6 +120,8 @@ DEFAULTS: dict[str, Any] = {
     "reasoning_preserve": True,  # Preserve reasoning/thinking inner monologue across tool steps
     # CPU-only optimizations
     "gpu_layers": 99,  # 0 = CPU-only (no GPU offload)
+    "cpu_moe": False,  # Keep all Mixture of Experts (MoE) weights in CPU
+    "n_cpu_moe": 0,  # Keep MoE weights of first N layers in CPU (when cpu_moe is False)
     "cache_type_k": "q4_0",  # KV cache type: fp16, q4_0, q8_0 (q4_0 saves ~3.5x memory)
     "cache_type_v": "q4_0",  # KV cache type for V
     "numa": True,  # Enable NUMA awareness

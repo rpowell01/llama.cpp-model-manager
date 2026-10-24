@@ -73,6 +73,8 @@ class Model:
     reasoning_preserve: bool = True
     # CPU-only optimizations
     gpu_layers: int = 0
+    cpu_moe: bool = False
+    n_cpu_moe: int = 0
     cache_type_k: str = "f16"
     cache_type_v: str = "f16"
     numa: bool = True
@@ -168,6 +170,8 @@ class Model:
             reasoning_preserve=data.get("reasoning_preserve", True),
             # CPU-only optimizations
             gpu_layers=data.get("gpu_layers", 0),
+            cpu_moe=data.get("cpu_moe", False),
+            n_cpu_moe=data.get("n_cpu_moe", 0),
             cache_type_k=data.get("cache_type_k", "f16"),
             cache_type_v=data.get("cache_type_v", "f16"),
             numa=data.get("numa", True),

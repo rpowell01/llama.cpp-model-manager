@@ -223,6 +223,8 @@ def api_start():
             "reasoning_preserve": getattr(model_dict, 'reasoning_preserve', True),
             # CPU-only optimizations
             "gpu_layers": getattr(model_dict, 'gpu_layers', 0),
+            "cpu_moe": getattr(model_dict, 'cpu_moe', False),
+            "n_cpu_moe": getattr(model_dict, 'n_cpu_moe', 0),
             "cache_type_k": getattr(model_dict, 'cache_type_k', 'fp16'),
             "cache_type_v": getattr(model_dict, 'cache_type_v', 'fp16'),
             "numa": getattr(model_dict, 'numa', True),

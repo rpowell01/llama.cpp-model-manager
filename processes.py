@@ -640,6 +640,15 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if gpu_layers is not None:
         cmd += ["-ngl", str(gpu_layers)]
     
+    # MoE CPU offloading
+    cpu_moe = meta.get("cpu_moe", DEFAULTS["cpu_moe"])
+    if cpu_moe:
+        cmd += ["--cpu-moe"]
+    else:
+        n_cpu_moe = meta.get("n_cpu_moe", DEFAULTS["n_cpu_moe"])
+        if n_cpu_moe and n_cpu_moe > 0:
+            cmd += ["--n-cpu-moe", str(n_cpu_moe)]
+    
     cache_type_k = meta.get("cache_type_k", DEFAULTS["cache_type_k"])
     if cache_type_k and cache_type_k != "f16":
         cmd += ["--cache-type-k", cache_type_k]

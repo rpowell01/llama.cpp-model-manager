@@ -715,6 +715,22 @@ async function renderPanelProperties(data, modelName) {
     
     addEditable("GPU Layers (0=CPU only)", "gpu_layers", data.gpu_layers, "number", 1, 0);
     
+    // CPU MoE - checkbox that disables n-cpu-moe when checked
+    const cpuMoe = data.cpu_moe ?? false;
+    const nCpuMoe = data.n_cpu_moe ?? 0;
+    html += `<div class="panel-item">
+      <span class="label">CPU MoE (all layers)</span>
+      <span class="value">
+        <input type="checkbox" class="meta-input" data-field="cpu_moe" ${cpuMoe ? "checked" : ""}>
+      </span>
+    </div>`;
+    html += `<div class="panel-item" id="n-cpu-moe-row" style="${cpuMoe ? 'display:none;' : ''}">
+      <span class="label">N CPU MoE (layers)</span>
+      <span class="value">
+        <input type="number" class="meta-input" data-field="n_cpu_moe" value="${he(String(nCpuMoe))}" step="1" min="0">
+      </span>
+    </div>`;
+    
     // Flash Attn dropdown
     const flashVal = data.flash_attn == null ? "off" : data.flash_attn;
     const isFlashSelected = (val) =>
@@ -1112,6 +1128,19 @@ html += genParamsHtml;
     toggleGenParams();
   }
 
+  // Initialize CPU MoE checkbox toggle (shows/hides N CPU MoE field)
+  const cpuMoeCheckbox = content.querySelector('.meta-input[data-field="cpu_moe"]');
+  const nCpuMoeRow = content.querySelector('#n-cpu-moe-row');
+  if (cpuMoeCheckbox && nCpuMoeRow) {
+    const toggleCpuMoe = () => {
+      const show = !cpuMoeCheckbox.checked; // Show n_cpu_moe when cpu_moe is FALSE
+      nCpuMoeRow.style.display = show ? '' : 'none';
+    };
+    cpuMoeCheckbox.addEventListener('change', toggleCpuMoe);
+    // Initial state
+    toggleCpuMoe();
+  }
+
   // Reset Generation Parameters button handler
   const resetGenParamsBtn = document.getElementById(`reset-gen-params-${modelSafeId}`);
   if (resetGenParamsBtn) {
@@ -1173,6 +1202,8 @@ html += genParamsHtml;
           "grp_attn_n",
           "warmup_max_tokens",
           "rating_speed", "rating_coding",
+          // MoE CPU offloading
+          "n_cpu_moe",
           // Generation / Sampling parameters
           "temperature", "top_k", "top_p", "min_p",
           "repeat_penalty", "presence_penalty",
