@@ -23,10 +23,12 @@
 }
 
 /* Panel sections */
-.panel-section {
-  margin-bottom: 1rem;
-  flex-shrink: 0;
-}
+  .panel-section {
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+    cursor: default;
+  }
+
 
 .panel-section:last-child {
   margin-bottom: 0;
@@ -70,10 +72,28 @@
   gap: 0.2rem;
 }
 
-.panel-item .label {
-  font-size: 0.75rem;
-  color: var(--text2);
-}
+  .panel-item .label {
+    font-size: 0.75rem;
+    color: var(--text2);
+  }
+
+  /* Collapse behavior */
+  .panel-section.collapsed .panel-grid {
+    display: none;
+  }
+  .panel-section h3 {
+    cursor: pointer;
+  }
+  .panel-section h3::after {
+    content: "▶";
+    margin-left: 0.3rem;
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+  }
+  .panel-section:not(.collapsed) h3::after {
+    transform: rotate(90deg);
+  }
+
 
 .panel-item .value {
   font-size: 0.9rem;
