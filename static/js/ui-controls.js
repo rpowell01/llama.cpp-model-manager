@@ -403,7 +403,7 @@ async function renderPanelProperties(data, modelName) {
   let html = "";
 
          // Action buttons (Start/Stop/Optimize) at the top
-         html += `<div class="panel-section">
+         html += `<div class="panel-section collapsed">
            <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
               <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${canStart ? "" : "disabled"}>
                 ▶ Start
@@ -459,7 +459,7 @@ async function renderPanelProperties(data, modelName) {
     </div>`;
 
 // Basic Configuration
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Basic Configuration</h3>
     <div class="panel-grid">`;
     
@@ -655,7 +655,7 @@ async function renderPanelProperties(data, modelName) {
     html += `</div></div>`;
 
   // Performance & Threading
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Performance & Threading</h3>
     <div class="panel-grid">`;
     
@@ -683,7 +683,7 @@ async function renderPanelProperties(data, modelName) {
     html += `</div></div>`;
 
   // Memory Management
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Memory Management</h3>
     <div class="panel-grid">`;
     
@@ -709,7 +709,7 @@ async function renderPanelProperties(data, modelName) {
     html += `</div></div>`;
 
   // GPU & Acceleration
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>GPU & Acceleration</h3>
     <div class="panel-grid">`;
     
@@ -755,7 +755,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `</div></div>`;
 
   // Context & RoPE/YaRN
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Context & RoPE / YaRN</h3>
     <div class="panel-grid">`;
     
@@ -785,7 +785,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `</div></div>`;
 
   // KV Cache
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>KV Cache</h3>
     <div class="panel-grid">`;
     
@@ -816,7 +816,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `</div></div>`;
 
   // Speculative Decoding
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Speculative Decoding</h3>
     <div class="panel-grid">`;
     
@@ -915,7 +915,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `</div></div>`;
 
   // Agent/Tool Parameters
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Agent/Tool Parameters</h3>
     <div class="panel-grid">`;
     
@@ -1022,7 +1022,7 @@ html += genParamsHtml;
 
   // Running Statistics section
   if (running) {
-    html += `<div class="panel-section">
+    html += `<div class="panel-section collapsed">
       <h3>Running Statistics</h3>
       <div class="panel-grid">`;
     addItem("Status", '<span class="chip ok">● running</span>', false, true);
@@ -1031,7 +1031,7 @@ html += genParamsHtml;
   }
 
   // Hugging Face Metadata section
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>Model Information</h3>`;
 
   if (!data.repo) {
@@ -1049,7 +1049,7 @@ html += genParamsHtml;
   </div>`;
 
   // User Ratings & Comments section
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
     <h3>User Ratings & Comments</h3>
     <div class="panel-grid">`;
   
@@ -1096,7 +1096,7 @@ html += genParamsHtml;
     </div>`;
 
   // Kilo Code Configuration section
-  html += `<div class="panel-section">
+  html += `<div class="panel-section collapsed">
      <h3>Kilo Code Integration</h3>
      <div class="panel-item full-width">
        <button id="generate-config-${modelSafeId}" class="btn-primary">📋 Generate Kilo Code Config</button>
@@ -1107,6 +1107,14 @@ html += genParamsHtml;
    </div>`;
 
   content.innerHTML = html;
+
+// Toggle panels
+content.querySelectorAll('.panel-section h3').forEach(h3 => {
+  h3.addEventListener('click', () => {
+    const section = h3.parentElement;
+    section.classList.toggle('collapsed');
+  });
+});
 
   // Initialize browse buttons
   initBrowseButtons(content);

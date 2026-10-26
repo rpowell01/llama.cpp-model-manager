@@ -65,7 +65,7 @@ function generateKiloCodeConfig(modelData, modelName) {
   };
 
   // Return provider config object (without outer key wrapper)
-  return {
+  const config = {}; config[providerName] = {
     name: providerName,
     npm: npm,
     options: {
@@ -90,12 +90,12 @@ function generateKiloCodeConfig(modelData, modelName) {
           output: outputLimit
         },
         supported_parameters: supportedParameters,
-        default_parameters: defaultParameters
+        default_parameters: {}
       }
     }
-  };
+  }
+  return config;
 }
-
 /**
  * Open Kilo Code config modal
  * @param {Object} modelData - Model data
