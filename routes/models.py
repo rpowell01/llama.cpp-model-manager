@@ -185,6 +185,7 @@ def api_update_model_meta():
         "reasoning_preserve": bool,
 # CPU-only optimizations
     "gpu_layers": int,
+    "device": str,
     "cpu_moe": bool,
     "n_cpu_moe": int,
     "cache_type_k": str,

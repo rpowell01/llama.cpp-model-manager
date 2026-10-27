@@ -73,6 +73,7 @@ class Model:
     reasoning_preserve: bool = True
     # CPU-only optimizations
     gpu_layers: int = 0
+    device: str = ""
     cpu_moe: bool = False
     n_cpu_moe: int = 0
     cache_type_k: str = "f16"
@@ -170,6 +171,7 @@ class Model:
             reasoning_preserve=data.get("reasoning_preserve", True),
             # CPU-only optimizations
             gpu_layers=data.get("gpu_layers", 0),
+            device=data.get("device", ""),
             cpu_moe=data.get("cpu_moe", False),
             n_cpu_moe=data.get("n_cpu_moe", 0),
             cache_type_k=data.get("cache_type_k", "f16"),

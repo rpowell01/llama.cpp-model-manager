@@ -671,6 +671,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if gpu_layers is not None:
         cmd += ["-ngl", str(gpu_layers)]
     
+    # Device selection (for SYCL/GPU backends)
+    device = meta.get("device", DEFAULTS["device"])
+    if device:
+        cmd += ["--device", device]
+    
     # MoE CPU offloading
     cpu_moe = meta.get("cpu_moe", DEFAULTS["cpu_moe"])
     if cpu_moe:
