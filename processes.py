@@ -550,11 +550,12 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
     
-    from config import LLAMA_SERVER_TYPE
+    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
     
     # Determine binary type and build command accordingly
     is_windows_binary = LLAMA_SERVER_TYPE == "windows"
     is_linux_binary = LLAMA_SERVER_TYPE == "linux"
+    uses_serve_subcommand = LLAMA_SERVER_USES_SERVE
     
     # Determine bind host: in WSL+Windows binary mode, bind to 0.0.0.0 so Windows host
     # accepts connections from WSL. In all other cases, use the configured default.
@@ -565,8 +566,8 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     model_path = resolve_model_path(model_path_str)
 
     # Build command based on binary type
-    if is_linux_binary:
-        # Linux llama binary uses "llama serve" subcommand
+    if uses_serve_subcommand:
+        # Linux llama binary uses "llama serve" subcommand (old llama.cpp)
         cmd: list[str] = [
             str(LLAMA_SERVER),
             "serve",
@@ -586,7 +587,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             str(meta.get("timeout", DEFAULTS["timeout"])),
         ]
     else:
-        # Windows llama-server.exe or Linux llama-server
+        # Windows llama-server.exe or Linux llama-server (new SYCL version)
         cmd: list[str] = [
             str(LLAMA_SERVER),
             "-m",

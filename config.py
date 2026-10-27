@@ -209,8 +209,10 @@ FLASK_PORT: int = 5000
 # LLAMA_SERVER points to the binary/executable
 # For Windows: llama-server.exe
 # For Linux (llama.cpp installed via llama): llama (with 'serve' subcommand)
+# For Linux (llama.cpp SYCL build): llama-server (no subcommand)
 LLAMA_SERVER = None
 LLAMA_SERVER_TYPE = None  # "windows" or "linux"
+LLAMA_SERVER_USES_SERVE = False  # True for old "llama serve", False for "llama-server" direct
 
 # Check if user wants to prefer Linux binary in WSL (can be overridden at runtime)
 PREFER_LINUX_BINARY = os.getenv("PREFER_LINUX_BINARY", "").strip().lower() in ("true", "1", "yes", "on")
@@ -278,7 +280,7 @@ def set_binary_preference(prefer_linux: bool | None) -> bool:
     return LLAMA_SERVER is not None
 
 def find_llama_server_binary():
-    global LLAMA_SERVER, LLAMA_SERVER_TYPE
+    global LLAMA_SERVER, LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
     # Use effective preference (runtime override or env default)
     prefer_linux = get_effective_binary_preference()
     # Check if preference is explicitly set (not auto)
@@ -293,11 +295,13 @@ def find_llama_server_binary():
         candidate = linux_dir / "llama-server"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = False
             return candidate
         # Also check for llama (old llama.cpp with serve subcommand)
         candidate = linux_dir / "llama"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = True
             return candidate
     
     # Check for LLAMA_SERVER_DIR environment variable first (highest priority)
@@ -321,10 +325,12 @@ def find_llama_server_binary():
                 candidate = llama_server_dir / "llama-server"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = False
                     return candidate
                 candidate = llama_server_dir / "llama"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = True
                     return candidate
                 # Only fall back to Windows if not explicit preference
                 if not explicit_preference:
@@ -343,19 +349,23 @@ def find_llama_server_binary():
                     candidate = llama_server_dir / "llama"
                     if candidate.exists():
                         LLAMA_SERVER_TYPE = "linux"
+                        LLAMA_SERVER_USES_SERVE = True
                         return candidate
                     candidate = llama_server_dir / "llama-server"
                     if candidate.exists():
                         LLAMA_SERVER_TYPE = "linux"
+                        LLAMA_SERVER_USES_SERVE = False
                         return candidate
         else:
             candidate = llama_server_dir / "llama-server"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
+                LLAMA_SERVER_USES_SERVE = False
                 return candidate
             candidate = llama_server_dir / "llama"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
+                LLAMA_SERVER_USES_SERVE = True
                 return candidate
             candidate = llama_server_dir / "llama-server.exe"
             if candidate.exists():
@@ -380,20 +390,24 @@ def find_llama_server_binary():
                 candidate = DEFAULT_LINUX_BIN_DIR / "llama-server"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = False
                     return candidate
                 candidate = DEFAULT_LINUX_BIN_DIR / "llama"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = True
                     return candidate
             # Then check BASE_DIR
             # New SYCL version uses llama-server (matching Windows naming without .exe)
             candidate = BASE_DIR / "llama-server"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
+                LLAMA_SERVER_USES_SERVE = False
                 return candidate
             candidate = BASE_DIR / "llama"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
+                LLAMA_SERVER_USES_SERVE = True
                 return candidate
             # Only fall back to Windows if not explicit preference
             if not explicit_preference:
@@ -412,10 +426,12 @@ def find_llama_server_binary():
                 candidate = BASE_DIR / "llama"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = True
                     return candidate
                 candidate = BASE_DIR / "llama-server"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
+                    LLAMA_SERVER_USES_SERVE = False
                     return candidate
     else:
         # On Linux, check for native binary first, then Windows binary
@@ -423,10 +439,12 @@ def find_llama_server_binary():
         candidate = BASE_DIR / "llama-server"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = False
             return candidate
         candidate = BASE_DIR / "llama"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = True
             return candidate
         candidate = BASE_DIR / "llama-server.exe"
         if candidate.exists():
@@ -440,11 +458,13 @@ def find_llama_server_binary():
         llama_server_in_path = shutil.which("llama-server")
         if llama_server_in_path:
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = False
             return Path(llama_server_in_path)
         # Fall back to llama (old llama.cpp with serve subcommand)
         llama_in_path = shutil.which("llama")
         if llama_in_path:
             LLAMA_SERVER_TYPE = "linux"
+            LLAMA_SERVER_USES_SERVE = True
             return Path(llama_in_path)
     
     return None
