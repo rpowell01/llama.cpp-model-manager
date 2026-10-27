@@ -216,6 +216,9 @@ LLAMA_SERVER_TYPE = None  # "windows" or "linux"
 PREFER_LINUX_BINARY = os.getenv("PREFER_LINUX_BINARY", "").strip().lower() in ("true", "1", "yes", "on")
 LLAMA_SERVER_DIR_LINUX = os.getenv("LLAMA_SERVER_DIR_LINUX", "").strip()
 
+# Default Linux binary directory (home directory)
+DEFAULT_LINUX_BIN_DIR = Path.home() / "llama.cpp" / "bin"
+
 # Runtime-configurable binary preference (persisted in config file)
 # None = auto-detect (default), True = prefer Linux, False = prefer Windows
 _binary_preference_override: bool | None = None
@@ -286,12 +289,13 @@ def find_llama_server_binary():
     # If in WSL and we want to prefer Linux binary
     if WSL and prefer_linux and LLAMA_SERVER_DIR_LINUX:
         linux_dir = Path(LLAMA_SERVER_DIR_LINUX)
-        candidate = linux_dir / "llama"
+        # New SYCL version uses llama-server (matching Windows naming without .exe)
+        candidate = linux_dir / "llama-server"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
             return candidate
-        # Also check for llama-server for backward compatibility
-        candidate = linux_dir / "llama-server"
+        # Also check for llama (old llama.cpp with serve subcommand)
+        candidate = linux_dir / "llama"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
             return candidate
@@ -313,11 +317,12 @@ def find_llama_server_binary():
         elif WSL:
             if prefer_linux:
                 # Prefer Linux binary in WSL if requested
-                candidate = llama_server_dir / "llama"
+                # New SYCL version uses llama-server (matching Windows naming without .exe)
+                candidate = llama_server_dir / "llama-server"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
                     return candidate
-                candidate = llama_server_dir / "llama-server"
+                candidate = llama_server_dir / "llama"
                 if candidate.exists():
                     LLAMA_SERVER_TYPE = "linux"
                     return candidate
@@ -344,11 +349,11 @@ def find_llama_server_binary():
                         LLAMA_SERVER_TYPE = "linux"
                         return candidate
         else:
-            candidate = llama_server_dir / "llama"
+            candidate = llama_server_dir / "llama-server"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
                 return candidate
-            candidate = llama_server_dir / "llama-server"
+            candidate = llama_server_dir / "llama"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
                 return candidate
@@ -370,11 +375,23 @@ def find_llama_server_binary():
     elif WSL:
         if prefer_linux:
             # Prefer Linux binary in WSL if requested
-            candidate = BASE_DIR / "llama"
+            # First check DEFAULT_LINUX_BIN_DIR
+            if DEFAULT_LINUX_BIN_DIR.exists():
+                candidate = DEFAULT_LINUX_BIN_DIR / "llama-server"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
+                    return candidate
+                candidate = DEFAULT_LINUX_BIN_DIR / "llama"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
+                    return candidate
+            # Then check BASE_DIR
+            # New SYCL version uses llama-server (matching Windows naming without .exe)
+            candidate = BASE_DIR / "llama-server"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
                 return candidate
-            candidate = BASE_DIR / "llama-server"
+            candidate = BASE_DIR / "llama"
             if candidate.exists():
                 LLAMA_SERVER_TYPE = "linux"
                 return candidate
@@ -402,11 +419,12 @@ def find_llama_server_binary():
                     return candidate
     else:
         # On Linux, check for native binary first, then Windows binary
-        candidate = BASE_DIR / "llama"
+        # New SYCL version uses llama-server (matching Windows naming without .exe)
+        candidate = BASE_DIR / "llama-server"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
             return candidate
-        candidate = BASE_DIR / "llama-server"
+        candidate = BASE_DIR / "llama"
         if candidate.exists():
             LLAMA_SERVER_TYPE = "linux"
             return candidate
@@ -415,9 +433,15 @@ def find_llama_server_binary():
             LLAMA_SERVER_TYPE = "windows"
             return candidate
 
-    # Last resort: check PATH for 'llama' binary (Linux) - only if not explicitly preferring Windows
+    # Last resort: check PATH for 'llama-server' first, then 'llama' binary (Linux) - only if not explicitly preferring Windows
     if (WSL or (not WINDOWS and not WSL)) and not (explicit_preference and prefer_linux is False):
         import shutil
+        # Check for llama-server first (new SYCL version naming)
+        llama_server_in_path = shutil.which("llama-server")
+        if llama_server_in_path:
+            LLAMA_SERVER_TYPE = "linux"
+            return Path(llama_server_in_path)
+        # Fall back to llama (old llama.cpp with serve subcommand)
         llama_in_path = shutil.which("llama")
         if llama_in_path:
             LLAMA_SERVER_TYPE = "linux"
@@ -447,6 +471,9 @@ def _find_bench_binary(bench_dir: Path, name: str) -> Path | None:
         return candidate
     return None
 
+# Determine effective binary preference for benchmarks
+prefer_linux_bench = get_effective_binary_preference()
+
 # Check for LLAMA_SERVER_DIR environment variable first (highest priority)
 llama_server_dir_env = os.getenv("LLAMA_SERVER_DIR")
 if llama_server_dir_env:
@@ -455,15 +482,42 @@ if llama_server_dir_env:
     LLAMA_BENCH = _find_bench_binary(bench_dir, "llama-bench")
     LLAMA_BATCHED_BENCH = _find_bench_binary(bench_dir, "llama-batched-bench")
 
+# If in WSL and prefer Linux, also check LLAMA_SERVER_DIR_LINUX and default Linux path
+if WSL and prefer_linux_bench:
+    linux_dirs = []
+    if LLAMA_SERVER_DIR_LINUX:
+        linux_dirs.append(Path(LLAMA_SERVER_DIR_LINUX))
+    linux_dirs.append(DEFAULT_LINUX_BIN_DIR)
+    
+    for linux_dir in linux_dirs:
+        if LLAMA_BENCH is None:
+            candidate = linux_dir / "llama-bench"
+            if candidate.exists():
+                LLAMA_BENCH = candidate
+        if LLAMA_BATCHED_BENCH is None:
+            candidate = linux_dir / "llama-batched-bench"
+            if candidate.exists():
+                LLAMA_BATCHED_BENCH = candidate
+
 # Fallback to searching in BASE_DIR
 if LLAMA_BENCH is None or LLAMA_BATCHED_BENCH is None:
     if WINDOWS:
         LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
         LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
     elif WSL:
-        # On WSL, prefer Windows binary for better compatibility
-        LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
-        LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
+        if prefer_linux_bench:
+            # On WSL with Linux preference, check BASE_DIR for Linux binaries first
+            LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
+            LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
+            # If not found, fall back to Windows
+            if LLAMA_BENCH is None:
+                LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench.exe")
+            if LLAMA_BATCHED_BENCH is None:
+                LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench.exe")
+        else:
+            # On WSL, prefer Windows binary for better compatibility
+            LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
+            LLAMA_BATCHED_BENCH = _find_bench_binary(BASE_DIR, "llama-batched-bench")
     else:
         # On Linux, check for native binary first
         LLAMA_BENCH = _find_bench_binary(BASE_DIR, "llama-bench")
@@ -478,13 +532,33 @@ LLAMA_CLI = None
 if llama_server_dir_env:
     LLAMA_CLI = _find_bench_binary(bench_dir, "llama-cli")
 
+# If in WSL and prefer Linux, also check LLAMA_SERVER_DIR_LINUX and default Linux path
+if WSL and prefer_linux_bench:
+    linux_dirs = []
+    if LLAMA_SERVER_DIR_LINUX:
+        linux_dirs.append(Path(LLAMA_SERVER_DIR_LINUX))
+    linux_dirs.append(DEFAULT_LINUX_BIN_DIR)
+    
+    for linux_dir in linux_dirs:
+        if LLAMA_CLI is None:
+            candidate = linux_dir / "llama-cli"
+            if candidate.exists():
+                LLAMA_CLI = candidate
+                break
+
 # Fallback to searching in BASE_DIR
 if LLAMA_CLI is None:
     if WINDOWS:
         LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
     elif WSL:
-        # On WSL, prefer Windows binary for better compatibility
-        LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
+        if prefer_linux_bench:
+            # On WSL with Linux preference, check BASE_DIR for Linux binaries first
+            LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
+            if LLAMA_CLI is None:
+                LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli.exe")
+        else:
+            # On WSL, prefer Windows binary for better compatibility
+            LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
     else:
         # On Linux, check for native binary first
         LLAMA_CLI = _find_bench_binary(BASE_DIR, "llama-cli")
