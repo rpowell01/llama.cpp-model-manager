@@ -18,6 +18,12 @@ VENV_PATH="${SCRIPT_DIR}/${VENV_NAME}"
 REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
 PYTHON_EXEC="python3"
 
+# Initialize Intel oneAPI environment (workaround for OCL_ICD_FILENAMES unbound variable bug)
+if [ -f /opt/intel/oneapi/setvars.sh ]; then
+    export OCL_ICD_FILENAMES=""  # Prevent unbound variable error in setvars.sh
+    source /opt/intel/oneapi/setvars.sh --force 2>/dev/null || true
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
