@@ -321,10 +321,13 @@ def api_status():
         results = [_status_for_model(name, meta) for name, meta in models.items()]
     
     # Add mode and remote health info to response
+    from config import PREFER_LINUX_BINARY
     response_data = {
         "models": results,
         "mode": "remote" if registry.is_remote_mode else "local",
         "remote_healthy": g.get('remote_healthy', True),
+        "prefer_linux_binary": PREFER_LINUX_BINARY,
+        "wsl": WSL,
     }
     
     response = jsonify(response_data)
@@ -366,6 +369,7 @@ def api_debug(model_name):
         "active": active,
         "WSL": WSL,
         "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
+        "prefer_linux_binary": __import__('config').PREFER_LINUX_BINARY,
         "stored_pid": _wsl_pids.get(model_name) if WSL else None,
         "recent_stop": _recent_stops.get(model_name),
         "mode": "local",
