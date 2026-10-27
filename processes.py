@@ -549,31 +549,61 @@ def warmup_model(port: int, message: str = "Hello", max_tokens: int = 10) -> boo
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
+    
+    from config import LLAMA_SERVER_TYPE
+    
+    # Determine binary type and build command accordingly
+    is_windows_binary = LLAMA_SERVER_TYPE == "windows"
+    is_linux_binary = LLAMA_SERVER_TYPE == "linux"
+    
     # Determine bind host: in WSL+Windows binary mode, bind to 0.0.0.0 so Windows host
     # accepts connections from WSL. In all other cases, use the configured default.
-    bind_host = "0.0.0.0" if (WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe')) else DEFAULTS["host"]
+    bind_host = "0.0.0.0" if (WSL and is_windows_binary) else DEFAULTS["host"]
 
     # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
     model_path_str = meta.get("model_path", "")
     model_path = resolve_model_path(model_path_str)
 
-    cmd: list[str] = [
-        str(LLAMA_SERVER),
-        "-m",
-        convert_path_for_binary(model_path),
-        "--alias",
-        model,
-        "--host",
-        bind_host,
-        "--port",
-        str(port),
-        "--threads",
-        str(meta.get("threads", DEFAULTS["threads"])),
-        "--threads-batch",
-        str(meta.get("threads_batch", DEFAULTS["threads_batch"])),
-        "--timeout",
-        str(meta.get("timeout", DEFAULTS["timeout"])),
-    ]
+    # Build command based on binary type
+    if is_linux_binary:
+        # Linux llama binary uses "llama serve" subcommand
+        cmd: list[str] = [
+            str(LLAMA_SERVER),
+            "serve",
+            "-m",
+            convert_path_for_binary(model_path),
+            "--alias",
+            model,
+            "--host",
+            bind_host,
+            "--port",
+            str(port),
+            "--threads",
+            str(meta.get("threads", DEFAULTS["threads"])),
+            "--threads-batch",
+            str(meta.get("threads_batch", DEFAULTS["threads_batch"])),
+            "--timeout",
+            str(meta.get("timeout", DEFAULTS["timeout"])),
+        ]
+    else:
+        # Windows llama-server.exe or Linux llama-server
+        cmd: list[str] = [
+            str(LLAMA_SERVER),
+            "-m",
+            convert_path_for_binary(model_path),
+            "--alias",
+            model,
+            "--host",
+            bind_host,
+            "--port",
+            str(port),
+            "--threads",
+            str(meta.get("threads", DEFAULTS["threads"])),
+            "--threads-batch",
+            str(meta.get("threads_batch", DEFAULTS["threads_batch"])),
+            "--timeout",
+            str(meta.get("timeout", DEFAULTS["timeout"])),
+        ]
     # Handle load-mode for mlock and mmap (new llama.cpp API)
     # llama.cpp expects "mmap+mlock" order (mmap first)
     load_modes = []

@@ -7,11 +7,15 @@ This module centralizes all constants, paths, and platform-specific logic.
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import sys
 from pathlib import Path
 from typing import Any
+
+# Module logger
+log = logging.getLogger("llamaweb.config")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Platform detection
@@ -202,7 +206,11 @@ FLASK_PORT: int = 5000
 # ──────────────────────────────────────────────────────────────────────────────
 # llama-server binary location
 # ──────────────────────────────────────────────────────────────────────────────
+# LLAMA_SERVER points to the binary/executable
+# For Windows: llama-server.exe
+# For Linux (llama.cpp installed via llama): llama (with 'serve' subcommand)
 LLAMA_SERVER = None
+LLAMA_SERVER_TYPE = None  # "windows" or "linux"
 
 # Check if user wants to prefer Linux binary in WSL (can be overridden at runtime)
 PREFER_LINUX_BINARY = os.getenv("PREFER_LINUX_BINARY", "").strip().lower() in ("true", "1", "yes", "on")
@@ -251,28 +259,41 @@ def get_effective_binary_preference() -> bool | None:
     """Get the effective binary preference (override or env default)."""
     return _binary_preference_override if _binary_preference_override is not None else PREFER_LINUX_BINARY
 
+def get_llama_server_type() -> str | None:
+    """Get the type of llama server binary currently configured."""
+    return LLAMA_SERVER_TYPE
+
 def set_binary_preference(prefer_linux: bool | None) -> bool:
     """Set the runtime binary preference and reload the binary."""
-    global _binary_preference_override, LLAMA_SERVER
+    global _binary_preference_override, LLAMA_SERVER, LLAMA_SERVER_TYPE
     _binary_preference_override = prefer_linux
     _save_binary_preference(prefer_linux)
     # Force reload of LLAMA_SERVER
     LLAMA_SERVER = None
+    LLAMA_SERVER_TYPE = None
     LLAMA_SERVER = find_llama_server_binary()
     return LLAMA_SERVER is not None
 
 def find_llama_server_binary():
-    global LLAMA_SERVER
+    global LLAMA_SERVER, LLAMA_SERVER_TYPE
     # Use effective preference (runtime override or env default)
     prefer_linux = get_effective_binary_preference()
+    # Check if preference is explicitly set (not auto)
+    explicit_preference = _binary_preference_override is not None
     
     llama_server_dir_env = os.getenv("LLAMA_SERVER_DIR")
     
     # If in WSL and we want to prefer Linux binary
     if WSL and prefer_linux and LLAMA_SERVER_DIR_LINUX:
         linux_dir = Path(LLAMA_SERVER_DIR_LINUX)
+        candidate = linux_dir / "llama"
+        if candidate.exists():
+            LLAMA_SERVER_TYPE = "linux"
+            return candidate
+        # Also check for llama-server for backward compatibility
         candidate = linux_dir / "llama-server"
         if candidate.exists():
+            LLAMA_SERVER_TYPE = "linux"
             return candidate
     
     # Check for LLAMA_SERVER_DIR environment variable first (highest priority)
@@ -283,68 +304,125 @@ def find_llama_server_binary():
         if WINDOWS:
             candidate = llama_server_dir / "llama-server.exe"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "windows"
                 return candidate
             candidate = llama_server_dir / "llama-server"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "windows"
                 return candidate
         elif WSL:
             if prefer_linux:
                 # Prefer Linux binary in WSL if requested
+                candidate = llama_server_dir / "llama"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
+                    return candidate
                 candidate = llama_server_dir / "llama-server"
                 if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
                     return candidate
-                candidate = llama_server_dir / "llama-server.exe"
-                if candidate.exists():
-                    return candidate
+                # Only fall back to Windows if not explicit preference
+                if not explicit_preference:
+                    candidate = llama_server_dir / "llama-server.exe"
+                    if candidate.exists():
+                        LLAMA_SERVER_TYPE = "windows"
+                        return candidate
             else:
                 # On WSL, prefer Windows binary for better compatibility by default
                 candidate = llama_server_dir / "llama-server.exe"
                 if candidate.exists():
+                    LLAMA_SERVER_TYPE = "windows"
                     return candidate
-                candidate = llama_server_dir / "llama-server"
-                if candidate.exists():
-                    return candidate
+                # Only fall back to Linux if not explicit preference
+                if not explicit_preference:
+                    candidate = llama_server_dir / "llama"
+                    if candidate.exists():
+                        LLAMA_SERVER_TYPE = "linux"
+                        return candidate
+                    candidate = llama_server_dir / "llama-server"
+                    if candidate.exists():
+                        LLAMA_SERVER_TYPE = "linux"
+                        return candidate
         else:
+            candidate = llama_server_dir / "llama"
+            if candidate.exists():
+                LLAMA_SERVER_TYPE = "linux"
+                return candidate
             candidate = llama_server_dir / "llama-server"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "linux"
                 return candidate
             candidate = llama_server_dir / "llama-server.exe"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "windows"
                 return candidate
 
     # Fallback to searching in BASE_DIR
     if WINDOWS:
         candidate = BASE_DIR / "llama-server.exe"
         if candidate.exists():
+            LLAMA_SERVER_TYPE = "windows"
             return candidate
         candidate = BASE_DIR / "llama-server"
         if candidate.exists():
+            LLAMA_SERVER_TYPE = "windows"
             return candidate
     elif WSL:
         if prefer_linux:
             # Prefer Linux binary in WSL if requested
+            candidate = BASE_DIR / "llama"
+            if candidate.exists():
+                LLAMA_SERVER_TYPE = "linux"
+                return candidate
             candidate = BASE_DIR / "llama-server"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "linux"
                 return candidate
-            candidate = BASE_DIR / "llama-server.exe"
-            if candidate.exists():
-                return candidate
+            # Only fall back to Windows if not explicit preference
+            if not explicit_preference:
+                candidate = BASE_DIR / "llama-server.exe"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "windows"
+                    return candidate
         else:
             # On WSL, prefer Windows binary for better compatibility by default
             candidate = BASE_DIR / "llama-server.exe"
             if candidate.exists():
+                LLAMA_SERVER_TYPE = "windows"
                 return candidate
-            candidate = BASE_DIR / "llama-server"
-            if candidate.exists():
-                return candidate
+            # Only fall back to Linux if not explicit preference
+            if not explicit_preference:
+                candidate = BASE_DIR / "llama"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
+                    return candidate
+                candidate = BASE_DIR / "llama-server"
+                if candidate.exists():
+                    LLAMA_SERVER_TYPE = "linux"
+                    return candidate
     else:
         # On Linux, check for native binary first, then Windows binary
+        candidate = BASE_DIR / "llama"
+        if candidate.exists():
+            LLAMA_SERVER_TYPE = "linux"
+            return candidate
         candidate = BASE_DIR / "llama-server"
         if candidate.exists():
+            LLAMA_SERVER_TYPE = "linux"
             return candidate
         candidate = BASE_DIR / "llama-server.exe"
         if candidate.exists():
+            LLAMA_SERVER_TYPE = "windows"
             return candidate
+
+    # Last resort: check PATH for 'llama' binary (Linux) - only if not explicitly preferring Windows
+    if (WSL or (not WINDOWS and not WSL)) and not (explicit_preference and prefer_linux is False):
+        import shutil
+        llama_in_path = shutil.which("llama")
+        if llama_in_path:
+            LLAMA_SERVER_TYPE = "linux"
+            return Path(llama_in_path)
+    
     return None
 
 # Load preference from config file on startup
@@ -510,16 +588,8 @@ def convert_path_for_binary(path: Path) -> str:
         String representation of the path, converted if necessary
     """
     path_str = str(path)
-    # Check if ANY llama.cpp binary is a Windows exe (server, bench, batched-bench, cli, etc.)
-    # This covers llama-server.exe, llama-bench.exe, llama-batched-bench.exe, etc.
-    llama_binaries = [
-        LLAMA_SERVER,
-        LLAMA_BENCH,
-        LLAMA_BATCHED_BENCH,
-    ]
-    is_windows_binary = any(
-        b and str(b).endswith('.exe') for b in llama_binaries if b
-    )
+    # Check if we're using a Windows binary (via LLAMA_SERVER_TYPE)
+    is_windows_binary = LLAMA_SERVER_TYPE == "windows"
     
     if is_windows_binary and path_str.startswith('/mnt/'):
         # Convert /mnt/X/... to X:/...

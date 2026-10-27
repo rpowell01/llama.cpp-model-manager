@@ -106,6 +106,19 @@
   <button class="btn-goto" id="performanceBtn" onclick="showPerformanceModal()">📈 Performance</button>
 </div>
 
+<!-- Binary Preference Row (WSL only) -->
+<div class="toolbar-row" id="binaryPrefRow" style="display: none;">
+  <label class="toolbar-field" style="display: flex; align-items: center; gap: 0.5rem;">
+    <span style="font-weight: 600; color: var(--text);">llama.cpp Binary:</span>
+    <select id="binaryPrefSelect" style="padding: 0.3rem 0.6rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text); font-size: 0.85rem; min-width: 200px;">
+      <option value="auto">Auto-detect</option>
+      <option value="linux">Linux (WSL native)</option>
+      <option value="windows">Windows</option>
+    </select>
+    <span id="binaryPrefStatus" style="font-size: 0.75rem; color: var(--text2);"></span>
+  </label>
+</div>
+
 <!-- Filter Controls Row -->
 <div class="toolbar-row">
   <input type="search" id="search" placeholder="Filter models…">

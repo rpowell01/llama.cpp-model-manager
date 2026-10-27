@@ -476,6 +476,82 @@ def api_hardware_info():
         return jsonify({"error": str(e)}), 500
 
 
+@system_bp.route("/api/binary-preference", methods=["GET"])
+def api_get_binary_preference():
+    """Get the current llama.cpp binary preference (Linux vs Windows)."""
+    try:
+        import config
+        from config import get_effective_binary_preference
+        
+        prefer_linux = get_effective_binary_preference()
+        binary_path = str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None
+        is_windows_binary = config.LLAMA_SERVER_TYPE == "windows"
+        is_linux_binary = config.LLAMA_SERVER_TYPE == "linux"
+        
+        # Determine available options
+        options = []
+        if config.WSL:
+            # In WSL, both Linux and Windows binaries might be available
+            options.append({"value": True, "label": "Linux (WSL native)", "description": "Use llama-server from Linux/WSL installation"})
+            options.append({"value": False, "label": "Windows", "description": "Use llama-server.exe from Windows installation"})
+        elif config.WINDOWS:
+            options.append({"value": False, "label": "Windows", "description": "Use llama-server.exe from Windows installation"})
+        else:
+            options.append({"value": True, "label": "Linux", "description": "Use llama-server from Linux installation"})
+        
+        return jsonify({
+            "prefer_linux": prefer_linux,
+            "current_binary": binary_path,
+            "is_windows_binary": is_windows_binary,
+            "is_linux_binary": is_linux_binary,
+            "platform": "wsl" if config.WSL else ("windows" if config.WINDOWS else "linux"),
+            "options": options
+        })
+    except Exception as e:
+        log.exception("Failed to get binary preference")
+        return jsonify({"error": str(e)}), 500
+
+
+@system_bp.route("/api/binary-preference", methods=["POST"])
+def api_set_binary_preference():
+    """Set the llama.cpp binary preference (Linux vs Windows)."""
+    from flask import request
+    try:
+        data = request.get_json(force=True) or {}
+        prefer_linux = data.get("prefer_linux")
+        
+        # Allow null to reset to auto-detect
+        if prefer_linux is not None:
+            prefer_linux = bool(prefer_linux)
+        
+        from config import set_binary_preference
+        import config
+        
+        success = set_binary_preference(prefer_linux)
+        
+        if not success:
+            return jsonify({
+                "error": "Failed to find llama.cpp binary with the selected preference. "
+                         "Please ensure the binary is installed and accessible."
+            }), 500
+        
+        binary_path = str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None
+        is_windows_binary = config.LLAMA_SERVER_TYPE == "windows"
+        is_linux_binary = config.LLAMA_SERVER_TYPE == "linux"
+        
+        return jsonify({
+            "success": True,
+            "prefer_linux": prefer_linux,
+            "current_binary": binary_path,
+            "is_windows_binary": is_windows_binary,
+            "is_linux_binary": is_linux_binary,
+            "message": f"Switched to {'Linux' if is_linux_binary else 'Windows'} binary"
+        })
+    except Exception as e:
+        log.exception("Failed to set binary preference")
+        return jsonify({"error": str(e)}), 500
+
+
 def compute_optimal_settings(hardware_info, model_info=None):
     """
     Compute optimal model settings based on hardware capabilities (HEURISTIC MODE).
