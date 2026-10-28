@@ -40,6 +40,48 @@ log = logging.getLogger("llamaweb.processes")
 _wsl_host_cache: str | None = None
 _wsl_host_logged: bool = False
 
+# Cache for Intel environment variables
+_intel_env_cache: dict[str, str] | None = None
+
+
+def _get_intel_env() -> dict[str, str]:
+    """
+    Get Intel oneAPI environment variables needed for SYCL/OpenVINO builds.
+    Returns a dict of environment variables (LD_LIBRARY_PATH, etc.) or empty dict if not available.
+    Caches the result to avoid repeated shell invocations.
+    """
+    global _intel_env_cache
+    if _intel_env_cache is not None:
+        return _intel_env_cache
+    
+    _intel_env_cache = {}
+    
+    # Check if Intel oneAPI is installed
+    setvars_path = "/opt/intel/oneapi/setvars.sh"
+    if not os.path.exists(setvars_path):
+        return _intel_env_cache
+    
+    try:
+        # Source the Intel environment and capture the variables
+        result = subprocess.run(
+            ["bash", "-c", f"source {setvars_path} --force 2>/dev/null && env"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    # Only capture relevant Intel variables
+                    if key in ("LD_LIBRARY_PATH", "LIBRARY_PATH", "CPATH", "PKG_CONFIG_PATH", 
+                               "INTEL_LICENSE_FILE", "ONEAPI_ROOT", "CL_CONFIG_CPU_FORCE_PRIVATE_MEM_SIZE"):
+                        _intel_env_cache[key] = value
+    except Exception:
+        pass  # Ignore errors, return empty dict
+    
+    return _intel_env_cache
+
 
 def _get_wsl_host_ip() -> str | None:
     """
@@ -608,14 +650,21 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     # WSL workaround: wrap Linux binary with systemd-run to bypass memlock limit
     # Only applies when running Linux llama-server in WSL (not Windows binary)
+    # Use a service (not scope) to inherit LimitMEMLOCK=infinity from user.slice
+    # --scope doesn't inherit slice resource limits; service does
     if WSL and is_linux_binary and not uses_serve_subcommand:
-        # Prepend systemd-run --user --scope --pty to the command
-        cmd = [
+        # Prepend systemd-run --user --service-type=exec to the command
+        # Pass Intel oneAPI environment variables for SYCL/OpenVINO builds
+        intel_env = _get_intel_env()
+        systemd_run_cmd = [
             "systemd-run",
             "--user",
-            "--scope",
-            "--pty",
-        ] + cmd
+            "--service-type=exec",
+        ]
+        # Add --setenv for each Intel environment variable
+        for key, value in intel_env.items():
+            systemd_run_cmd.extend(["--setenv", f"{key}={value}"])
+        cmd = systemd_run_cmd + cmd
     # Handle load-mode for mlock and mmap (new llama.cpp API)
     # llama.cpp expects "mmap+mlock" order (mmap first)
     load_modes = []
@@ -679,11 +728,16 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     # CPU-only optimizations
     gpu_layers = meta.get("gpu_layers", DEFAULTS["gpu_layers"])
+    
+    # Device selection (for SYCL/GPU backends) - if device=none, force gpu_layers=0
+    device = meta.get("device", DEFAULTS["device"])
+    if device == "none":
+        gpu_layers = 0
+    
     if gpu_layers is not None:
         cmd += ["-ngl", str(gpu_layers)]
     
-    # Device selection (for SYCL/GPU backends) - only add --device when ngl=0
-    device = meta.get("device", DEFAULTS["device"])
+    # Add --device none when using CPU-only mode
     if device and gpu_layers == 0:
         cmd += ["--device", device]
     
