@@ -1,1 +1,1 @@
-/home/russ/code/config-repo/kilo/.claude-bridge/commands/bd-search.md
+/home/russ/projects/kilo-config/kilo/.claude-bridge/commands/bd-search.md

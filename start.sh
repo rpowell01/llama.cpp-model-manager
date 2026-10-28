@@ -24,6 +24,9 @@ if [ -f /opt/intel/oneapi/setvars.sh ]; then
     source /opt/intel/oneapi/setvars.sh --force 2>/dev/null || true
 fi
 
+GGML_OPENVINO_DEVICE=GPU
+ONEAPI_DEVICE_SELECTOR="level_zero:gpu"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -91,11 +94,19 @@ activate_venv() {
     log_success "Virtual environment activated."
 }
 
-# Check if pip is available in the current environment
+# Check if pip is available and working in the current environment, install if missing
 check_pip() {
-    if ! command_exists "pip"; then
-        log_error "pip is not available in the current Python environment."
-        exit 1
+    # Check if pip command works (not just if it exists)
+    if ! pip --version >/dev/null 2>&1; then
+        log_warning "pip is not available or broken in the current Python environment. Installing pip..."
+        if ! python -m ensurepip --upgrade 2>/dev/null; then
+            log_warning "ensurepip failed, trying alternative method..."
+            if ! python -m pip install --upgrade pip 2>/dev/null; then
+                log_error "Failed to install pip."
+                exit 1
+            fi
+        fi
+        log_success "pip installed successfully."
     fi
     log_info "Found pip: $(pip --version)"
 }
