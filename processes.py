@@ -23,10 +23,10 @@ from typing import Any
 
 import requests
 
+import config
 from config import (
     BASE_DIR,
     DEFAULTS,
-    LLAMA_SERVER,
     WINDOWS,
     WSL,
     convert_path_for_binary,
@@ -164,7 +164,7 @@ def get_server_host() -> str:
     
     # When running in WSL with a Windows binary, the server runs on Windows
     # and listens on the Windows host IP. We need to connect to that IP.
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         wsl_host = _get_wsl_host_ip()
         if wsl_host:
             if not _wsl_host_logged:
@@ -203,7 +203,7 @@ def find_pid_by_port(port: int) -> int | None:
     _validate_local_mode()
     
     # In WSL+Windows mode, use netstat to find the PID
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         return _find_pid_by_port_wsl(port)
     
     # Standard Linux/Unix approach
@@ -294,7 +294,7 @@ def pids_of_llama() -> list[int]:
     _validate_local_mode()
     pids: list[int] = []
     # On WSL with Windows binary, use tasklist via cmd.exe to find llama-server processes
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         try:
             cmd_path = "/mnt/c/Windows/System32/cmd.exe"
             if os.path.exists(cmd_path):
@@ -351,7 +351,7 @@ def _kill_tree(pid: int, model: str = "") -> bool:
     _validate_local_mode()
     try:
         # On WSL with Windows binary, use taskkill via cmd.exe
-        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
             log.info(f"Killing Windows process {pid} via taskkill (WSL mode)")
             cmd_path = "/mnt/c/Windows/System32/cmd.exe"
             if os.path.exists(cmd_path):
@@ -437,7 +437,7 @@ def check_port_active(port: int) -> bool:
 
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
         # Try the Windows host IP first (via get_server_host), then localhost as fallback
         wsl_host = get_server_host()
@@ -470,7 +470,7 @@ def _check_model_ready(port: int) -> bool:
     
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
         # Try the Windows host IP first (via get_server_host), then localhost as fallback
         wsl_host = get_server_host()
@@ -511,7 +511,7 @@ def warmup_model(port: int, message: str = "Hello", max_tokens: int = 10) -> boo
     
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         wsl_host = get_server_host()
         if wsl_host and wsl_host != "127.0.0.1":
             hosts_to_try.append(wsl_host)
@@ -550,7 +550,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
     
-    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
+    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL
     
     # Determine binary type and build command accordingly
     is_windows_binary = LLAMA_SERVER_TYPE == "windows"
@@ -569,7 +569,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if uses_serve_subcommand:
         # Linux llama binary uses "llama serve" subcommand (old llama.cpp)
         cmd: list[str] = [
-            str(LLAMA_SERVER),
+            str(config.LLAMA_SERVER),
             "serve",
             "-m",
             convert_path_for_binary(model_path),
@@ -589,7 +589,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     else:
         # Windows llama-server.exe or Linux llama-server (new SYCL version)
         cmd: list[str] = [
-            str(LLAMA_SERVER),
+            str(config.LLAMA_SERVER),
             "-m",
             convert_path_for_binary(model_path),
             "--alias",
@@ -605,6 +605,17 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             "--timeout",
             str(meta.get("timeout", DEFAULTS["timeout"])),
         ]
+    
+    # WSL workaround: wrap Linux binary with systemd-run to bypass memlock limit
+    # Only applies when running Linux llama-server in WSL (not Windows binary)
+    if WSL and is_linux_binary and not uses_serve_subcommand:
+        # Prepend systemd-run --user --scope --pty to the command
+        cmd = [
+            "systemd-run",
+            "--user",
+            "--scope",
+            "--pty",
+        ] + cmd
     # Handle load-mode for mlock and mmap (new llama.cpp API)
     # llama.cpp expects "mmap+mlock" order (mmap first)
     load_modes = []

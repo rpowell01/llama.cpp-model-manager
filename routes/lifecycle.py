@@ -8,7 +8,8 @@ from flask import Blueprint, jsonify, request, g
 import subprocess
 import os
 
-from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, LLAMA_SERVER, convert_path_for_binary, Config
+import config
+from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, convert_path_for_binary, Config
 from models import ModelRegistry, InvalidModeError
 from processes import (
     find_pid_by_port,
@@ -90,7 +91,7 @@ def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
             _recent_stops[model] = time.time()
         with _start_timestamps_lock:
             _start_timestamps.pop(model, None)
-        if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
             with _wsl_pids_lock:
                 _wsl_pids.pop(model, None)
         return True, None
@@ -98,7 +99,7 @@ def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
     success = _kill_tree(pid, model)
     log.info(f"Kill result for {model} (pid={pid}): success={success}")
     
-    if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
         with _wsl_pids_lock:
             old_pid = _wsl_pids.pop(model, None)
         log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
@@ -290,7 +291,7 @@ def api_start():
         # Check if already running
         active = check_port_active(port)
         if active:
-            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 pid = _wsl_pids.get(model)
                 if pid:
                     return jsonify({"status": "running", "pid": pid, "port": port})
@@ -327,7 +328,7 @@ def api_start():
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
             )
             pid = proc.pid
-            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 with _wsl_pids_lock:
                     _wsl_pids[model] = pid
             
@@ -380,7 +381,7 @@ def api_start():
             # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
             # but we need the actual Windows process PID for killing.
             # Look up the Windows PID from the port and update the stored PID.
-            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 windows_pid = find_pid_by_port(port)
                 if windows_pid:
                     log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")

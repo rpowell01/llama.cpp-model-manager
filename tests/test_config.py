@@ -133,7 +133,7 @@ class TestNormalizePathForBinary(unittest.TestCase):
         from config import normalize_path_for_binary
 
         with patch('config.WSL', True), \
-             patch('config.LLAMA_SERVER', self.WINDOWS_BINARY), \
+             patch('config.LLAMA_SERVER_TYPE', "windows"), \
              patch('config.LLAMA_BENCH', None), \
              patch('config.LLAMA_BATCHED_BENCH', None):
             self.assertEqual(
@@ -146,7 +146,7 @@ class TestNormalizePathForBinary(unittest.TestCase):
         from config import normalize_path_for_binary
 
         with patch('config.WSL', True), \
-             patch('config.LLAMA_SERVER', self.LINUX_BINARY), \
+             patch('config.LLAMA_SERVER_TYPE', "linux"), \
              patch('config.LLAMA_BENCH', None), \
              patch('config.LLAMA_BATCHED_BENCH', None):
             self.assertEqual(

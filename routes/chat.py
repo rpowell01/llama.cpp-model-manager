@@ -6,7 +6,7 @@ import logging
 from config import BASE_DIR, Config
 from models import ModelRegistry, get_models
 from processes import check_port_active, get_server_host
-from config import WSL, LLAMA_SERVER
+from config import WSL
 from routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)
@@ -181,7 +181,7 @@ def api_chat():
         else:
             # In local mode, determine hosts to try
             hosts_to_try = []
-            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
                 # Try the Windows host IP first (via get_server_host), then localhost as fallback
                 wsl_host = get_server_host()

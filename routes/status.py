@@ -4,7 +4,8 @@ from pathlib import Path
 from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
 
-from config import BASE_DIR, WINDOWS, WSL, LLAMA_SERVER, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
+import config
+from config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
 from models import get_models, ModelRegistry
 from processes import check_port_active, find_pid_by_port
 from routes.system import get_hardware_info
@@ -152,7 +153,7 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             status = "stopped"
         else:
             # First check stored PID for WSL (most reliable)
-            if WSL and LLAMA_SERVER and str(LLAMA_SERVER).endswith('.exe'):
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 with _wsl_pids_lock:
                     stored_pid = _wsl_pids.get(model)
                 if stored_pid:
@@ -354,7 +355,7 @@ def api_debug(model_name):
             "port": remote_model.port if remote_model else port,
             "active": remote_model is not None,
             "WSL": WSL,
-            "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
+            "LLAMA_SERVER": str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None,
             "stored_pid": None,
             "recent_stop": _recent_stops.get(model_name),
             "mode": "remote",
@@ -368,7 +369,7 @@ def api_debug(model_name):
         "port": port,
         "active": active,
         "WSL": WSL,
-        "LLAMA_SERVER": str(LLAMA_SERVER) if LLAMA_SERVER else None,
+        "LLAMA_SERVER": str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None,
         "prefer_linux_binary": __import__('config').PREFER_LINUX_BINARY,
         "stored_pid": _wsl_pids.get(model_name) if WSL else None,
         "recent_stop": _recent_stops.get(model_name),
