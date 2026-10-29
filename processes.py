@@ -671,6 +671,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     flash = meta.get("flash_attn", DEFAULTS["flash_attn"])
     if flash and flash != "off":
         cmd += ["--flash-attn", flash]
+
+    # Log verbosity
+    log_verbosity = meta.get("log_verbosity")
+    if log_verbosity is not None:
+        cmd += ["--log-verbosity", str(log_verbosity)]
     
     # Handle parallel: if "auto", use --kv-unified instead of --parallel
     parallel_val = meta.get("parallel")
