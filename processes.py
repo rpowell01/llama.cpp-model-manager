@@ -648,23 +648,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             str(meta.get("timeout", DEFAULTS["timeout"])),
         ]
     
-    # WSL workaround: wrap Linux binary with systemd-run to bypass memlock limit
-    # Only applies when running Linux llama-server in WSL (not Windows binary)
-    # Use a service (not scope) to inherit LimitMEMLOCK=infinity from user.slice
-    # --scope doesn't inherit slice resource limits; service does
-    if WSL and is_linux_binary and not uses_serve_subcommand:
-        # Prepend systemd-run --user --service-type=exec to the command
-        # Pass Intel oneAPI environment variables for SYCL/OpenVINO builds
-        intel_env = _get_intel_env()
-        systemd_run_cmd = [
-            "systemd-run",
-            "--user",
-            "--service-type=exec",
-        ]
-        # Add --setenv for each Intel environment variable
-        for key, value in intel_env.items():
-            systemd_run_cmd.extend(["--setenv", f"{key}={value}"])
-        cmd = systemd_run_cmd + cmd
+    # WSL workaround: systemd-run wrapper removed - doesn't work with Linux binary in WSL
+    # The Linux binary in WSL has memory allocation issues that systemd-run cannot resolve
+    # Use Windows binary for WSL instead (default behavior)
+    if False and WSL and is_linux_binary and not uses_serve_subcommand:
+        pass
     # Handle load-mode for mlock and mmap (new llama.cpp API)
     # llama.cpp expects "mmap+mlock" order (mmap first)
     load_modes = []
