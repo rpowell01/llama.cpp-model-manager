@@ -714,6 +714,8 @@ async function renderPanelProperties(data, modelName) {
     <div class="panel-grid">`;
     
     addEditable("GPU Layers (0=CPU only)", "gpu_layers", data.gpu_layers, "number", 1, 0);
+        addEditable("Log Verbosity", "log_verbosity",
+            "rating_coding", data.log_verbosity !== undefined ? data.log_verbosity : 3, "number", 1, 0);
     
     // CPU MoE - checkbox that disables n-cpu-moe when checked
     const cpuMoe = data.cpu_moe ?? false;

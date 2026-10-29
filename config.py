@@ -180,6 +180,7 @@ DEFAULTS: dict[str, Any] = {
     # Slot KV Cache Persistence
     "slot_save_path": "",
     "cache_reuse": 4096,
+    "log_verbosity": 3,
     "cache_ram": 8192,
     "swa_full": False,
     # Chat template
