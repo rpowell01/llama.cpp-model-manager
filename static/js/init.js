@@ -101,6 +101,26 @@ function initSearchDebounce() {
 // Tile Controls (sort order, speculative model visibility)
 // ──────────────────────────────────────────────────────────────
 function initTileControls() {
+  // Load tile preferences from localStorage
+  const TILE_PREFS_KEY = 'llamaweb_tile_prefs';
+  function loadTilePrefs() {
+    const fallback = { sortOrder: 'name', hideSpecModels: false };
+    try {
+      const raw = localStorage.getItem(TILE_PREFS_KEY);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return {
+        sortOrder: parsed?.sortOrder || fallback.sortOrder,
+        hideSpecModels: !!parsed?.hideSpecModels,
+      };
+    } catch (e) {
+      console.warn('Failed to load tile preferences:', e);
+      return fallback;
+    }
+  }
+  
+  const tilePrefs = loadTilePrefs();
+
   const sortSelect = document.getElementById('tileSortOrder');
   const hideSpecCheckbox = document.getElementById('hideSpecModels');
 

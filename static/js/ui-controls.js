@@ -287,8 +287,8 @@ function renderTiles(rows, dlMap, query) {
           : "") +
         statusChip +
         (running || starting
-          ? '<button class="btn-chat" onclick="window.open(\'http://127.0.0.1:' + r.port + \'?model=\' + encodeURIComponent(r.model) + \', \'_blank\')" title="Chat with model">Chat</button>'
-          : '<button class="btn-chat" disabled title="Chat with model">Chat</button>')
+          ? '<button class="btn-chat" onclick="window.open(\'http://127.0.0.1:\' + r.port + \'?model=\' + encodeURIComponent(r.model) + \', \'_blank\')" title="Chat with model">Chat</button>'
+          : '<button class="btn-chat" disabled title="Chat with model">Chat</button>') +
         "</div>" +
         '<div class="tile-body"><code title="' +
         jsEscape(r.model_path) +
