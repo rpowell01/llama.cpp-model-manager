@@ -286,6 +286,9 @@ function renderTiles(rows, dlMap, query) {
           ? '<span class="chip spec" title="Speculative decoding model - used only as a draft model, not as a primary model">⚡ spec</span>'
           : "") +
         statusChip +
+        (running || starting
+          ? '<button class="btn-chat" onclick="window.open(\'http://127.0.0.1:' + r.port + \'?model=\' + encodeURIComponent(r.model) + \', \'_blank\')" title="Chat with model">Chat</button>'
+          : '<button class="btn-chat" disabled title="Chat with model">Chat</button>')
         "</div>" +
         '<div class="tile-body"><code title="' +
         jsEscape(r.model_path) +
@@ -652,6 +655,9 @@ async function renderPanelProperties(data, modelName) {
       addItem("Expected Size (GB)", fmtGb(data.file_size_gb));
     }
     
+    // Log Verbosity
+    addEditable("Log Verbosity", "log_verbosity", data.log_verbosity !== undefined ? data.log_verbosity : 3, "number", 1, 0);
+    
     html += `</div></div>`;
 
   // Performance & Threading
@@ -714,8 +720,6 @@ async function renderPanelProperties(data, modelName) {
     <div class="panel-grid">`;
     
     addEditable("GPU Layers (0=CPU only)", "gpu_layers", data.gpu_layers, "number", 1, 0);
-        addEditable("Log Verbosity", "log_verbosity",
-            "rating_coding", data.log_verbosity !== undefined ? data.log_verbosity : 3, "number", 1, 0);
     
     // CPU MoE - checkbox that disables n-cpu-moe when checked
     const cpuMoe = data.cpu_moe ?? false;

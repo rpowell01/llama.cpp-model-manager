@@ -272,6 +272,8 @@ def api_start():
             "slot_save_path": getattr(model_dict, 'slot_save_path', ''),
             "cache_reuse": getattr(model_dict, 'cache_reuse', 4096),
             "swa_full": getattr(model_dict, 'swa_full', False),
+            # Logging
+            "log_verbosity": getattr(model_dict, 'log_verbosity', 3),
             # Chat template
             "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
             # Generation / Sampling parameters
@@ -309,22 +311,63 @@ def api_start():
         # Build command
         cmd = build_cmd(model, port, meta)
         env = os.environ.copy()
-
+        
+        # WSL + Windows binary workaround: use wrapper batch file to ensure
+        # environment variables are properly set in Windows process context
+        llama_server = config.LLAMA_SERVER
+        # Fallback: if LLAMA_SERVER not configured, use known Windows path
+        if llama_server is None:
+            llama_server = Path("/mnt/c/llama.cpp-sycl/bin/llama-server.exe")
+            log.warning(f"LLAMA_SERVER not configured, using fallback: {llama_server}")
+        
+        log.info(f"Debug: WSL={WSL}, LLAMA_SERVER={llama_server}, LLAMA_SERVER_TYPE={config.LLAMA_SERVER_TYPE}")
+        if WSL and str(llama_server).endswith('.exe'):
+            wrapper_path = BASE_DIR / "llama-server-wrapper.ps1"
+            if wrapper_path.exists():
+                # Convert WSL path to Windows path for PowerShell (use forward slashes)
+                wrapper_windows = str(wrapper_path).replace("/mnt/c/", "C:/").replace("/", "/")
+                llama_server_windows = str(llama_server).replace("/mnt/c/", "C:/").replace("/", "/")
+                # Build command with llama-server path as first argument to PowerShell script
+                cmd_win = list(cmd)
+                cmd_win[0] = llama_server_windows
+                # Build the full command string for powershell.exe
+                wrapper_cmd = f'powershell.exe -ExecutionPolicy Bypass -File "{wrapper_windows}" ' + ' '.join(cmd_win)
+                cmd = wrapper_cmd
+                log.info(f"Using wrapper PowerShell script for Windows binary: {wrapper_windows}")
+                log.info(f"Full command: {wrapper_cmd}")
+        
+        # Ensure Intel GPU uses OpenCL backend (needed for some Intel GPUs)
+        # Set multiple environment variables to force OpenCL backend over Level Zero
+        # Use direct assignment (not setdefault) to override any existing values
+        env["ONEAPI_DEVICE_SELECTOR"] = "opencl:gpu"
+        env["SYCL_DEVICE_FILTER"] = "opencl:gpu"
+        # Disable Level Zero API in llama.cpp SYCL backend
+        env["GGML_SYCL_USE_LEVEL_ZERO_API"] = "0"
+        
+        # Log relevant environment variables for debugging GPU device selection
+        log.info(f"Environment for {model}: ONEAPI_DEVICE_SELECTOR={env.get('ONEAPI_DEVICE_SELECTOR')}, "
+                 f"SYCL_DEVICE_FILTER={env.get('SYCL_DEVICE_FILTER')}, "
+                 f"GGML_SYCL_USE_LEVEL_ZERO_API={env.get('GGML_SYCL_USE_LEVEL_ZERO_API')}, "
+                 f"OCL_ICD_FILENAMES={env.get('OCL_ICD_FILENAMES')}")
+        
+        # Convert cmd to string if it's a list (for logging and Popen with shell)
+        cmd_str = cmd if isinstance(cmd, str) else ' '.join(cmd)
+        
         # Launch process
-        cmd_str = ' '.join(cmd)
         log.info(f"Starting model {model}: {cmd_str}")
         add_log_entry(f"▶ Start: {model} on port {port}", "green")
         add_log_entry(f"Command: {cmd_str}", "cyan")
         try:
             # Capture stdout/stderr for real-time logging
             proc = subprocess.Popen(
-                cmd,
+                cmd_str,
                 env=env,
                 cwd=BASE_DIR,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout
                 text=True,
                 bufsize=1,  # Line buffered
+                shell=True,  # Use shell to execute cmd.exe command string
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
             )
             pid = proc.pid

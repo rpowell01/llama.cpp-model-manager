@@ -24,9 +24,10 @@ PYTHON_EXEC="python3"
 #      source /opt/intel/oneapi/setvars.sh --force 2>/dev/null || true
 #  fi
 
-# GGML_OPENVINO_DEVICE=GPU
-# ONEAPI_DEVICE_SELECTOR="level_zero:*"
-# ONEAPI_DEVICE_SELECTOR=opencl:gpu 
+# Intel GPU acceleration - use OpenCL backend instead of Level Zero
+export ONEAPI_DEVICE_SELECTOR="opencl:gpu"
+export SYCL_DEVICE_FILTER="opencl:gpu"
+export GGML_SYCL_USE_LEVEL_ZERO_API="0"
 
 # Colors for output
 RED='\033[0;31m'

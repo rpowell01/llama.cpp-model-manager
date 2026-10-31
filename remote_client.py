@@ -131,6 +131,8 @@ class Model:
     slot_save_path: str = ""
     cache_reuse: int = 4096
     swa_full: bool = False
+    # Logging
+    log_verbosity: int = 3
     # Chat template
     chat_template_file: str = ""
     # Generation / Sampling parameters
@@ -229,6 +231,8 @@ class Model:
             slot_save_path=data.get("slot_save_path", ""),
             cache_reuse=data.get("cache_reuse", 4096),
             swa_full=data.get("swa_full", False),
+            # Logging
+            log_verbosity=data.get("log_verbosity", 3),
             # Chat template
             chat_template_file=data.get("chat_template_file", ""),
             # Generation / Sampling parameters

@@ -29,6 +29,11 @@ $VenvPath = Join-Path $ScriptDir $VenvName
 $RequirementsFile = Join-Path $ScriptDir "requirements.txt"
 $PythonExec = "python"
 
+# Intel GPU acceleration - use OpenCL backend instead of Level Zero
+$env:ONEAPI_DEVICE_SELECTOR = "opencl:gpu"
+$env:SYCL_DEVICE_FILTER = "opencl:gpu"
+$env:GGML_SYCL_USE_LEVEL_ZERO_API = "0"
+
 # Colors for output
 $Red = [ConsoleColor]::Red
 $Green = [ConsoleColor]::Green

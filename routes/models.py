@@ -241,6 +241,8 @@ def api_update_model_meta():
         "slot_save_path": str,
         "cache_reuse": int,
         "swa_full": bool,
+        # Logging
+        "log_verbosity": int,
     # Chat template
     "chat_template_file": str,
     # Custom HTTP Header for Kilo Code Config
