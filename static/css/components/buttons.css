@@ -98,6 +98,10 @@
   background: var(--btn-stop);
 }
 
+.actions .chat {
+  background: var(--btn-goto);
+}
+
 .actions .download {
   background: var(--btn-download);
 }
