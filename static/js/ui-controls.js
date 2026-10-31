@@ -337,7 +337,7 @@ function renderTiles(rows, dlMap, query) {
         "', 'stop')\" " +
         (canStop ? "" : "disabled") +
         ">\u25A0 Stop</button>" +
-        ' <button class="chat" onclick="window.open(\'http://127.0.0.1:\' + ' + r.port + ' + \'?model=\' + encodeURIComponent(\'' + jsEscape(r.model) + '\') + \', \'_blank\')" ' +
+        ' <button class="chat" onclick="window.open(\'http://127.0.0.1:' + r.port + '?model=\' + encodeURIComponent(\'' + jsEscape(r.model) + '\') + \', \'_blank\')" ' +
         (canStop ? "" : "disabled") +
         ' title="Chat with model">Chat</button>' +
         ' <button class="add" onclick="downloadModel(\'' +
