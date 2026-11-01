@@ -1018,14 +1018,6 @@ html += genParamsHtml;
     
     html += `</div></div>`;
 
- // Save/Cancel buttons
-   html += `<div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
-     <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
-     <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
-   </div>`;
-
-  html += `</div></div>`;
-
   // Running Statistics section
   if (running) {
     html += `<div class="panel-section collapsed">
@@ -1100,6 +1092,12 @@ html += genParamsHtml;
         rows="3" 
         placeholder="Share your thoughts about this model...">${he(data.comment || "")}</textarea>
     </div>`;
+
+  // Save/Cancel buttons at the bottom of the panel
+  html += `<div class="panel-item full-width" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2);">
+     <button type="button" class="btn-cancel" id="meta-cancel-${modelSafeId}" style="padding: 0.5rem 1rem;">Cancel</button>
+     <button type="button" class="btn-primary" id="meta-save-${modelSafeId}" style="padding: 0.5rem 1rem;">Save</button>
+   </div>`;
 
   // Kilo Code Configuration section
   html += `<div class="panel-section collapsed">
