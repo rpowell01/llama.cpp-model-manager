@@ -405,7 +405,7 @@ async function renderPanelProperties(data, modelName) {
 
   let html = "";
 
-         // Action buttons (Start/Stop/Optimize) at the top
+         // Action buttons (Start/Stop) at the top
          html += `<div class="panel-section collapsed">
            <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
               <button type="button" class="btn-primary" id="start-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${canStart ? "" : "disabled"}>
@@ -414,52 +414,8 @@ async function renderPanelProperties(data, modelName) {
               <button type="button" class="btn-danger" id="stop-model-${modelSafeId}" style="padding: 0.5rem 1rem;" ${canStop ? "" : "disabled"}>
                 ■ Stop
               </button>
-             <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
-               ⚡ Quick Optimize (Heuristics)
-             </button>
-             <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
-               ⚙️ Optimize Settings (Empirical Benchmarks)
-             </button>
-             <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
-               🔍 Deep Sweep (Batched Bench)
-             </button>
-             <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
-               📊 View Historical Benchmark Results
-             </button>
            </div>
-         </div>
-    <div class="panel-item full-width" style="margin-top: 0.5rem;">
-      <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-          <span>Max benchmark duration:</span>
-          <input type="number" id="max-duration-${modelSafeId}" value="0" min="0" max="3600" step="10" style="width: 70px;">
-          <span>seconds (0 = no timeout)</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-          <span>Target:</span>
-          <select id="optimize-target-${modelSafeId}" style="width: 120px;">
-            <option value="balanced">Balanced</option>
-            <option value="throughput">Throughput</option>
-            <option value="latency">Latency</option>
-          </select>
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-          <input type="checkbox" id="bench-current-config-${modelSafeId}" style="width: 16px; height: 16px;">
-          <span>Run benchmark using currently defined property values</span>
-        </label>
-      </div>
-    </div>
-    <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
-      <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-        <div id="optimize-spinner-${modelSafeId}" style="width: 18px; height: 18px; border: 2px solid var(--surface2); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-        <span id="optimize-progress-text-${modelSafeId}" style="font-size: 0.85rem; color: var(--text);">Starting benchmark...</span>
-        <button type="button" id="optimize-cancel-${modelSafeId}" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Cancel</button>
-      </div>
-      <div id="optimize-progress-bar-container-${modelSafeId}" style="margin-top: 0.5rem; background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden; display: none;">
-        <div id="optimize-progress-bar-${modelSafeId}" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
-      </div>
-      <div id="optimize-details-${modelSafeId}" style="margin-top: 0.35rem; font-size: 0.75rem; color: var(--muted); display: none;"></div>
-    </div>`;
+         </div>`;
 
 // Basic Configuration
   html += `<div class="panel-section collapsed">
@@ -1046,6 +1002,59 @@ html += genParamsHtml;
     <div id="hf-metadata-error" class="error" style="display: none;"></div>
   </div>`;
 
+  // Performance Benchmarking section
+  html += `<div class="panel-section collapsed">
+    <h3>Performance Benchmarking</h3>
+    <div class="panel-grid">
+      <div class="panel-item full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <button type="button" class="btn-secondary" id="quick-optimize-${modelSafeId}" style="padding: 0.5rem 1rem;">
+          ⚡ Quick Optimize (Heuristics)
+        </button>
+        <button type="button" class="btn-primary" id="optimize-settings-${modelSafeId}" style="padding: 0.5rem 1rem;">
+          ⚙️ Optimize Settings (Empirical Benchmarks)
+        </button>
+        <button type="button" class="btn-primary" id="deep-sweep-${modelSafeId}" style="padding: 0.5rem 1rem;">
+          🔍 Deep Sweep (Batched Bench)
+        </button>
+        <button type="button" class="btn-secondary" id="view-history-${modelSafeId}" style="padding: 0.5rem 1rem;">
+          📊 View Historical Benchmark Results
+        </button>
+      </div>
+      <div class="panel-item full-width" style="margin-top: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
+          <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <span>Max benchmark duration:</span>
+            <input type="number" id="max-duration-${modelSafeId}" value="0" min="0" max="3600" step="10" style="width: 70px;">
+            <span>seconds (0 = no timeout)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <span>Target:</span>
+            <select id="optimize-target-${modelSafeId}" style="width: 120px;">
+              <option value="balanced">Balanced</option>
+              <option value="throughput">Throughput</option>
+              <option value="latency">Latency</option>
+            </select>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <input type="checkbox" id="bench-current-config-${modelSafeId}" style="width: 16px; height: 16px;">
+            <span>Run benchmark using currently defined property values</span>
+          </label>
+        </div>
+      </div>
+      <div class="panel-item full-width" id="optimize-progress-${modelSafeId}" style="margin-top: 0.5rem; display: none;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <div id="optimize-spinner-${modelSafeId}" style="width: 18px; height: 18px; border: 2px solid var(--surface2); border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          <span id="optimize-progress-text-${modelSafeId}" style="font-size: 0.85rem; color: var(--text);">Starting benchmark...</span>
+          <button type="button" id="optimize-cancel-${modelSafeId}" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Cancel</button>
+        </div>
+        <div id="optimize-progress-bar-container-${modelSafeId}" style="margin-top: 0.5rem; background: var(--surface); border-radius: 4px; height: 6px; overflow: hidden; display: none;">
+          <div id="optimize-progress-bar-${modelSafeId}" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
+        </div>
+        <div id="optimize-details-${modelSafeId}" style="margin-top: 0.35rem; font-size: 0.75rem; color: var(--muted); display: none;"></div>
+      </div>
+    </div>
+  </div>`;
+
   // User Ratings & Comments section
   html += `<div class="panel-section collapsed">
     <h3>User Ratings & Comments</h3>
@@ -1093,17 +1102,19 @@ html += genParamsHtml;
         placeholder="Share your thoughts about this model...">${he(data.comment || "")}</textarea>
     </div>`;
 
-  // Save/Cancel buttons at the bottom of the panel
-  // Removed: these buttons were inside User Ratings & Comments; will be moved after Kilo Code section
+  // Close User Ratings & Comments panel-section
+  html += `</div></div>`;
 
   // Kilo Code Configuration section
   html += `<div class="panel-section collapsed">
      <h3>Kilo Code Integration</h3>
-     <div class="panel-item full-width">
-       <button id="generate-config-${modelSafeId}" class="btn-primary">📋 Generate Kilo Code Config</button>
-       <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text2);">
-         Generate a provider configuration for Kilo Code based on this model's settings.
-       </p>
+     <div class="panel-grid">
+       <div class="panel-item full-width">
+         <button id="generate-config-${modelSafeId}" class="btn-primary">📋 Generate Kilo Code Config</button>
+         <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text2);">
+           Generate a provider configuration for Kilo Code based on this model's settings.
+         </p>
+       </div>
      </div>
    </div>`;
   // Add the previously removed Save/Cancel buttons after Kilo Code section
