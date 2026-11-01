@@ -272,6 +272,7 @@ def api_start():
             "slot_save_path": getattr(model_dict, 'slot_save_path', ''),
             "cache_reuse": getattr(model_dict, 'cache_reuse', 4096),
             "swa_full": getattr(model_dict, 'swa_full', False),
+            "keep": getattr(model_dict, 'keep', 0),
             # Logging
             "log_verbosity": getattr(model_dict, 'log_verbosity', 3),
             # Chat template

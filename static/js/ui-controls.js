@@ -598,6 +598,17 @@ async function renderPanelProperties(data, modelName) {
 
     addItem("Model Name", modelName);
     addEditable("Port", "port", data.port, "number", 1, 0);
+    // Reuse Port checkbox
+    const reusePortVal = data.reuse_port !== undefined ? data.reuse_port : true;
+    html += `<div class="panel-item">
+      <span class="label">Reuse Port</span>
+      <span class="value">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" class="meta-input" data-field="reuse_port" ${reusePortVal ? "checked" : ""}>
+          <span>Allow multiple sockets to bind to the same port (SO_REUSEPORT)</span>
+        </label>
+      </span>
+    </div>`;
     // Note: Hugging Face Repo, Filename, Expected Size are typically static/model info
     // These would come from data but aren't in the standard model metadata API
     // For now, we'll show them as static info if available
@@ -709,6 +720,7 @@ async function renderPanelProperties(data, modelName) {
     
 addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "directory");
     addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1);
+    addEditable("Keep (tokens from initial prompt)", "keep", data.keep, "number", 1, 0);
     addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox");
     
     // Chat template file with browse button

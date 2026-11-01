@@ -621,6 +621,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             bind_host,
             "--port",
             str(port),
+            "--reuse-port" if meta.get("reuse_port", DEFAULTS["reuse_port"]) else "--no-reuse-port",
             "--threads",
             str(meta.get("threads", DEFAULTS["threads"])),
             "--threads-batch",
@@ -640,6 +641,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             bind_host,
             "--port",
             str(port),
+            "--reuse-port" if meta.get("reuse_port", DEFAULTS["reuse_port"]) else "--no-reuse-port",
             "--threads",
             str(meta.get("threads", DEFAULTS["threads"])),
             "--threads-batch",
@@ -777,6 +779,12 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     cache_reuse = meta.get("cache_reuse", DEFAULTS["cache_reuse"])
     if cache_reuse:
         cmd += ["--cache-reuse", str(cache_reuse)]
+    
+    # --keep parameter: number of tokens to keep from the initial prompt
+    # -1 means keep all tokens, 0 means disabled (default), positive N means keep N tokens
+    keep = meta.get("keep", DEFAULTS["keep"])
+    if keep is not None and keep != 0:
+        cmd += ["--keep", str(keep)]
     
     # Enable --swa-full only if explicitly requested (for sliding window attention models)
     # The flag is independent of slot_save_path and cache_reuse

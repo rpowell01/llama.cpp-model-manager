@@ -229,7 +229,10 @@ def add_model_entry(
     # Slot KV Cache Persistence
     slot_save_path: str = "",
     cache_reuse: int = 4096,
+    keep: int = 0,
     swa_full: bool = False,
+    # Network
+    reuse_port: bool = True,
     # Chat template
     chat_template_file: str = "",
     # Custom HTTP Header for Kilo Code Config
@@ -336,7 +339,10 @@ def add_model_entry(
             # Slot KV Cache Persistence
             "slot_save_path": slot_save_path,
             "cache_reuse": cache_reuse,
+            "keep": keep,
             "swa_full": swa_full,
+            # Network
+            "reuse_port": reuse_port,
             # Chat template
             "chat_template_file": chat_template_file,
             # Custom HTTP Header for Kilo Code Config
@@ -529,7 +535,10 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         # Slot KV Cache Persistence
         "slot_save_path": DEFAULTS["slot_save_path"],
         "cache_reuse": DEFAULTS["cache_reuse"],
+        "keep": DEFAULTS["keep"],
         "swa_full": DEFAULTS["swa_full"],
+        # Network
+        "reuse_port": DEFAULTS["reuse_port"],
         # Chat template
         "chat_template_file": DEFAULTS["chat_template_file"],
     }
@@ -599,6 +608,11 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "warmup_enabled": DEFAULTS["warmup_enabled"],
                 "warmup_message": DEFAULTS["warmup_message"],
                 "warmup_max_tokens": DEFAULTS["warmup_max_tokens"],
+                # Slot KV Cache Persistence
+                "cache_reuse": DEFAULTS["cache_reuse"],
+                "keep": DEFAULTS["keep"],
+                # Network
+                "reuse_port": DEFAULTS["reuse_port"],
                 # Intel/AMD GPU Options
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],

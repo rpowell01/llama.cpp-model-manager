@@ -130,6 +130,7 @@ class Model:
     # Slot KV Cache Persistence
     slot_save_path: str = ""
     cache_reuse: int = 4096
+    keep: int = 0
     swa_full: bool = False
     # Logging
     log_verbosity: int = 3
@@ -230,6 +231,7 @@ class Model:
             # Slot KV Cache Persistence
             slot_save_path=data.get("slot_save_path", ""),
             cache_reuse=data.get("cache_reuse", 4096),
+            keep=data.get("keep", 0),
             swa_full=data.get("swa_full", False),
             # Logging
             log_verbosity=data.get("log_verbosity", 3),

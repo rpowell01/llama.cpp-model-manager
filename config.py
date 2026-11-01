@@ -110,7 +110,8 @@ def _get_cpu_count() -> int:
 
 DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
-    "port": 11000,
+    "port": 9931,
+    "reuse_port": True,
     "threads": _get_cpu_count(),  # Use all logical CPUs
     "threads_batch": _get_cpu_count(),  # Use all logical CPUs for batch
     "timeout": 3600,
@@ -180,6 +181,7 @@ DEFAULTS: dict[str, Any] = {
     # Slot KV Cache Persistence
     "slot_save_path": "",
     "cache_reuse": 4096,
+    "keep": 0,
     "log_verbosity": 3,
     "cache_ram": 8192,
     "swa_full": False,

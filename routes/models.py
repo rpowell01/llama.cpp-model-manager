@@ -240,7 +240,10 @@ def api_update_model_meta():
         # Slot KV Cache Persistence
         "slot_save_path": str,
         "cache_reuse": int,
+        "keep": int,
         "swa_full": bool,
+        # Network
+        "reuse_port": bool,
         # Logging
         "log_verbosity": int,
     # Chat template
