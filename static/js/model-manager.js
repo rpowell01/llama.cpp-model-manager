@@ -321,16 +321,28 @@ async function refresh(showLoading = true) {
   try {
     console.log('Fetching /api/status...');
     // Use Promise.race to enforce timeout even if fetch hangs
+    // Use separate AbortController for each fetch to avoid cross-contamination
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // Increased to 60 seconds
     const fetchPromise = fetch('/api/status?' + Date.now(), {
       cache: 'no-store',
       signal: controller.signal
     });
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Fetch timeout')), 30000)
+      setTimeout(() => reject(new Error('Fetch timeout')), 60000)
     );
-    const res = await Promise.race([fetchPromise, timeoutPromise]);
+    let res;
+    try {
+      res = await Promise.race([fetchPromise, timeoutPromise]);
+    } catch (e) {
+      clearTimeout(timeoutId);
+      // Handle AbortError specifically - don't treat as failure if it's just timeout
+      if (e.name === 'AbortError') {
+        console.warn('Fetch aborted (likely timeout), retrying...');
+        throw new Error('Fetch timeout');
+      }
+      throw e;
+    }
     clearTimeout(timeoutId);
     console.log('Fetched /api/status, status:', res.status);
     if (!res.ok) {
@@ -364,18 +376,35 @@ async function refresh(showLoading = true) {
      currentModelRows = deduplicated;
      updateSpecDraftModels();
 
-     const dlRes = await fetch('/api/download-status?' + Date.now(), {
-       cache: 'no-store',
-       signal: controller.signal
-     });
-     const dlText = await dlRes.text();
-     const dlMap = {};
-     let dlJson;
+     // Use separate controller for download-status fetch
+     const dlController = new AbortController();
+     const dlTimeoutId = setTimeout(() => dlController.abort(), 30000);
+     let dlRes;
      try {
-       dlJson = JSON.parse(dlText);
+       dlRes = await fetch('/api/download-status?' + Date.now(), {
+         cache: 'no-store',
+         signal: dlController.signal
+       });
      } catch (e) {
-       console.error('Failed to parse /api/download-status response:', dlText);
-       dlJson = {};
+       clearTimeout(dlTimeoutId);
+       if (e.name === 'AbortError') {
+         console.warn('Download status fetch aborted (timeout)');
+         dlRes = null;
+       } else {
+         throw e;
+       }
+     }
+     clearTimeout(dlTimeoutId);
+     
+     const dlMap = {};
+     let dlJson = {};
+     if (dlRes && dlRes.ok) {
+       const dlText = await dlRes.text();
+       try {
+         dlJson = JSON.parse(dlText);
+       } catch (e) {
+         console.error('Failed to parse /api/download-status response:', dlText);
+       }
      }
      Object.assign(dlMap, dlJson);
 

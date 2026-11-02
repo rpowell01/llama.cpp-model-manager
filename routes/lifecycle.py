@@ -410,7 +410,7 @@ def api_start():
         for _ in range(80):  # 40 seconds max wait for large models
             if proc and proc.poll() is None:
                 # Process is running, now check if model is ready (port + health endpoint)
-                if check_port_active(port) and _check_model_ready(port):
+                if check_port_active(port) and _check_model_ready(port, model):
                     is_running = True
                     break
             time.sleep(0.5)

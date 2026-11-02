@@ -5,7 +5,7 @@ import logging
 
 from config import BASE_DIR, Config
 from models import ModelRegistry, get_models
-from processes import check_port_active, get_server_host
+from processes import check_port_active, get_server_host, _check_model_ready
 from config import WSL
 from routes.status import _status_for_model
 
@@ -148,7 +148,7 @@ def api_chat():
             if status_info.get("status") == "starting":
                 return jsonify({"error": "Model is starting", "status": "starting"}), 503
 
-        if not check_port_active(port_int):
+        if not _check_model_ready(port_int, model):
             return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
 
     # Generate session ID for slot persistence

@@ -473,7 +473,7 @@ def load_models_cache() -> None:
         if draft_model:
             meta["spec_draft_model"] = normalize_path_for_binary(draft_model)
 
-    assign_ports(models)
+    # assign_ports(models)  # Disabled: use port from models.json (default 9931)
     with _models_lock:
         _models = models
 

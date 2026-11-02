@@ -30,7 +30,7 @@ from typing import Optional
 from config import BASE_DIR
 from metrics import _fetch_metrics_from_model
 from models import get_models
-from routes.models import check_port_active
+from processes import check_port_active, _check_model_ready
 
 log = logging.getLogger("llamaweb.exporter")
 
@@ -103,7 +103,7 @@ def build_metrics_row(model: str, meta: dict) -> dict:
     if not port:
         raise ValueError(f"Model '{model}' has no port assigned")
 
-    if not check_port_active(port):
+    if not _check_model_ready(port, model):
         raise RuntimeError(f"Model '{model}' is not running on port {port}")
 
     # Fetch metrics using the same shared function the metrics tooltip uses

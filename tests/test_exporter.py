@@ -57,7 +57,7 @@ class TestBuildMetricsRow:
     """Tests for build_metrics_row using the shared metrics fetch."""
 
     def test_builds_row_from_shared_fetch(self):
-        with patch("exporter.check_port_active", return_value=True), patch(
+        with patch("exporter._check_model_ready", return_value=True), patch(
             "exporter._fetch_metrics_from_model", return_value=dict(METRICS)
         ):
             row = build_metrics_row("test-model", dict(META))
@@ -90,7 +90,7 @@ class TestBuildMetricsRow:
             build_metrics_row("test-model", {})
 
     def test_raises_runtime_error_when_not_running(self):
-        with patch("exporter.check_port_active", return_value=False):
+        with patch("exporter._check_model_ready", return_value=False):
             with pytest.raises(RuntimeError, match="is not running"):
                 build_metrics_row("test-model", dict(META))
 
@@ -98,7 +98,7 @@ class TestBuildMetricsRow:
         # _fetch_metrics_from_model returns only {"pp", "tg", "pg"} on failure;
         # build_metrics_row must surface that as an error rather than writing
         # a row of zeros.
-        with patch("exporter.check_port_active", return_value=True), patch(
+        with patch("exporter._check_model_ready", return_value=True), patch(
             "exporter._fetch_metrics_from_model",
             return_value={"pp": None, "tg": None, "pg": None},
         ):

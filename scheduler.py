@@ -19,7 +19,7 @@ from typing import Optional
 
 from models import get_models, load_models_cache
 from routes.status import get_status_registry
-from routes.models import check_port_active
+from processes import check_port_active, _check_model_ready
 
 from config import (
     METRICS_EXPORT_ENABLED,
@@ -214,8 +214,8 @@ class Scheduler:
             if not port:
                 continue
 
-            # Check if port is active
-            if check_port_active(port):
+            # Check if port is active AND the specific model is running on it
+            if _check_model_ready(port, model_name):
                 running.append(model_name)
 
         return running

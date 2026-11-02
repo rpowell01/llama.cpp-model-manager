@@ -17,6 +17,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -504,17 +505,41 @@ def check_port_active(port: int) -> bool:
     return False
 
 
+# Cache for model list per port to avoid repeated HTTP requests
+_model_list_cache: dict[int, tuple[float, list[str]]] = {}
+_model_list_cache_lock = threading.Lock()
+_MODEL_LIST_CACHE_TTL = 2.0  # seconds
+
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
-def _check_model_ready(port: int) -> bool:
-    """Check if the model at the given port is ready to serve requests by hitting /v1/models."""
+def _check_model_ready(port: int, model_name: str | None = None) -> bool:
+    """Check if the model at the given port is ready to serve requests by hitting /v1/models.
+    
+    If model_name is provided, verifies that the specific model is loaded on that port.
+    Uses caching to avoid repeated HTTP requests for the same port.
+    """
     _validate_local_mode()
+    
+    # First, do a fast socket check - if port isn't even listening, no model can be ready
+    if not check_port_active(port):
+        return False
+    
+    # If no specific model name requested, just return True since port is active
+    if model_name is None:
+        return True
+    
+    # Check cache first
+    import time
+    current_time = time.time()
+    with _model_list_cache_lock:
+        if port in _model_list_cache:
+            cached_time, model_list = _model_list_cache[port]
+            if current_time - cached_time < _MODEL_LIST_CACHE_TTL:
+                return model_name in model_list
     
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
     if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-        # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
-        # Try the Windows host IP first (via get_server_host), then localhost as fallback
         wsl_host = get_server_host()
         if wsl_host and wsl_host != "127.0.0.1":
             hosts_to_try.append(wsl_host)
@@ -525,10 +550,22 @@ def _check_model_ready(port: int) -> bool:
     for host in hosts_to_try:
         url = f"http://{host}:{port}/v1/models"
         try:
-            # Increased timeout to 5 seconds for slower model startup
-            resp = requests.get(url, timeout=5.0)
+            # Short timeout for health check - we already know port is active
+            resp = requests.get(url, timeout=2.0)
             if resp.status_code == 200:
-                return True
+                try:
+                    data = resp.json()
+                    models = data.get("data", [])
+                    model_list = [m.get("id") for m in models if m.get("id")]
+                    # Update cache
+                    with _model_list_cache_lock:
+                        _model_list_cache[port] = (current_time, model_list)
+                    return model_name in model_list
+                except Exception:
+                    # If we can't parse JSON, fall back to just checking status code
+                    with _model_list_cache_lock:
+                        _model_list_cache[port] = (current_time, [])
+                    return False
         except Exception as e:
             log.debug(f"Health check failed for {url}: {e}")
             continue

@@ -7,6 +7,7 @@ from logging import getLogger
 from config import DEFAULTS, normalize_path_for_binary
 from metrics import fetch_metrics_snapshot
 from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
+from processes import _check_model_ready
 
 log = getLogger("llamaweb")
 
@@ -387,8 +388,8 @@ def api_export_metrics():
     if not port:
         return jsonify({"error": "Model has no port assigned"}), 400
     
-    # Check if model is running
-    if not check_port_active(port):
+    # Check if model is running (verify specific model on port)
+    if not _check_model_ready(port, model_key):
         return jsonify({"error": "Model is not running"}), 400
     
     # Fetch metrics from the model's port
@@ -770,16 +771,6 @@ def api_set_export_config():
         "status": "export config updated",
         "config": config,
     })
-
-
-def check_port_active(port):
-    """Check if a port is active."""
-    import socket
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=1):
-            return True
-    except Exception:
-        return False
 
 
 @models_bp.route("/api/refresh-models", methods=["POST"])

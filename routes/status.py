@@ -7,7 +7,7 @@ from typing import Generator
 import config
 from config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
 from models import get_models, ModelRegistry
-from processes import check_port_active, find_pid_by_port
+from processes import check_port_active, find_pid_by_port, _check_model_ready
 from routes.system import get_hardware_info
 from state import (
     _recent_stops,
@@ -137,9 +137,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
     # Handle both relative (to BASE_DIR) and absolute paths using helper (respects MODEL_DIR env var)
     model_path = resolve_model_path(model_path_str) if model_path_str else None
     exists = model_path.is_file() if model_path else False
-    active = check_port_active(port)
-    pid = None
     status = "stopped"
+    pid = None
 
     if WSL:
         with _wsl_pids_lock:
@@ -159,7 +158,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 if stored_pid:
                     pid = stored_pid
                     status = "running"
-            # For all modes, if port is active, try to find the PID
+            # For all modes, check if port is active
+            active = _check_model_ready(port, model)
             if active:
                 if not pid:
                     pid = find_pid_by_port(port)
@@ -168,13 +168,9 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             with _start_timestamps_lock:
                 if model in _start_timestamps:
                     if active:
-                        # Verify readiness via health endpoint
-                        from processes import _check_model_ready
-                        if _check_model_ready(port):
-                            status = "running"
-                            _start_timestamps.pop(model, None)
-                        else:
-                            status = "starting"
+                        # Verify readiness via health endpoint (already checked above)
+                        status = "running"
+                        _start_timestamps.pop(model, None)
                     else:
                         status = "starting"
 
@@ -363,7 +359,7 @@ def api_debug(model_name):
         })
     
     # Local mode
-    active = check_port_active(port)
+    active = _check_model_ready(port, model_name)
     result = {
         "model": model_name,
         "port": port,
