@@ -166,6 +166,27 @@ function renderTiles(rows, dlMap, query) {
             ? '<span class="chip ok">● stopped</span>'
             : '<span class="chip bad">[x] missing</span>';
 
+      // Mnemonic-proxy status
+      const proxy = r.mnemonic_proxy || {};
+      const proxyEnabled = proxy.enabled === true;
+      const proxyRunning = proxy.running === true;
+      const proxyPort = proxy.port || 8096;
+      const proxyMcpEnabled = proxy.mcp_enabled === true;
+      const proxyMcpPort = proxy.mcp_port || 8133;
+      const proxyDataDir = proxy.data_dir || '';
+
+      let proxyHtml = "";
+      if (proxyEnabled) {
+        const proxyStatusClass = proxyRunning ? "ok" : "warn";
+        const proxyStatusText = proxyRunning ? "● proxy running" : "● proxy stopped";
+        const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
+        proxyHtml = `
+          <div class="proxy-status" style="margin-top: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+            <span class="chip ${proxyStatusClass}" title="Mnemonic-proxy on port ${proxyPort}${proxyMcpStatus}">${proxyStatusText} :${proxyPort}${proxyMcpStatus}</span>
+            <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
+          </div>`;
+      }
+
       const dl = dlMap[r.model] || {};
       const partial = r.partial_download || 0;
 
@@ -301,6 +322,7 @@ function renderTiles(rows, dlMap, query) {
         "<div>" +
         portCell +
         "</div>" +
+        proxyHtml +
         "</div>" +
         `<div class="tile-rating">
           <div class="rating-row speed">
@@ -346,6 +368,8 @@ function renderTiles(rows, dlMap, query) {
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
         "')\">\u274C Delete</button>" +
+        (r.mnemonic_proxy && r.mnemonic_proxy.enabled ? 
+          ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' : '') +
         "</div>" +
         "</div>"
       );
@@ -888,6 +912,35 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     html += `</div></div>`;
 
+  // Mnemonic Proxy Configuration
+  const mp = data.mnemonic_proxy || {};
+  // Auto-populate defaults based on model name
+  const defaultDataDir = mp.data_dir || `./data/${modelName}`;
+  const defaultSlotDir = mp.slot_dir || data.slot_save_path || "";
+  html += `<div class="panel-section collapsed">
+    <h3>Mnemonic Proxy (Context Management)</h3>
+    <div class="panel-grid">`;
+    
+    addEditable("Enable Proxy", "mnemonic_proxy.enabled", mp.enabled !== undefined ? mp.enabled : false, "checkbox");
+    addEditable("Proxy Port", "mnemonic_proxy.port", mp.port !== undefined ? mp.port : 8096, "number", 1, 1);
+    addEditableWithBrowse("Data Directory", "mnemonic_proxy.data_dir", defaultDataDir, "directory");
+    addEditableWithBrowse("Slot Directory", "mnemonic_proxy.slot_dir", defaultSlotDir, "directory");
+    addEditableWithBrowse("Tokenizer Path", "mnemonic_proxy.tokenizer_path", mp.tokenizer_path || "", "file");
+    
+    // Config Override (JSON)
+    const configOverride = mp.config_override || {};
+    html += `<div class="panel-item">
+      <span class="label">Config Override (JSON)</span>
+      <span class="value">
+        <textarea class="meta-input" data-field="mnemonic_proxy.config_override" rows="4" style="width: 100%; font-family: monospace; font-size: 0.85rem;">${he(JSON.stringify(configOverride, null, 2))}</textarea>
+      </span>
+    </div>`;
+    
+    addEditable("Enable MCP Server", "mnemonic_proxy.mcp_enabled", mp.mcp_enabled !== undefined ? mp.mcp_enabled : false, "checkbox");
+    addEditable("MCP Port", "mnemonic_proxy.mcp_port", mp.mcp_port !== undefined ? mp.mcp_port : 8133, "number", 1, 1);
+    
+    html += `</div></div>`;
+
   // Agent/Tool Parameters
   html += `<div class="panel-section collapsed">
     <h3>Agent/Tool Parameters</h3>
@@ -1215,6 +1268,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
 
       const payload = { model };
       let hasChanges = false;
+      const mnemonicProxyFields = {};
 
       content.querySelectorAll(".meta-input").forEach((input) => {
         const field = input.dataset.field;
@@ -1244,11 +1298,39 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           // Generation / Sampling parameters
           "temperature", "top_k", "top_p", "min_p",
           "repeat_penalty", "presence_penalty",
-          "reasoning_budget"
+          "reasoning_budget",
+          // Mnemonic Proxy numeric fields
+          "mnemonic_proxy.port", "mnemonic_proxy.mcp_port"
         ];
         if (numericFields.includes(field)) {
           // If empty string, treat as null (to clear the field)
           value = value === "" ? null : Number(value);
+        }
+
+        // Handle mnemonic_proxy nested object fields
+        if (field.startsWith("mnemonic_proxy.")) {
+          const subField = field.substring("mnemonic_proxy.".length);
+          const originalMP = window.originalModelMeta?.mnemonic_proxy || {};
+          const originalValue = originalMP[subField];
+          
+          // Special handling for config_override (JSON)
+          if (subField === "config_override") {
+            try {
+              value = value ? JSON.parse(value) : {};
+            } catch (e) {
+              console.warn("Invalid JSON in config_override:", e);
+              value = {};
+            }
+          }
+          
+          // Always collect the current value from UI for mnemonic_proxy fields
+          mnemonicProxyFields[subField] = value;
+          
+          const isChanged = JSON.stringify(value) !== JSON.stringify(originalValue);
+          if (isChanged) {
+            hasChanges = true;
+          }
+          return; // Skip normal field processing
         }
 
         // Only include changed values
@@ -1271,6 +1353,11 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           hasChanges = true;
         }
       });
+
+      // Add mnemonic_proxy object if any fields changed
+      if (Object.keys(mnemonicProxyFields).length > 0) {
+        payload.mnemonic_proxy = mnemonicProxyFields;
+      }
 
       if (!hasChanges) {
         alert("No changes to save");
@@ -2768,3 +2855,295 @@ function showPerformanceModal() {
 }
 
 window.showPerformanceModal = showPerformanceModal;
+
+/**
+ * Toggle mnemonic-proxy for a model
+ * @param {string} model - Model name
+ * @param {boolean} start - true to start, false to stop
+ */
+async function toggleProxy(model, start) {
+  const action = start ? 'start' : 'stop';
+  const btn = event.target;
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = start ? 'Starting…' : 'Stopping…';
+  
+  try {
+    const res = await fetch(`/api/proxy/${action}/${encodeURIComponent(model)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.error) {
+      log(`<b>Proxy ${action} error:</b> ${data.error}`, 'red');
+    } else {
+      log(`<b>Proxy ${action}:</b> ${model} → ${data.status}`, 'green');
+    }
+    // Refresh to update UI
+    setTimeout(() => refresh(true), 500);
+  } catch (e) {
+    console.error('toggleProxy error:', e);
+    log(`<b>Proxy ${action} error:</b> ${e}`, 'red');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+}
+window.toggleProxy = toggleProxy;
+
+/**
+ * Show mnemonic-proxy metrics dashboard for a model
+ * @param {string} model - Model name
+ */
+async function showProxyMetrics(model) {
+  let refreshInterval = null;
+  let countdownInterval = null;
+  let currentModal = null;
+  let strataContext = null;
+  let conversationId = null;  // Track conversation ID for Strata context
+  
+  async function fetchAndRender() {
+    try {
+      // Build strata-context URL with conversation_id if available
+      let strataUrl = `/api/proxy/strata-context/${encodeURIComponent(model)}`;
+      if (conversationId) {
+        strataUrl += `?conversation_id=${encodeURIComponent(conversationId)}`;
+      }
+      
+      const [metricsRes, strataRes] = await Promise.all([
+        fetch(`/api/proxy/metrics/${encodeURIComponent(model)}`),
+        fetch(strataUrl)
+      ]);
+      
+      const metricsData = await metricsRes.json();
+      const strataData = await strataRes.json();
+      
+      if (metricsData.error) {
+        if (currentModal) {
+          document.getElementById('proxy-metrics-content').innerHTML = `<div style="color: var(--red); padding: 1rem;">Error: ${he(metricsData.error)}</div>`;
+        }
+        return;
+      }
+      
+      // Update conversation_id from response if available
+      if (strataData.strata_context && strataData.strata_context.conversation_id) {
+        conversationId = strataData.strata_context.conversation_id;
+      }
+      strataContext = strataData.strata_context || null;
+      renderMetrics(metricsData.metrics, metricsData.raw, strataContext);
+    } catch (e) {
+      console.error('showProxyMetrics error:', e);
+      if (currentModal) {
+        document.getElementById('proxy-metrics-content').innerHTML = `<div style="color: var(--red); padding: 1rem;">Error: ${he(e.message)}</div>`;
+      }
+    }
+  }
+  
+  function renderMetrics(metrics, raw, strata) {
+    if (!currentModal) return;
+    
+    const contentEl = document.getElementById('proxy-metrics-content');
+    if (!contentEl) return;
+    
+    // Key metrics to highlight
+    const keyMetrics = [
+      { key: 'llamacpp:prompt_tokens_total', label: 'Prompt Tokens Total', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:prompt_tokens_cached_total', label: 'Cached Prompt Tokens', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:tokens_predicted_total', label: 'Predicted Tokens Total', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:prompt_seconds_total', label: 'Prompt Processing Time (s)', format: (v) => v.toFixed(2) },
+      { key: 'llamacpp:tokens_predicted_seconds_total', label: 'Generation Time (s)', format: (v) => v.toFixed(2) },
+      { key: 'llamacpp:n_decode_total', label: 'Decode Calls', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:n_tokens_max', label: 'Max Sequence Length', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:spec_decode_num_draft_tokens_total', label: 'Speculative Draft Tokens', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:spec_decode_num_accepted_tokens_total', label: 'Speculative Accepted Tokens', format: (v) => v.toLocaleString() },
+      { key: 'llamacpp:requests_processing', label: 'Requests Processing', format: (v) => v.toFixed(0) },
+      { key: 'llamacpp:requests_deferred', label: 'Requests Deferred', format: (v) => v.toFixed(0) },
+      { key: 'llamacpp:n_busy_slots_per_decode', label: 'Busy Slots per Decode', format: (v) => v.toFixed(2) },
+    ];
+    
+    let html = `
+      <div style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span style="font-size: 0.85rem; color: var(--text2);">Auto-refresh: <span id="metrics-refresh-countdown" style="font-weight: bold;">5s</span></span>
+          <button id="proxy-metrics-refresh-now" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Refresh Now</button>
+        </div>
+    `;
+    
+    // Strata Context Panel (if available)
+    if (strata) {
+      html += `
+        <div style="background: linear-gradient(135deg, var(--surface2), var(--surface3)); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--accent);">
+          <div style="font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span>🧠 Strata Context (Long-Context Engine)</span>
+            <span style="font-size: 0.7rem; background: var(--accent); color: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px;">LIVE</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem;">
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Tokens</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens?.toLocaleString() || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Virtual Tokens</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--accent); font-family: monospace;">${he(strata.virtual_tokens?.toLocaleString() || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Archived Segments</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--warning); font-family: monospace;">${he(strata.archived?.toLocaleString() || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Recalls</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--success); font-family: monospace;">${he(strata.recalls?.length?.toLocaleString() || strata.recalls || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Cached Tokens</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.cached_tokens?.toLocaleString() || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Est.</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens_est?.toLocaleString() || 'N/A')}</div>
+            </div>
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.7rem; color: var(--text2);">
+            Conversation: ${he(strata.conversation_id || 'N/A')} | Mode: ${he(strata.mode || 'N/A')} | Segment: ${he(strata.segment || 'N/A')}
+            <button id="strata-reset-conversation" class="btn-secondary" style="margin-left: 1rem; padding: 0.15rem 0.5rem; font-size: 0.65rem;">Reset Conversation</button>
+          </div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div style="background: var(--surface2); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px dashed var(--surface3); text-align: center; color: var(--text2);">
+          Strata context not available - send a chat request to populate
+        </div>
+      `;
+    }
+    
+    html += `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+    `;
+    
+    // Key metrics cards
+    for (const km of keyMetrics) {
+      const metricData = metrics[km.key];
+      let value = 'N/A';
+      if (metricData && metricData.length > 0) {
+        value = km.format(metricData[0].value);
+      }
+      html += `
+        <div style="background: var(--surface2); border-radius: 8px; padding: 1rem; border: 1px solid var(--surface3);">
+          <div style="font-size: 0.75rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">${he(km.label)}</div>
+          <div style="font-size: 1.5rem; font-weight: 600; color: var(--text); font-family: monospace;">${he(value)}</div>
+        </div>
+      `;
+    }
+    
+    html += `
+        </div>
+        <details style="margin-top: 1rem;">
+          <summary style="cursor: pointer; color: var(--text2); font-size: 0.85rem;">Show All Metrics (Raw)</summary>
+          <div style="margin-top: 0.5rem; background: var(--surface2); border-radius: 4px; padding: 1rem; font-family: monospace; font-size: 0.7rem; overflow: auto; max-height: 30vh; white-space: pre-wrap;">${he(raw)}</div>
+        </details>
+      </div>
+    `;
+    
+    contentEl.innerHTML = html;
+    
+    // Add refresh button listener
+    const refreshBtn = document.getElementById('proxy-metrics-refresh-now');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', fetchAndRender);
+    }
+    
+    // Reset conversation button listener
+    const resetConvBtn = document.getElementById('strata-reset-conversation');
+    if (resetConvBtn) {
+      resetConvBtn.addEventListener('click', async () => {
+        conversationId = null;
+        await fetchAndRender();
+      });
+    }
+  }
+  
+  function startCountdown() {
+    let seconds = 5;
+    const countdownEl = document.getElementById('metrics-refresh-countdown');
+    if (!countdownEl) return;
+    
+    const interval = setInterval(() => {
+      seconds--;
+      if (countdownEl && currentModal) {
+        countdownEl.textContent = `${seconds}s`;
+      } else {
+        clearInterval(interval);
+        return;
+      }
+      if (seconds <= 0) {
+        seconds = 5;
+        fetchAndRender();
+      }
+    }, 1000);
+    
+    return interval;
+  }
+  
+  // Create modal
+  const modalHtml = `
+    <div id="proxy-metrics-modal" class="modal-overlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1500; align-items: center; justify-content: center;" aria-hidden="false">
+      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 95%; max-height: 85vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; color: var(--text);">Mnemonic-Proxy Metrics: ${he(model)}</h3>
+          <button id="proxy-metrics-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+        </div>
+        <div style="flex: 1; overflow: auto;" id="proxy-metrics-content">
+          <div style="text-align: center; color: var(--text2); padding: 2rem;">Loading metrics...</div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+          <button type="button" class="btn-cancel" id="proxy-metrics-close-btn" style="padding: 0.4rem 1rem;">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Remove any existing modal
+  const existing = document.getElementById('proxy-metrics-modal');
+  if (existing) existing.remove();
+  
+  // Add to body
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  currentModal = document.getElementById('proxy-metrics-modal');
+  
+  // Add event listeners
+  const closeModal = () => {
+    if (refreshInterval) clearInterval(refreshInterval);
+    if (countdownInterval) clearInterval(countdownInterval);
+    if (currentModal) currentModal.remove();
+    currentModal = null;
+  };
+  
+  document.getElementById('proxy-metrics-close').addEventListener('click', closeModal);
+  document.getElementById('proxy-metrics-close-btn').addEventListener('click', closeModal);
+  
+  // Close on overlay click
+  currentModal.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      closeModal();
+    }
+  });
+  
+  // Initial fetch
+  await fetchAndRender();
+  
+  // Start auto-refresh
+  refreshInterval = setInterval(fetchAndRender, 5000);
+  countdownInterval = startCountdown();
+  
+  // Cleanup on modal removal
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById('proxy-metrics-modal')) {
+      closeModal();
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+window.showProxyMetrics = showProxyMetrics;

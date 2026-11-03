@@ -202,6 +202,21 @@ DEFAULTS: dict[str, Any] = {
     "reasoning_effort": "default",
     "reasoning_budget": -1,
     "reasoning_budget_message": "",
+    # Mnemonic Proxy defaults
+    "mnemonic_proxy": {
+        "enabled": False,
+        "port": 8096,
+        "data_dir": "",
+        "slot_dir": "",
+        "tokenizer_path": "",
+        "config_override": {
+            "mask_anchor": True,
+            "autosave": True,
+            "window_estimate_slack": 0.15
+        },
+        "mcp_enabled": False,
+        "mcp_port": 8133,
+    },
 }
 
 # Flask server port (set by main.py at runtime)

@@ -1,5 +1,6 @@
 """Status and health check endpoints."""
 import time
+import requests
 from pathlib import Path
 from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
@@ -20,6 +21,7 @@ from state import (
 from downloads import download_status, download_lock
 from metrics import _fetch_metrics_from_model
 from utils import estimate_gguf_size
+from mnemonic_proxy import list_proxy_managers, get_proxy_manager
 
 # Global model registry instance for status checks
 _status_registry = None
@@ -105,6 +107,12 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
     with download_lock:
         dl_status = download_status.get(model)
     
+    # Mnemonic-proxy status (local proxy manager)
+    proxy_status = {}
+    proxy_manager = get_proxy_manager(model)
+    if proxy_manager:
+        proxy_status = proxy_manager.get_status()
+    
     return {
         "model": model,
         "port": port,
@@ -118,6 +126,7 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
         "pp": None,
         "tg": None,
         "pg": None,
+        "mnemonic_proxy": proxy_status,
         **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
     }
 
@@ -204,6 +213,60 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
     if status.startswith("running"):
         metrics = _fetch_metrics_from_model(port)
 
+    # Mnemonic-proxy status
+    # Start with config from model meta, then overlay runtime status from proxy manager
+    base_proxy_config = meta.get("mnemonic_proxy", {})
+    proxy_status = {
+        "enabled": base_proxy_config.get("enabled", False),
+        "proxy_port": base_proxy_config.get("port", 8096),
+        "data_dir": base_proxy_config.get("data_dir", ""),
+        "slot_dir": base_proxy_config.get("slot_dir", ""),
+        "tokenizer_path": base_proxy_config.get("tokenizer_path", ""),
+        "config_override": base_proxy_config.get("config_override", {}),
+        "mcp_enabled": base_proxy_config.get("mcp_enabled", False),
+        "mcp_port": base_proxy_config.get("mcp_port", 8133) if base_proxy_config.get("mcp_enabled") else None,
+        "mcp": {"enabled": False, "running": False, "port": None, "pid": None, "uptime_seconds": 0},
+        "model_name": model,
+    }
+    
+    proxy_manager = get_proxy_manager(model)
+    if proxy_manager:
+        runtime_status = proxy_manager.get_status()
+        # Overlay runtime values, preserving config from meta
+        runtime_status.pop("model_name", None)
+        runtime_status.pop("proxy_port", None)
+        # Only overlay if proxy is actually running
+        if runtime_status.get("running"):
+            proxy_status.update({
+                "running": runtime_status["running"],
+                "pid": runtime_status.get("pid"),
+                "uptime_seconds": runtime_status.get("uptime_seconds", 0),
+                "llama_port": runtime_status.get("llama_port", 9931),
+            })
+        else:
+            # Proxy not running but config exists - mark as enabled but not running
+            proxy_status["running"] = False
+            proxy_status["message"] = "mnemonic-proxy not running"
+    else:
+        # No proxy manager (e.g., after Flask restart) - check health endpoint
+        mnemonic_proxy_enabled = base_proxy_config.get("enabled", False)
+        if mnemonic_proxy_enabled:
+            proxy_port = base_proxy_config.get("port", 8096)
+            try:
+                import requests
+                resp = requests.get(f"http://127.0.0.1:{proxy_port}/health", timeout=2.0)
+                if resp.status_code == 200:
+                    health = resp.json()
+                    proxy_status["running"] = health.get("status") == "ok"
+                    if not proxy_status["running"]:
+                        proxy_status["message"] = "mnemonic-proxy not running"
+            except Exception:
+                # Proxy not reachable
+                proxy_status["running"] = False
+                proxy_status["message"] = "mnemonic-proxy not running"
+
+    # Build result dict, excluding mnemonic_proxy from meta spread so our proxy status isn't overwritten
+    extra_meta = {k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists", "mnemonic_proxy"]}
     return {
         "model": model,
         "port": port,
@@ -218,7 +281,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         "pp": metrics.get("pp"),
         "tg": metrics.get("tg"),
         "pg": metrics.get("pg"),
-        **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
+        "mnemonic_proxy": proxy_status,
+        **extra_meta,
     }
 
 
@@ -283,6 +347,12 @@ def api_status():
         remote_models = registry.list_models()
         results = []
         for model in remote_models:
+            # Get local proxy status for this model
+            proxy_status = {}
+            proxy_manager = get_proxy_manager(model.name)
+            if proxy_manager:
+                proxy_status = proxy_manager.get_status()
+            
             # Convert remote Model to status dict format
             results.append({
                 "model": model.name,
@@ -297,6 +367,7 @@ def api_status():
                 "pp": None,
                 "tg": None,
                 "pg": None,
+                "mnemonic_proxy": proxy_status,
                 "repo": model.repo,
                 "filename": model.filename,
                 "expected_size": model.expected_size,

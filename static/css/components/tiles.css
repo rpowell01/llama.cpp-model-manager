@@ -221,3 +221,44 @@
   border-top: 1px solid var(--surface2);
   margin: 0.4rem 0;
 }
+
+/* Proxy status in tile body */
+.proxy-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.proxy-status .chip {
+  flex-shrink: 0;
+}
+
+.proxy-status .actions-btn {
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.proxy-status .actions-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.proxy-status .actions-btn.run {
+  background: var(--btn-run);
+}
+
+.proxy-status .actions-btn.stop {
+  background: var(--btn-stop);
+}
+
+.proxy-status .actions-btn.goto {
+  background: var(--blue);
+}

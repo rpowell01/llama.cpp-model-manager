@@ -253,6 +253,15 @@ def add_model_entry(
     sycl: bool = False,
     grp_attn: bool = False,
     grp_attn_n: int = 8,
+    # Mnemonic Proxy configuration
+    mnemonic_proxy_enabled: bool = False,
+    mnemonic_proxy_port: int = 8096,
+    mnemonic_proxy_data_dir: str = "",
+    mnemonic_proxy_slot_dir: str = "",
+    mnemonic_proxy_tokenizer_path: str = "",
+    mnemonic_proxy_config_override: Optional[dict] = None,
+    mnemonic_proxy_mcp_enabled: bool = False,
+    mnemonic_proxy_mcp_port: int = 8133,
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
@@ -367,6 +376,21 @@ def add_model_entry(
             "sycl": sycl,
             "grp_attn": grp_attn,
             "grp_attn_n": grp_attn_n,
+            # Mnemonic Proxy configuration
+            "mnemonic_proxy": {
+                "enabled": mnemonic_proxy_enabled,
+                "port": mnemonic_proxy_port,
+                "data_dir": mnemonic_proxy_data_dir,
+                "slot_dir": mnemonic_proxy_slot_dir,
+                "tokenizer_path": mnemonic_proxy_tokenizer_path,
+                "config_override": mnemonic_proxy_config_override or {
+                    "mask_anchor": True,
+                    "autosave": True,
+                    "window_estimate_slack": 0.15
+                },
+                "mcp_enabled": mnemonic_proxy_mcp_enabled,
+                "mcp_port": mnemonic_proxy_mcp_port,
+            },
         }
         save_models(models)
         return True
@@ -546,6 +570,22 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         for field, default_value in default_fields.items():
             if field not in model:
                 model[field] = default_value
+        # Add mnemonic_proxy defaults if missing
+        if "mnemonic_proxy" not in model:
+            model["mnemonic_proxy"] = {
+                "enabled": False,
+                "port": 8096,
+                "data_dir": "",
+                "slot_dir": "",
+                "tokenizer_path": "",
+                "config_override": {
+                    "mask_anchor": True,
+                    "autosave": True,
+                    "window_estimate_slack": 0.15
+                },
+                "mcp_enabled": False,
+                "mcp_port": 8133,
+            }
 
 
 def refresh_models_cache() -> None:
@@ -617,6 +657,21 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],
                 "grp_attn_n": DEFAULTS["grp_attn_n"],
+                # Mnemonic Proxy defaults
+                "mnemonic_proxy": {
+                    "enabled": False,
+                    "port": 8096,
+                    "data_dir": "",
+                    "slot_dir": "",
+                    "tokenizer_path": "",
+                    "config_override": {
+                        "mask_anchor": True,
+                        "autosave": True,
+                        "window_estimate_slack": 0.15
+                    },
+                    "mcp_enabled": False,
+                    "mcp_port": 8133,
+                },
                 "file_size_gb": file_size_gb,
                 "file_exists": True,
             }

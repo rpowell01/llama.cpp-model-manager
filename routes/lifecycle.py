@@ -20,6 +20,13 @@ from processes import (
     build_cmd,
     pids_of_llama,
 )
+from mnemonic_proxy import (
+    create_proxy_manager,
+    get_proxy_manager,
+    list_proxy_managers,
+    remove_proxy_manager,
+    stop_all_proxies,
+)
 from state import (
     _recent_stops,
     _recent_stops_lock,
@@ -415,6 +422,93 @@ def api_start():
                     break
             time.sleep(0.5)
 
+        # If model is running, verify n_ctx matches expected ctx_size before proceeding
+        # This ensures the proxy gets the correct window size
+        if is_running:
+            expected_ctx_size = meta.get("ctx_size", DEFAULTS["ctx_size"])
+            log.info(f"Verifying n_ctx matches expected ctx_size={expected_ctx_size} for {model}")
+            add_log_entry(f"🔍 Verifying context size: expected={expected_ctx_size}", "cyan")
+            
+            # Wait up to 30 seconds for n_ctx to match (model may need time to fully initialize)
+            ctx_verified = False
+            for attempt in range(60):  # 30 seconds max
+                if proc and proc.poll() is not None:
+                    log.warning(f"Process exited during n_ctx verification for {model}")
+                    is_running = False
+                    break
+                
+                try:
+                    import requests
+                    # Try multiple hosts (WSL+Windows mode)
+                    hosts_to_try = []
+                    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                        wsl_host = get_server_host()
+                        if wsl_host and wsl_host != "127.0.0.1":
+                            hosts_to_try.append(wsl_host)
+                        hosts_to_try.append("127.0.0.1")
+                    else:
+                        hosts_to_try.append(get_server_host())
+                    
+                    for host in hosts_to_try:
+                        try:
+                            resp = requests.get(f"http://{host}:{port}/props", timeout=2.0)
+                            if resp.status_code == 200:
+                                props = resp.json()
+                                actual_n_ctx = props.get("n_ctx")
+                                if actual_n_ctx is not None:
+                                    if actual_n_ctx == expected_ctx_size:
+                                        ctx_verified = True
+                                        log.info(f"n_ctx verified: {actual_n_ctx} == {expected_ctx_size} for {model}")
+                                        add_log_entry(f"✓ Context size verified: n_ctx={actual_n_ctx}", "green")
+                                        break
+                                    else:
+                                        log.debug(f"n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} (attempt {attempt+1}/60)")
+                                break  # Got response, don't try other hosts
+                        except Exception as e:
+                            log.debug(f"Failed to check /props on {host}:{port}: {e}")
+                            continue
+                    
+                    if ctx_verified:
+                        break
+                        
+                    time.sleep(0.5)
+                except Exception as e:
+                    log.debug(f"Error during n_ctx verification: {e}")
+                    time.sleep(0.5)
+            
+            if not ctx_verified:
+                log.warning(f"n_ctx verification timed out for {model} (expected {expected_ctx_size})")
+                add_log_entry(f"⚠ Context size verification timed out (expected {expected_ctx_size})", "orange")
+                # Don't fail startup - model is running, just n_ctx didn't match in time
+                # Proxy will use whatever n_ctx is actually set
+            
+            # Fetch the actual n_ctx from llama-server for proxy config
+            actual_n_ctx = expected_ctx_size  # default fallback
+            try:
+                import requests
+                hosts_to_try = []
+                if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                    wsl_host = get_server_host()
+                    if wsl_host and wsl_host != "127.0.0.1":
+                        hosts_to_try.append(wsl_host)
+                    hosts_to_try.append("127.0.0.1")
+                else:
+                    hosts_to_try.append(get_server_host())
+                
+                for host in hosts_to_try:
+                    try:
+                        resp = requests.get(f"http://{host}:{port}/props", timeout=2.0)
+                        if resp.status_code == 200:
+                            props = resp.json()
+                            actual_n_ctx = props.get("n_ctx", expected_ctx_size)
+                            log.info(f"Actual n_ctx from llama-server: {actual_n_ctx} for {model}")
+                            break
+                    except Exception as e:
+                        log.debug(f"Failed to fetch /props from {host}:{port}: {e}")
+                        continue
+            except Exception as e:
+                log.debug(f"Error fetching actual n_ctx: {e}")
+
         if is_running:
             start_success = True
             with _recent_stops_lock:
@@ -444,6 +538,42 @@ def api_start():
                     add_log_entry(f"✓ Warmup successful: {model}", "green")
                 else:
                     add_log_entry(f"⚠ Warmup failed: {model}", "orange")
+
+            # Start mnemonic-proxy if enabled for this model
+            # Model has individual mnemonic_proxy_* fields, construct config dict
+            mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
+            if mnemonic_proxy_enabled:
+                proxy_port = getattr(model_dict, 'mnemonic_proxy_port', 8096)
+                data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
+                slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
+                tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
+                config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
+                mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
+                mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
+                
+                log.info(f"Starting mnemonic-proxy for {model} on port {proxy_port}")
+                add_log_entry(f"🔗 mnemonic-proxy: {model} on port {proxy_port}", "blue")
+                
+                proxy_manager = create_proxy_manager(
+                    model_name=model,
+                    llama_port=port,
+                    proxy_port=proxy_port,
+                    data_dir=data_dir,
+                    slot_dir=slot_dir,
+                    tokenizer_path=tokenizer_path,
+                    config_override=config_override,
+                    mcp_enabled=mcp_enabled,
+                    mcp_port=mcp_port,
+                    verified_ctx_size=actual_n_ctx,
+                )
+                
+                proxy_started = proxy_manager.start()
+                if proxy_started:
+                    add_log_entry(f"✓ mnemonic-proxy started: {model} on port {proxy_port}", "green")
+                    log.info(f"mnemonic-proxy started successfully for {model} on port {proxy_port}")
+                else:
+                    add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
+                    log.warning(f"mnemonic-proxy failed to start for {model} on port {proxy_port}")
 
             log.info(f"Start successful: model={model}, pid={pid}, port={port}, is_running={is_running}")
             log_event("start", model, port, pid, "running")
@@ -492,4 +622,393 @@ def api_stop():
 
     success, pid = _stop_model(model, port)
     
+    # Stop mnemonic-proxy if running for this model
+    remove_proxy_manager(model)
+    add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
+    
     return jsonify({"status": "stopped", "pid": pid, "success": success})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mnemonic Proxy Lifecycle API Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@lifecycle_bp.route("/api/proxy/status/<model>", methods=["GET"])
+def api_proxy_status(model):
+    """Get mnemonic-proxy status for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    registry = g.registry
+    models = registry.list_models()
+    model_dict = None
+    for m in models:
+        if m.name == model:
+            model_dict = m
+            break
+    if not model_dict:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    # Get proxy manager
+    proxy_manager = get_proxy_manager(model)
+    if proxy_manager:
+        return jsonify(proxy_manager.get_status())
+    else:
+        # Return default status if not created yet
+        mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
+        if not mnemonic_proxy_enabled:
+            return jsonify({
+                "model_name": model,
+                "running": False,
+                "enabled": False,
+                "message": "mnemonic-proxy not enabled for this model"
+            })
+        return jsonify({
+            "model_name": model,
+            "running": False,
+            "enabled": True,
+            "message": "mnemonic-proxy not started"
+        })
+
+
+@lifecycle_bp.route("/api/proxy/start/<model>", methods=["POST"])
+def api_proxy_start(model):
+    """Start mnemonic-proxy for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    registry = g.registry
+    models = registry.list_models()
+    model_dict = None
+    for m in models:
+        if m.name == model:
+            model_dict = m
+            break
+    if not model_dict:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    # Check if mnemonic-proxy is enabled for this model
+    mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
+    if not mnemonic_proxy_enabled:
+        return jsonify({"error": "mnemonic-proxy not enabled for this model"}), 400
+    
+    # Get llama-server port
+    llama_port = int(model_dict.port)
+    
+    # Get proxy config from model
+    proxy_port = getattr(model_dict, 'mnemonic_proxy_port', 8096)
+    data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
+    slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
+    tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
+    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
+    mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
+    mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
+    
+    # Fetch actual n_ctx from llama-server for proxy config
+    actual_n_ctx = 32768  # default fallback
+    try:
+        import requests
+        hosts_to_try = []
+        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            wsl_host = get_server_host()
+            if wsl_host and wsl_host != "127.0.0.1":
+                hosts_to_try.append(wsl_host)
+            hosts_to_try.append("127.0.0.1")
+        else:
+            hosts_to_try.append(get_server_host())
+        
+        for host in hosts_to_try:
+            try:
+                resp = requests.get(f"http://{host}:{llama_port}/props", timeout=2.0)
+                if resp.status_code == 200:
+                    props = resp.json()
+                    actual_n_ctx = props.get("n_ctx", 32768)
+                    log.info(f"Actual n_ctx from llama-server for proxy: {actual_n_ctx}")
+                    break
+            except Exception as e:
+                log.debug(f"Failed to fetch /props from {host}:{llama_port}: {e}")
+                continue
+    except Exception as e:
+        log.debug(f"Error fetching actual n_ctx for proxy: {e}")
+    
+    # Create and start proxy manager
+    proxy_manager = create_proxy_manager(
+        model_name=model,
+        llama_port=llama_port,
+        proxy_port=proxy_port,
+        data_dir=data_dir,
+        slot_dir=slot_dir,
+        tokenizer_path=tokenizer_path,
+        config_override=config_override,
+        mcp_enabled=mcp_enabled,
+        mcp_port=mcp_port,
+        verified_ctx_size=actual_n_ctx,
+    )
+    
+    success = proxy_manager.start()
+    if success:
+        add_log_entry(f"🔗 mnemonic-proxy started: {model} on port {proxy_port}", "green")
+        return jsonify({"status": "started", "model": model, "proxy_port": proxy_port})
+    else:
+        add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
+        return jsonify({"error": "Failed to start mnemonic-proxy", "model": model}), 500
+
+
+@lifecycle_bp.route("/api/proxy/stop/<model>", methods=["POST"])
+def api_proxy_stop(model):
+    """Stop mnemonic-proxy for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    success = remove_proxy_manager(model)
+    if success:
+        add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
+        return jsonify({"status": "stopped", "model": model})
+    else:
+        return jsonify({"status": "not_running", "model": model})
+
+
+@lifecycle_bp.route("/api/proxy/logs/<model>", methods=["GET"])
+def api_proxy_logs(model):
+    """Get mnemonic-proxy logs for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    # Get lines parameter (default 100)
+    lines = request.args.get("lines", 100, type=int)
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    logs = proxy_manager.get_logs(lines=lines)
+    return jsonify({"model": model, "logs": logs})
+
+
+@lifecycle_bp.route("/api/proxy/metrics/<model>", methods=["GET"])
+def api_proxy_metrics(model):
+    """Get mnemonic-proxy metrics for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    # Get proxy port from manager
+    proxy_port = proxy_manager.proxy_port
+    
+    try:
+        import requests
+        resp = requests.get(f"http://127.0.0.1:{proxy_port}/metrics", timeout=5)
+        if resp.status_code == 200:
+            # Parse Prometheus metrics format
+            metrics = parse_prometheus_metrics(resp.text)
+            return jsonify({"model": model, "metrics": metrics, "raw": resp.text})
+        else:
+            return jsonify({"error": f"Failed to fetch metrics: {resp.status_code}", "model": model}), 502
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch metrics: {str(e)}", "model": model}), 502
+
+
+def parse_prometheus_metrics(text: str) -> dict:
+    """Parse Prometheus metrics text format into a structured dict."""
+    metrics = {}
+    for line in text.strip().split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        # Format: metric_name{labels} value
+        if ' ' in line:
+            metric_part, value_str = line.rsplit(' ', 1)
+            try:
+                value = float(value_str)
+            except ValueError:
+                continue
+            # Parse metric name and labels
+            if '{' in metric_part:
+                name, labels_part = metric_part.split('{', 1)
+                labels_part = labels_part.rstrip('}')
+                labels = {}
+                for label in labels_part.split(','):
+                    if '=' in label:
+                        k, v = label.split('=', 1)
+                        labels[k] = v.strip('"')
+            else:
+                name = metric_part
+                labels = {}
+            if name not in metrics:
+                metrics[name] = []
+            metrics[name].append({"labels": labels, "value": value})
+    return metrics
+
+
+@lifecycle_bp.route("/api/proxy/strata-context/<model>", methods=["GET"])
+def api_proxy_strata_context(model):
+    """Get current Strata context from mnemonic-proxy.
+    
+    Query parameters:
+    - conversation_id: Optional conversation ID to get context for specific conversation.
+      If not provided, returns the most recent conversation's context.
+    """
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    proxy_port = proxy_manager.proxy_port
+    
+    # Get optional conversation_id from query params
+    conversation_id = request.args.get('conversation_id', '').strip()
+    
+    try:
+        import requests
+        
+        # If conversation_id provided, use the store API to get exact context
+        if conversation_id:
+            resp = requests.get(
+                f"http://127.0.0.1:{proxy_port}/v1/strata/conversations/{conversation_id}",
+                timeout=10,
+                headers={"Accept": "application/json"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                # Build strata_context from store data
+                strata_context = {
+                    "conversation_id": data.get("conversation_id"),
+                    "archived": data.get("archived", 0),
+                    "archived_tokens": data.get("archived_tokens", 0),
+                    "masked": data.get("masked", 0),
+                    "masked_tokens": data.get("masked_tokens", 0),
+                    "segments": data.get("segments", 0),
+                    "segment_list": data.get("segment_list", []),
+                    "source": "store"
+                }
+                return jsonify({
+                    "model": model,
+                    "strata_context": strata_context,
+                    "status_code": 200,
+                    "conversation_id": conversation_id
+                })
+        
+        # Otherwise, make a minimal request to get current Strata context
+        # Note: This creates a new conversation each time (for backward compatibility)
+        resp = requests.post(
+            f"http://127.0.0.1:{proxy_port}/v1/chat/completions",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1,
+                "temperature": 0
+            },
+            timeout=10,
+            headers={"Accept": "application/json"}
+        )
+        
+        strata_context = None
+        # Check response headers for X-Strata-Context
+        strata_header = resp.headers.get('X-Strata-Context')
+        if strata_header:
+            # Parse header: seg=0 active=290 virtual=76 masked=0 recalls=0 cached=59
+            parts = strata_header.split()
+            strata_context = {}
+            for part in parts:
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    try:
+                        strata_context[k] = int(v)
+                    except ValueError:
+                        strata_context[k] = v
+        
+        # Also check response body for strata_context
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+                if 'strata_context' in body:
+                    strata_context = body['strata_context']
+            except Exception:
+                pass
+        
+        return jsonify({
+            "model": model,
+            "strata_context": strata_context,
+            "status_code": resp.status_code,
+            "conversation_id": None
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch Strata context: {str(e)}", "model": model}), 502
+
+
+@lifecycle_bp.route("/api/proxy/list", methods=["GET"])
+def api_proxy_list():
+    """List all mnemonic-proxy instances with their status."""
+    proxies = list_proxy_managers()
+    return jsonify({"proxies": proxies})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mnemonic Proxy MCP Server API Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@lifecycle_bp.route("/api/proxy/mcp/start/<model>", methods=["POST"])
+def api_proxy_mcp_start(model):
+    """Start mnemonic-mcp server for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    if not proxy_manager.mcp_enabled:
+        return jsonify({"error": "MCP server not enabled for this model"}), 400
+    
+    success = proxy_manager.start_mcp()
+    if success:
+        add_log_entry(f"🔗 mnemonic-mcp started: {model} on port {proxy_manager.mcp_port}", "green")
+        return jsonify({"status": "started", "model": model, "mcp_port": proxy_manager.mcp_port})
+    else:
+        add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
+        return jsonify({"error": "Failed to start mnemonic-mcp", "model": model}), 500
+
+
+@lifecycle_bp.route("/api/proxy/mcp/stop/<model>", methods=["POST"])
+def api_proxy_mcp_stop(model):
+    """Stop mnemonic-mcp server for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    success = proxy_manager.stop_mcp()
+    if success:
+        add_log_entry(f"🔗 mnemonic-mcp stopped: {model}", "blue")
+        return jsonify({"status": "stopped", "model": model})
+    else:
+        return jsonify({"status": "not_running", "model": model})
+
+
+@lifecycle_bp.route("/api/proxy/mcp/status/<model>", methods=["GET"])
+def api_proxy_mcp_status(model):
+    """Get mnemonic-mcp server status for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    return jsonify(proxy_manager.get_mcp_status())

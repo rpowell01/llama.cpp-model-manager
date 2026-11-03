@@ -13,30 +13,37 @@
 /* Button color variants */
 .btn-run {
   background: var(--btn-run);
+  color: #fff;
 }
 
 .btn-stop {
   background: var(--btn-stop);
+  color: #fff;
 }
 
 .btn-download {
   background: var(--btn-download);
+  color: #fff;
 }
 
 .btn-add {
   background: var(--btn-add);
+  color: #fff;
 }
 
 .btn-del {
   background: var(--btn-del);
+  color: #fff;
 }
 
 .btn-search {
   background: var(--btn-search);
+  color: #fff;
 }
 
 .btn-goto {
   background: var(--btn-goto);
+  color: #fff;
 }
 
 .btn-primary {

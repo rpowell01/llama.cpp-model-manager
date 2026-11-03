@@ -1,0 +1,8 @@
+{
+  "engine": "llama.cpp",
+  "window": 131072,
+  "upstream": "http://127.0.0.1:9931",
+  "mask_anchor": true,
+  "autosave": true,
+  "window_estimate_slack": 0.15
+}

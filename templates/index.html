@@ -10,6 +10,7 @@
   <meta name="cache-version" content="{{ cache_version }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
   <script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/proxy-agent-config.js') }}"></script>
 </head>
 <body>
 <header>
@@ -300,17 +301,17 @@
       </div>
     </div>
 
-<script src="{{ url_for('static', filename='js/core.js') }}"></script>
-<script src="{{ url_for('system.serve_state_js') }}"></script>
-<script src="{{ url_for('static', filename='js/file-browser.js') }}"></script>
-<script src="{{ url_for('static', filename='js/ui-controls.js') }}"></script>
-<script src="{{ url_for('static', filename='js/model-manager.js') }}"></script>
-<script src="{{ url_for('static', filename='js/download-manager.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
-<script src="{{ url_for('static', filename='js/hf-integration.js') }}"></script>
-<script src="{{ url_for('static', filename='js/add-model.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/kilo-config.js') }}"></script>
-<script src="{{ url_for('static', filename='js/init.js') }}"></script>
+<script src="{{ url_for('static', filename='js/core.js') }}?v=20261102b"></script>
+<script src="{{ url_for('system.serve_state_js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/file-browser.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/model-manager.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/ui-controls.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/download-manager.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/hf-integration.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/add-model.js') }}?v=20261102b"></script>
+    <script src="{{ url_for('static', filename='js/kilo-config.js') }}?v=20261102b"></script>
+<script src="{{ url_for('static', filename='js/init.js') }}?v=20261102b"></script>
 
 <!-- Performance Graph Modal Script -->
 <script>
@@ -885,6 +886,228 @@ ModalManager.register('export-config-modal', () => {
 });
 
 window.openExportConfigModal = openExportConfigModal;
+
+/**
+ * Agent Configuration Modal
+ * Generates config snippets for various AI agents to connect to mnemonic-proxy
+ */
+const agentConfigModalHtml = `
+<div id="agent-config-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1500; align-items: center; justify-content: center;" aria-hidden="true">
+  <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 90%; max-height: 85vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <h3 style="margin: 0; color: var(--text);">🤖 Agent Configuration Generator</h3>
+      <button id="agent-config-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+    </div>
+    
+    <div style="margin-bottom: 1rem; padding: 1rem; background: var(--surface2); border-radius: 8px;">
+      <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; margin-bottom: 0.5rem;">
+        <div style="flex: 1; min-width: 200px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 0.25rem; color: var(--text);">Proxy URL</label>
+          <input type="text" id="agent-config-proxy-url" value="http://127.0.0.1:8096" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 0.25rem; color: var(--text);">Model ID</label>
+          <input type="text" id="agent-config-model-id" value="" placeholder="e.g., gpt-oss-20b-q4-k-m" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+        </div>
+      </div>
+      <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: end;">
+        <div style="flex: 1; min-width: 200px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 0.25rem; color: var(--text);">Agent</label>
+          <select id="agent-config-agent" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+            <option value="claude-code">Claude Code (ANTHROPIC_BASE_URL)</option>
+            <option value="codex">OpenAI Codex (config.toml)</option>
+            <option value="pi">pi / omp (config.json)</option>
+            <option value="opencode">opencode (config.json)</option>
+            <option value="hermes">Hermes (config.yaml)</option>
+            <option value="continue">Continue.dev (config.json)</option>
+            <option value="aider">Aider (.aider.conf.yml)</option>
+            <option value="cursor">Cursor (Custom Model)</option>
+            <option value="kilo">Kilo Code (kilo.jsonc)</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: end;">
+          <button type="button" id="agent-config-generate" class="btn-primary" style="padding: 0.5rem 1rem;">Generate Config</button>
+          <button type="button" id="agent-config-copy" class="btn-secondary" style="padding: 0.5rem 1rem;" disabled>📋 Copy</button>
+          <button type="button" id="agent-config-copy-all" class="btn-secondary" style="padding: 0.5rem 1rem;" disabled>📋 Copy All</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="agent-config-reminder" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: var(--warn-bg, #fff3cd); border: 1px solid var(--warn-border, #ffc107); border-radius: 4px; color: var(--warn-text, #856404); font-size: 0.85rem;">
+      <strong>⚠ Important:</strong> <span id="agent-config-reminder-text"></span>
+    </div>
+    
+    <div style="flex: 1; overflow: auto; min-height: 200px;">
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <span style="font-weight: 600; color: var(--text);">Config File:</span>
+        <code id="agent-config-file" style="background: var(--surface2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;"></code>
+      </div>
+      <pre id="agent-config-output" style="background: var(--surface2); border-radius: 4px; padding: 1rem; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; word-wrap: break-word; max-height: 50vh; overflow: auto; color: var(--text);"></pre>
+    </div>
+    
+    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+      <button type="button" class="btn-cancel" id="agent-config-close-btn" style="padding: 0.4rem 1rem;">Close</button>
+    </div>
+  </div>
+</div>
+`;
+
+// Inject modal HTML
+document.body.insertAdjacentHTML('beforeend', agentConfigModalHtml);
+
+// Agent Config Modal Logic
+const agentConfigModal = document.getElementById('agent-config-modal');
+const agentConfigClose = document.getElementById('agent-config-close');
+const agentConfigCloseBtn = document.getElementById('agent-config-close-btn');
+const agentConfigGenerate = document.getElementById('agent-config-generate');
+const agentConfigCopy = document.getElementById('agent-config-copy');
+const agentConfigCopyAll = document.getElementById('agent-config-copy-all');
+const agentConfigProxyUrl = document.getElementById('agent-config-proxy-url');
+const agentConfigModelId = document.getElementById('agent-config-model-id');
+const agentConfigAgent = document.getElementById('agent-config-agent');
+const agentConfigOutput = document.getElementById('agent-config-output');
+const agentConfigFile = document.getElementById('agent-config-file');
+const agentConfigReminder = document.getElementById('agent-config-reminder');
+const agentConfigReminderText = document.getElementById('agent-config-reminder-text');
+
+let currentConfig = null;
+let allConfigs = null;
+
+function openAgentConfigModal(modelId = '') {
+  if (modelId) {
+    agentConfigModelId.value = modelId;
+  }
+  agentConfigOutput.textContent = '';
+  agentConfigFile.textContent = '';
+  agentConfigReminder.style.display = 'none';
+  agentConfigCopy.disabled = true;
+  agentConfigCopyAll.disabled = true;
+  currentConfig = null;
+  allConfigs = null;
+  
+  ModalManager.open('agent-config-modal');
+}
+
+function closeAgentConfigModal() {
+  ModalManager.close('agent-config-modal');
+}
+
+async function generateAgentConfig() {
+  const proxyUrl = agentConfigProxyUrl.value.trim();
+  const modelId = agentConfigModelId.value.trim();
+  const agentType = agentConfigAgent.value;
+  
+  if (!proxyUrl) {
+    alert('Please enter a proxy URL');
+    return;
+  }
+  if (!modelId) {
+    alert('Please enter a model ID');
+    return;
+  }
+  
+  agentConfigGenerate.disabled = true;
+  agentConfigGenerate.textContent = 'Generating...';
+  
+  try {
+    // Use the ProxyAgentConfig module
+    if (window.ProxyAgentConfig && window.ProxyAgentConfig.generateConfig) {
+      currentConfig = window.ProxyAgentConfig.generateConfig(agentType, proxyUrl, modelId);
+      allConfigs = window.ProxyAgentConfig.generateAllConfigs(proxyUrl, modelId);
+    } else {
+      // Fallback if module not loaded
+      throw new Error('ProxyAgentConfig module not loaded');
+    }
+    
+    // Display config
+    agentConfigOutput.textContent = currentConfig.config;
+    agentConfigFile.textContent = currentConfig.configFile;
+    
+    // Show reminder
+    agentConfigReminderText.textContent = currentConfig.reminder;
+    agentConfigReminder.style.display = 'block';
+    
+    // Enable copy buttons
+    agentConfigCopy.disabled = false;
+    agentConfigCopyAll.disabled = false;
+    
+  } catch (e) {
+    console.error('Failed to generate config:', e);
+    agentConfigOutput.textContent = 'Error: ' + e.message;
+    agentConfigReminder.style.display = 'none';
+  } finally {
+    agentConfigGenerate.disabled = false;
+    agentConfigGenerate.textContent = 'Generate Config';
+  }
+}
+
+async function copyConfig() {
+  if (!currentConfig) return;
+  
+  try {
+    await navigator.clipboard.writeText(currentConfig.config);
+    agentConfigCopy.textContent = '✓ Copied!';
+    setTimeout(() => { agentConfigCopy.textContent = '📋 Copy'; }, 2000);
+  } catch (e) {
+    console.error('Failed to copy:', e);
+    agentConfigCopy.textContent = '✗ Failed';
+    setTimeout(() => { agentConfigCopy.textContent = '📋 Copy'; }, 2000);
+  }
+}
+
+async function copyAllConfigs() {
+  if (!allConfigs) return;
+  
+  let combined = '# Mnemonic Proxy Agent Configurations\n\n';
+  combined += `Proxy URL: ${agentConfigProxyUrl.value.trim()}\n`;
+  combined += `Model ID: ${agentConfigModelId.value.trim()}\n\n`;
+  combined += '='.repeat(60) + '\n\n';
+  
+  for (const [agentType, config] of Object.entries(allConfigs)) {
+    combined += `# ${config.agentName} (${agentType})\n`;
+    combined += `# Config file: ${config.configFile}\n`;
+    combined += `# ${config.reminder}\n\n`;
+    combined += config.config + '\n\n';
+    combined += '='.repeat(60) + '\n\n';
+  }
+  
+  try {
+    await navigator.clipboard.writeText(combined);
+    agentConfigCopyAll.textContent = '✓ All Copied!';
+    setTimeout(() => { agentConfigCopyAll.textContent = '📋 Copy All'; }, 2000);
+  } catch (e) {
+    console.error('Failed to copy all:', e);
+    agentConfigCopyAll.textContent = '✗ Failed';
+    setTimeout(() => { agentConfigCopyAll.textContent = '📋 Copy All'; }, 2000);
+  }
+}
+
+// Event listeners
+agentConfigClose.addEventListener('click', closeAgentConfigModal);
+agentConfigCloseBtn.addEventListener('click', closeAgentConfigModal);
+agentConfigGenerate.addEventListener('click', generateAgentConfig);
+agentConfigCopy.addEventListener('click', copyConfig);
+agentConfigCopyAll.addEventListener('click', copyAllConfigs);
+
+// Close on overlay click
+agentConfigModal.addEventListener('click', (e) => {
+  if (e.target === agentConfigModal) {
+    closeAgentConfigModal();
+  }
+});
+
+// Enter key in inputs triggers generate
+[agentConfigProxyUrl, agentConfigModelId].forEach(input => {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      generateAgentConfig();
+    }
+  });
+});
+
+// Expose globally
+window.openAgentConfigModal = openAgentConfigModal;
+window.closeAgentConfigModal = closeAgentConfigModal;
 </script>
 </body>
 </html>

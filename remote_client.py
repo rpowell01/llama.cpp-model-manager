@@ -148,6 +148,15 @@ class Model:
     reasoning_effort: str = "default"
     reasoning_budget: int = -1
     reasoning_budget_message: str = ""
+    # Mnemonic Proxy configuration
+    mnemonic_proxy_enabled: bool = False
+    mnemonic_proxy_port: int = 8096
+    mnemonic_proxy_data_dir: str = ""
+    mnemonic_proxy_slot_dir: str = ""
+    mnemonic_proxy_tokenizer_path: str = ""
+    mnemonic_proxy_config_override: Optional[Dict[str, Any]] = None
+    mnemonic_proxy_mcp_enabled: bool = False
+    mnemonic_proxy_mcp_port: int = 8133
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -249,6 +258,15 @@ class Model:
             reasoning_effort=data.get("reasoning_effort", "default"),
             reasoning_budget=data.get("reasoning_budget", -1),
             reasoning_budget_message=data.get("reasoning_budget_message", ""),
+            # Mnemonic Proxy configuration
+            mnemonic_proxy_enabled=data.get("mnemonic_proxy", {}).get("enabled", False),
+            mnemonic_proxy_port=data.get("mnemonic_proxy", {}).get("port", 8096),
+            mnemonic_proxy_data_dir=data.get("mnemonic_proxy", {}).get("data_dir", ""),
+            mnemonic_proxy_slot_dir=data.get("mnemonic_proxy", {}).get("slot_dir", ""),
+            mnemonic_proxy_tokenizer_path=data.get("mnemonic_proxy", {}).get("tokenizer_path", ""),
+            mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override"),
+            mnemonic_proxy_mcp_enabled=data.get("mnemonic_proxy", {}).get("mcp_enabled", False),
+            mnemonic_proxy_mcp_port=data.get("mnemonic_proxy", {}).get("mcp_port", 8133),
         )
 
 

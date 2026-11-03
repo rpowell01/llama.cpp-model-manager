@@ -9,6 +9,21 @@ const METRICS_CACHE_TTL = 5000; // 5 seconds
 // Candidate list for "Draft Model Path" select (models flagged as speculative decoding models)
 let currentSpecDraftModels = [];
 
+// selectedModel is declared in state.js (loaded before this script)
+// Currently selected model (set by selectModel())
+// let selectedModel = null;
+
+/**
+ * Get the currently selected model name.
+ * @returns {string|null} Selected model name or null
+ */
+function getSelectedModelId() {
+  return selectedModel;
+}
+
+// Explicitly attach to window for global access (used by toolbar button)
+window.getSelectedModelId = getSelectedModelId;
+
 /**
  * Get the list of speculative-decoding model candidates from currentModelRows.
  * Called during refresh so the panel render has fresh options.
@@ -260,6 +275,9 @@ function selectModel(modelName) {
   renderPanelProperties(modelData, displayName);
 }
 
+// Explicitly attach to window for global access
+window.selectModel = selectModel;
+
 /**
  * Update tile selection visual state
  * @param {string} modelName - Model name to mark as selected
@@ -434,6 +452,9 @@ async function refresh(showLoading = true) {
     isRefreshing = false;
   }
 }
+
+// Explicitly attach to window for global access (needed by init.js)
+window.refresh = refresh;
 
 /**
  * Perform a model action (start/stop)
