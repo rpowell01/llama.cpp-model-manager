@@ -454,15 +454,18 @@ def api_start():
                             resp = requests.get(f"http://{host}:{port}/props", timeout=2.0)
                             if resp.status_code == 200:
                                 props = resp.json()
-                                actual_n_ctx = props.get("n_ctx")
+                                # n_ctx is nested in default_generation_settings in llama-server /props response
+                                actual_n_ctx = props.get("default_generation_settings", {}).get("n_ctx")
                                 if actual_n_ctx is not None:
-                                    if actual_n_ctx == expected_ctx_size:
+                                    # Allow small tolerance for llama-server rounding (e.g., 65000 -> 65024)
+                                    tolerance = max(256, int(expected_ctx_size * 0.01))
+                                    if abs(actual_n_ctx - expected_ctx_size) <= tolerance:
                                         ctx_verified = True
-                                        log.info(f"n_ctx verified: {actual_n_ctx} == {expected_ctx_size} for {model}")
+                                        log.info(f"n_ctx verified: {actual_n_ctx} ≈ {expected_ctx_size} (tolerance ±{tolerance}) for {model}")
                                         add_log_entry(f"✓ Context size verified: n_ctx={actual_n_ctx}", "green")
                                         break
                                     else:
-                                        log.debug(f"n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} (attempt {attempt+1}/60)")
+                                        log.debug(f"n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} ±{tolerance} (attempt {attempt+1}/60)")
                                 break  # Got response, don't try other hosts
                         except Exception as e:
                             log.debug(f"Failed to check /props on {host}:{port}: {e}")
@@ -500,7 +503,8 @@ def api_start():
                         resp = requests.get(f"http://{host}:{port}/props", timeout=2.0)
                         if resp.status_code == 200:
                             props = resp.json()
-                            actual_n_ctx = props.get("n_ctx", expected_ctx_size)
+                            # n_ctx is nested in default_generation_settings in llama-server /props response
+                            actual_n_ctx = props.get("default_generation_settings", {}).get("n_ctx", expected_ctx_size)
                             log.info(f"Actual n_ctx from llama-server: {actual_n_ctx} for {model}")
                             break
                     except Exception as e:
@@ -724,7 +728,8 @@ def api_proxy_start(model):
                 resp = requests.get(f"http://{host}:{llama_port}/props", timeout=2.0)
                 if resp.status_code == 200:
                     props = resp.json()
-                    actual_n_ctx = props.get("n_ctx", 32768)
+                    # n_ctx is nested in default_generation_settings in llama-server /props response
+                    actual_n_ctx = props.get("default_generation_settings", {}).get("n_ctx", 32768)
                     log.info(f"Actual n_ctx from llama-server for proxy: {actual_n_ctx}")
                     break
             except Exception as e:

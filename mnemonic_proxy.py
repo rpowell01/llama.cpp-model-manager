@@ -374,6 +374,9 @@ class MnemonicProxyManager:
                 data_dir = self._resolve_data_dir()
                 data_dir.mkdir(parents=True, exist_ok=True)
                 
+                # Write fresh config file so proxy uses the verified n_ctx / window size
+                self._write_config_file()
+                
                 # Start process with cwd set to data directory so proxy uses ./data subdirectory
                 self._process = subprocess.Popen(
                     cmd,
@@ -835,6 +838,10 @@ def create_proxy_manager(
                 mcp_port=mcp_port,
                 verified_ctx_size=verified_ctx_size,
             )
+        elif verified_ctx_size is not None:
+            # Update verified_ctx_size on existing manager
+            _proxy_managers[model_name].verified_ctx_size = verified_ctx_size
+            log.info(f"Updated verified_ctx_size={verified_ctx_size} for existing proxy manager {model_name}")
         return _proxy_managers[model_name]
 
 
