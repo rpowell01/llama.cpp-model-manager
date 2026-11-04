@@ -85,7 +85,6 @@ class MnemonicProxyManager:
         config_override: Optional[dict] = None,
         mcp_enabled: bool = False,
         mcp_port: int = 8133,
-        verified_ctx_size: Optional[int] = None,
     ):
         """
         Initialize the MnemonicProxyManager.
@@ -116,7 +115,6 @@ class MnemonicProxyManager:
         }
         self.mcp_enabled = mcp_enabled
         self.mcp_port = mcp_port
-        self.verified_ctx_size = verified_ctx_size
         
         # Process tracking
         self._pid: Optional[int] = None
@@ -180,15 +178,22 @@ class MnemonicProxyManager:
         # Detect engine
         engine = self._detect_engine()
         
+        # Resolve data directory
+        data_dir = self._resolve_data_dir()
+        
+        # Write fresh config file so proxy uses the verified n_ctx / window size
+        self._write_config_file()
+        config_path = data_dir / "config.json"
+        
         cmd = [str(binary)]
         
-        # Core proxy settings - use engine and upstream directly, let proxy auto-configure
-        # Avoid --data flag to prevent parent directory lock issue
-        # Avoid --config flag unless slot_dir is needed (handled separately)
+        # Core proxy settings - pass data dir and config explicitly
         cmd += [
             "--port", str(self.proxy_port),
             "--engine", engine,
             "--upstream", f"http://127.0.0.1:{self.llama_port}",
+            "--data", str(data_dir),
+            "--config", str(config_path),
         ]
         
         # Add tokenizer if available
@@ -269,29 +274,18 @@ class MnemonicProxyManager:
         """
         Generate mnemonic-proxy configuration from model settings.
         
-        Creates a config dict that maps model settings to mnemonic-proxy config:
-        - ctx_size → window (minimum 16384)
-        - slot_save_path → slot_dir (must match exactly for saved state)
-        - spec_type → engine detection
-        - Auto-detect tokenizer.json next to model file
-        - Merge config_override for advanced settings
+        v0.3.24+ uses minimal config for llama.cpp engine - window is auto-discovered
+        from the upstream engine. We only write what the proxy cannot discover:
+        - slot_dir (for saved state, must match llama-server --slot-save-path)
+        - tokenizer (for accurate token counting)
+        - config_override (advanced settings)
         
         Returns:
             Configuration dictionary for mnemonic-proxy
         """
         model_config = self._get_model_config() or {}
         
-        # Get context window: use verified n_ctx from running llama-server if available,
-        # otherwise fall back to model config's ctx_size (minimum 16384 for mnemonic-proxy)
-        if self.verified_ctx_size is not None:
-            ctx_size = self.verified_ctx_size
-            log.info(f"Using verified n_ctx={ctx_size} from running llama-server for {self.model_name}")
-        else:
-            ctx_size = model_config.get("ctx_size", 32768)
-            log.debug(f"Using model config ctx_size={ctx_size} for {self.model_name} (no verified n_ctx)")
-        window = max(ctx_size, 16384)
-        
-        # Get slot directory from model's slot_save_path
+        # Get slot directory from model's slot_save_path (required for saved state)
         slot_save_path = model_config.get("slot_save_path", "")
         slot_dir = self.slot_dir or slot_save_path
         
@@ -307,22 +301,22 @@ class MnemonicProxyManager:
         if tokenizer:
             tokenizer = convert_path_for_binary(Path(tokenizer))
         
-        # Build base config
+        # Build minimal config - v0.3.24+ auto-discovers window from engine for llama.cpp
+        # Only write what the proxy cannot discover
         config = {
             "engine": engine,
-            "window": window,
             "upstream": f"http://127.0.0.1:{self.llama_port}",
         }
         
-        # Add slot_dir if available
+        # Add slot_dir if available (required for saved state to work)
         if slot_dir:
             config["slot_dir"] = slot_dir
         
-        # Add tokenizer if available
+        # Add tokenizer if available (for accurate token counting)
         if tokenizer:
             config["tokenizer"] = tokenizer
         
-        # Merge config_override (allows overriding any setting)
+        # Merge config_override (allows overriding any setting including window)
         if self.config_override:
             config.update(self.config_override)
         
@@ -374,17 +368,13 @@ class MnemonicProxyManager:
                 data_dir = self._resolve_data_dir()
                 data_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Write fresh config file so proxy uses the verified n_ctx / window size
-                self._write_config_file()
-                
-                # Start process with cwd set to data directory so proxy uses ./data subdirectory
+                # Start process (build_cmd already writes config and passes --data/--config)
                 self._process = subprocess.Popen(
                     cmd,
                     env=env,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,  # Create new process group for clean kill
-                    cwd=str(data_dir),
                 )
                 
                 self._pid = self._process.pid
@@ -821,7 +811,6 @@ def create_proxy_manager(
     config_override: Optional[dict] = None,
     mcp_enabled: bool = False,
     mcp_port: int = 8133,
-    verified_ctx_size: Optional[int] = None,
 ) -> MnemonicProxyManager:
     """Create or get a proxy manager for a model."""
     with _proxy_managers_lock:
@@ -836,12 +825,7 @@ def create_proxy_manager(
                 config_override=config_override,
                 mcp_enabled=mcp_enabled,
                 mcp_port=mcp_port,
-                verified_ctx_size=verified_ctx_size,
             )
-        elif verified_ctx_size is not None:
-            # Update verified_ctx_size on existing manager
-            _proxy_managers[model_name].verified_ctx_size = verified_ctx_size
-            log.info(f"Updated verified_ctx_size={verified_ctx_size} for existing proxy manager {model_name}")
         return _proxy_managers[model_name]
 
 

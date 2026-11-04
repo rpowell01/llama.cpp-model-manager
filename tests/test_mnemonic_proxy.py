@@ -32,7 +32,8 @@ class TestMnemonicProxyConfigGeneration:
             config = manager.generate_config()
             
             assert config['engine'] == 'llama.cpp'
-            assert config['window'] == 131072
+            # v0.3.24+: window is auto-discovered from engine, not in config
+            assert 'window' not in config
             assert config['upstream'] == 'http://127.0.0.1:9931'
             assert config['slot_dir'] == '/tmp/slots'
             assert config['mask_anchor'] is True
@@ -40,7 +41,7 @@ class TestMnemonicProxyConfigGeneration:
             assert config['window_estimate_slack'] == 0.15
     
     def test_generate_config_min_window(self):
-        """Test that window is at least 16384."""
+        """Test that window minimum is not in config (auto-discovered)."""
         mock_config = {
             "ctx_size": 8192,  # Below minimum
             "slot_save_path": "",
@@ -51,7 +52,9 @@ class TestMnemonicProxyConfigGeneration:
             manager = MnemonicProxyManager('test-model', 9931)
             config = manager.generate_config()
             
-            assert config['window'] == 16384  # Minimum enforced
+            # v0.3.24+: window is auto-discovered from engine, not in config
+            assert 'window' not in config
+            assert config['engine'] == 'llama.cpp'
     
     def test_generate_config_speculative_engine(self):
         """Test engine detection for speculative decoding."""
@@ -88,7 +91,8 @@ class TestMnemonicProxyConfigGeneration:
             config = manager.generate_config()
             
             assert config['engine'] == 'llama.cpp'
-            assert config['window'] == 32768  # Default
+            # v0.3.24+: window is auto-discovered from engine, not in config
+            assert 'window' not in config
             assert config['upstream'] == 'http://127.0.0.1:9931'
     
     def test_generate_config_with_mcp(self):

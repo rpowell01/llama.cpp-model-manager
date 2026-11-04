@@ -806,6 +806,8 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     # Slot KV Cache Persistence
     slot_save_path = meta.get("slot_save_path", DEFAULTS["slot_save_path"])
     if slot_save_path:
+        # Convert path for Windows binary if running in WSL (same as model path)
+        slot_save_path = convert_path_for_binary(Path(slot_save_path))
         cmd += ["--slot-save-path", slot_save_path]
     
     # Chat template file
@@ -835,9 +837,11 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd += ["-b", str(batch_size)]
     
     # ctx_size uses -c (context size) - this also controls KV cache size
+    # Convert kilobytes to bytes (saved value * 1024)
     ctx_size = meta.get("ctx_size", DEFAULTS["ctx_size"])
     if ctx_size:
-        cmd += ["-c", str(ctx_size)]
+        ctx_size_bytes = ctx_size * 1024
+        cmd += ["-c", str(ctx_size_bytes)]
     
     
     # RoPE / YaRN scaling parameters.

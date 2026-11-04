@@ -568,7 +568,6 @@ def api_start():
                     config_override=config_override,
                     mcp_enabled=mcp_enabled,
                     mcp_port=mcp_port,
-                    verified_ctx_size=actual_n_ctx,
                 )
                 
                 proxy_started = proxy_manager.start()
@@ -739,6 +738,7 @@ def api_proxy_start(model):
         log.debug(f"Error fetching actual n_ctx for proxy: {e}")
     
     # Create and start proxy manager
+    # v0.3.24+: proxy auto-discovers window from engine, no need to pass verified_ctx_size
     proxy_manager = create_proxy_manager(
         model_name=model,
         llama_port=llama_port,
@@ -749,7 +749,6 @@ def api_proxy_start(model):
         config_override=config_override,
         mcp_enabled=mcp_enabled,
         mcp_port=mcp_port,
-        verified_ctx_size=actual_n_ctx,
     )
     
     success = proxy_manager.start()
@@ -810,13 +809,16 @@ def api_proxy_metrics(model):
     
     try:
         import requests
-        resp = requests.get(f"http://127.0.0.1:{proxy_port}/metrics", timeout=5)
+        # Increased timeout to 15s as proxy metrics endpoint can be slow
+        resp = requests.get(f"http://127.0.0.1:{proxy_port}/metrics", timeout=15)
         if resp.status_code == 200:
             # Parse Prometheus metrics format
             metrics = parse_prometheus_metrics(resp.text)
             return jsonify({"model": model, "metrics": metrics, "raw": resp.text})
         else:
             return jsonify({"error": f"Failed to fetch metrics: {resp.status_code}", "model": model}), 502
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Proxy metrics endpoint timed out (15s)", "model": model}), 504
     except Exception as e:
         return jsonify({"error": f"Failed to fetch metrics: {str(e)}", "model": model}), 502
 
@@ -904,43 +906,61 @@ def api_proxy_strata_context(model):
                     "conversation_id": conversation_id
                 })
         
-        # Otherwise, make a minimal request to get current Strata context
-        # Note: This creates a new conversation each time (for backward compatibility)
-        resp = requests.post(
-            f"http://127.0.0.1:{proxy_port}/v1/chat/completions",
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 1,
-                "temperature": 0
-            },
+        # Otherwise, try to get the most recent conversation from the store
+        # This avoids creating a new conversation each time the metrics are polled
+        resp = requests.get(
+            f"http://127.0.0.1:{proxy_port}/v1/strata/conversations",
             timeout=10,
             headers={"Accept": "application/json"}
         )
         
         strata_context = None
-        # Check response headers for X-Strata-Context
-        strata_header = resp.headers.get('X-Strata-Context')
-        if strata_header:
-            # Parse header: seg=0 active=290 virtual=76 masked=0 recalls=0 cached=59
-            parts = strata_header.split()
-            strata_context = {}
-            for part in parts:
-                if '=' in part:
-                    k, v = part.split('=', 1)
-                    try:
-                        strata_context[k] = int(v)
-                    except ValueError:
-                        strata_context[k] = v
-        
-        # Also check response body for strata_context
         if resp.status_code == 200:
-            try:
-                body = resp.json()
-                if 'strata_context' in body:
-                    strata_context = body['strata_context']
-            except Exception:
-                pass
+            data = resp.json()
+            conversations = data.get("conversations", [])
+            if conversations:
+                # Get the most recent conversation (last one in the list)
+                latest = conversations[-1]
+                # Handle both possible response formats
+                if isinstance(latest, dict):
+                    conv_data = latest.get("data", latest)
+                    # The list endpoint uses "conversation" key, not "id" or "conversation_id"
+                    conv_id = latest.get("conversation", conv_data.get("conversation_id"))
+                else:
+                    conv_data = latest
+                    conv_id = None
+                
+                # Fetch detailed conversation data for rich Strata context
+                if conv_id:
+                    detail_resp = requests.get(
+                        f"http://127.0.0.1:{proxy_port}/v1/strata/conversations/{conv_id}",
+                        timeout=10,
+                        headers={"Accept": "application/json"}
+                    )
+                    if detail_resp.status_code == 200:
+                        detail = detail_resp.json()
+                        strata_context = {
+                            "conversation_id": detail.get("conversation_id"),
+                            "archived": detail.get("archived", 0),
+                            "archived_tokens": detail.get("archived_tokens", 0),
+                            "masked": detail.get("masked", 0),
+                            "masked_tokens": detail.get("masked_tokens", 0),
+                            "segments": detail.get("segments", 0),
+                            "segment_list": detail.get("segment_list", []),
+                            "source": "store"
+                        }
+                else:
+                    # Fallback to list data if no conv_id
+                    strata_context = {
+                        "conversation_id": conv_id,
+                        "archived": conv_data.get("archived", 0),
+                        "archived_tokens": conv_data.get("archived_tokens", 0),
+                        "masked": conv_data.get("masked", 0),
+                        "masked_tokens": conv_data.get("masked_tokens", 0),
+                        "segments": conv_data.get("segments", 0),
+                        "segment_list": conv_data.get("segment_list", []),
+                        "source": "store"
+                    }
         
         return jsonify({
             "model": model,

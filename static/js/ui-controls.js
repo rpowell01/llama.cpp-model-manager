@@ -757,7 +757,39 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <h3>Context & RoPE / YaRN</h3>
     <div class="panel-grid">`;
     
-    addEditable("Context Size", "ctx_size", data.ctx_size, "number", 1, 1);
+    // Context Size dropdown with kilobyte values
+    const ctxSizeValue = data.ctx_size || 4096;
+    const ctxSizeKB = Math.round(ctxSizeValue / 1024);
+    const ctxSizeOptions = [
+      { value: 4, text: "4 KB (4096)" },
+      { value: 8, text: "8 KB (8192)" },
+      { value: 16, text: "16 KB (16384)" },
+      { value: 32, text: "32 KB (32768)" },
+      { value: 64, text: "64 KB (65536)" },
+      { value: 128, text: "128 KB (131072)" },
+      { value: 256, text: "256 KB (262144)" }
+    ];
+    
+    // Find the selected option
+    let selectedOption;
+    for (const option of ctxSizeOptions) {
+      if (option.value === ctxSizeKB) {
+        selectedOption = option;
+        break;
+      }
+    }
+    if (!selectedOption) selectedOption = ctxSizeOptions[0]; // Default to 4KB if not found
+    
+    html += `<div class="panel-item">
+      <span class="label">Context Size</span>
+      <span class="value">
+        <select class="meta-input ctx_size-select" data-field="ctx_size" value="${selectedOption.value}">
+          ${ctxSizeOptions.map(option => 
+            `<option value="${option.value}" ${option.value === selectedOption.value ? 'selected' : ''}>${option.text}</option>`
+          ).join('')}
+        </select>
+      </span>
+    </div>`;
     addEditable("RoPE Freq Base", "rope_freq_base", data.rope_freq_base, "number", 0.1, 1);
     addEditable("RoPE Freq Scale", "rope_freq_scale", data.rope_freq_scale, "number", 0.1, 0.1);
     

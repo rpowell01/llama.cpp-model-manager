@@ -121,6 +121,21 @@
   background: var(--btn-del);
 }
 
+.agent-config {
+  background: var(--btn-agent-config);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+}
+
+.agent-config:hover {
+  opacity: 0.9;
+}
+
 .actions .goto {
   background: var(--blue);
 }
