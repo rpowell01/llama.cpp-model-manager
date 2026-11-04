@@ -169,7 +169,7 @@ function renderTiles(rows, dlMap, query) {
       // Mnemonic-proxy status
       const proxy = r.mnemonic_proxy || {};
       const proxyEnabled = proxy.enabled === true;
-      const proxyRunning = proxy.running === true;
+      const proxyRunning = proxy.running === true && running;
       const proxyPort = proxy.port || 8096;
       const proxyMcpEnabled = proxy.mcp_enabled === true;
       const proxyMcpPort = proxy.mcp_port || 8133;
@@ -806,7 +806,39 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     </div>`;
     
     addEditable("RoPE Scale (context factor)", "rope_scale", data.rope_scale, "number", 0.1, 0.1);
-    addEditable("YaRN Orig Context", "yarn_orig_ctx", data.yarn_orig_ctx, "number", 1, 0);
+    // YaRN Orig Context dropdown with kilobyte values
+    const yarnOrigCtxValue = data.yarn_orig_ctx || 4096;
+    const yarnOrigCtxKB = Math.round(yarnOrigCtxValue / 1024);
+    const yarnOrigCtxOptions = [
+      { value: 4, text: "4 KB (4096)" },
+      { value: 8, text: "8 KB (8192)" },
+      { value: 16, text: "16 KB (16384)" },
+      { value: 32, text: "32 KB (32768)" },
+      { value: 64, text: "64 KB (65536)" },
+      { value: 128, text: "128 KB (131072)" },
+      { value: 256, text: "256 KB (262144)" }
+    ];
+    
+    // Find the selected option
+    let selectedYarnOption;
+    for (const option of yarnOrigCtxOptions) {
+      if (option.value === yarnOrigCtxKB) {
+        selectedYarnOption = option;
+        break;
+      }
+    }
+    if (!selectedYarnOption) selectedYarnOption = yarnOrigCtxOptions[0]; // Default to 4KB if not found
+    
+    html += `<div class="panel-item">
+      <span class="label">YaRN Orig Context</span>
+      <span class="value">
+        <select class="meta-input yarn_orig_ctx-select" data-field="yarn_orig_ctx" value="${selectedYarnOption.value}">
+          ${yarnOrigCtxOptions.map(option => 
+            `<option value="${option.value}" ${option.value === selectedYarnOption.value ? 'selected' : ''}>${option.text}</option>`
+          ).join('')}
+        </select>
+      </span>
+    </div>`;
     addEditable("YaRN Ext Factor", "yarn_ext_factor", data.yarn_ext_factor, "number", 0.1);
     addEditable("YaRN Attn Factor", "yarn_attn_factor", data.yarn_attn_factor, "number", 0.1, 0.1);
     addEditable("YaRN Beta Slow", "yarn_beta_slow", data.yarn_beta_slow, "number", 0.1, 0.1);

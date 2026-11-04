@@ -865,7 +865,9 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
 
         yarn_orig_ctx = meta.get("yarn_orig_ctx", DEFAULTS["yarn_orig_ctx"])
         if yarn_orig_ctx and yarn_orig_ctx > 0:
-            cmd += ["--yarn-orig-ctx", str(yarn_orig_ctx)]
+            # Convert kilobytes to bytes
+            yarn_orig_ctx_bytes = yarn_orig_ctx * 1024
+            cmd += ["--yarn-orig-ctx", str(yarn_orig_ctx_bytes)]
 
         yarn_ext_factor = meta.get("yarn_ext_factor", DEFAULTS["yarn_ext_factor"])
         if yarn_ext_factor and yarn_ext_factor >= 0:
