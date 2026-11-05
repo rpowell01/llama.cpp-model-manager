@@ -422,9 +422,40 @@ def api_start():
                     break
             time.sleep(0.5)
 
-        # If model is running, verify n_ctx matches expected ctx_size before proceeding
-        # This ensures the proxy gets the correct window size
+        
+
         if is_running:
+            start_success = True
+            with _recent_stops_lock:
+                _recent_stops.pop(model, None)
+            # Clear start timestamp since model is confirmed running
+            with _start_timestamps_lock:
+                _start_timestamps.pop(model, None)
+            # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
+            # but we need the actual Windows process PID for killing.
+            # Look up the Windows PID from the port and update the stored PID.
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                windows_pid = find_pid_by_port(port)
+                if windows_pid:
+                    log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")
+                    with _wsl_pids_lock:
+                        _wsl_pids[model] = windows_pid
+                    pid = windows_pid
+
+            # Run warmup if enabled
+            if meta.get("warmup_enabled", False):
+                warmup_message = meta.get("warmup_message", "Hello")
+                warmup_max_tokens = meta.get("warmup_max_tokens", 10)
+                log.info(f"Running warmup for {model} on port {port}")
+                add_log_entry(f"🔥 Warmup: {model} on port {port}", "yellow")
+                warmup_success = warmup_model(port, warmup_message, warmup_max_tokens)
+                if warmup_success:
+                    add_log_entry(f"✓ Warmup successful: {model}", "green")
+                else:
+                    add_log_entry(f"⚠ Warmup failed: {model}", "orange")
+
+            # Verify n_ctx matches expected ctx_size before starting mnemonic-proxy
+            # This ensures the proxy gets the correct window size
             expected_ctx_size = meta.get("ctx_size", DEFAULTS["ctx_size"])
             log.info(f"Verifying n_ctx matches expected ctx_size={expected_ctx_size} for {model}")
             add_log_entry(f"🔍 Verifying context size: expected={expected_ctx_size}", "cyan")
@@ -512,36 +543,6 @@ def api_start():
                         continue
             except Exception as e:
                 log.debug(f"Error fetching actual n_ctx: {e}")
-
-        if is_running:
-            start_success = True
-            with _recent_stops_lock:
-                _recent_stops.pop(model, None)
-            # Clear start timestamp since model is confirmed running
-            with _start_timestamps_lock:
-                _start_timestamps.pop(model, None)
-            # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
-            # but we need the actual Windows process PID for killing.
-            # Look up the Windows PID from the port and update the stored PID.
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-                windows_pid = find_pid_by_port(port)
-                if windows_pid:
-                    log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")
-                    with _wsl_pids_lock:
-                        _wsl_pids[model] = windows_pid
-                    pid = windows_pid
-
-            # Run warmup if enabled
-            if meta.get("warmup_enabled", False):
-                warmup_message = meta.get("warmup_message", "Hello")
-                warmup_max_tokens = meta.get("warmup_max_tokens", 10)
-                log.info(f"Running warmup for {model} on port {port}")
-                add_log_entry(f"🔥 Warmup: {model} on port {port}", "yellow")
-                warmup_success = warmup_model(port, warmup_message, warmup_max_tokens)
-                if warmup_success:
-                    add_log_entry(f"✓ Warmup successful: {model}", "green")
-                else:
-                    add_log_entry(f"⚠ Warmup failed: {model}", "orange")
 
             # Start mnemonic-proxy if enabled for this model
             # Model has individual mnemonic_proxy_* fields, construct config dict
