@@ -149,5 +149,66 @@ class TestRopeScalingCommandLine(unittest.TestCase):
         self.assertEqual(_rope_flags(cmd), {"--rope-scaling", "--rope-scale"})
 
 
+class TestContextSizeUnits(unittest.TestCase):
+    """Context-related flags are passed to llama-server in tokens."""
+
+    def setUp(self) -> None:
+        """Ensure build_cmd runs in local mode for each test."""
+        env_patch = patch.dict(os.environ, {})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
+        os.environ.pop("REMOTE_MODE", None)
+
+    def _meta(self, **overrides) -> dict:
+        """Build a meta dict with defaults, overridden by the given kwargs."""
+        meta = {
+            "model_path": "models/test-model.gguf",
+            "threads": 4,
+            "threads_batch": 4,
+            "timeout": 60,
+            "rope_scaling_type": "none",
+            "rope_freq_base": 10000.0,
+            "rope_freq_scale": 1.0,
+            "rope_scale": 1.0,
+            "yarn_orig_ctx": 0,
+            "yarn_ext_factor": -1.0,
+            "yarn_attn_factor": 1.0,
+            "yarn_beta_slow": 1.0,
+            "yarn_beta_fast": 32.0,
+        }
+        meta.update(overrides)
+        return meta
+
+    def test_ctx_size_is_passed_in_tokens(self) -> None:
+        """-c must be the persisted token count, not bytes."""
+        meta = self._meta(ctx_size=131072)
+        cmd = build_cmd("test-model", 8080, meta)
+        self.assertEqual(cmd[cmd.index("-c") + 1], "131072")
+
+    def test_ctx_size_is_not_scaled(self) -> None:
+        """A 128K token context must not become 134217728."""
+        meta = self._meta(ctx_size=131072)
+        cmd = build_cmd("test-model", 8080, meta)
+        self.assertNotIn("134217728", cmd)
+
+    def test_non_standard_ctx_size_is_passed_through(self) -> None:
+        """Arbitrary persisted token counts are passed through unchanged."""
+        meta = self._meta(ctx_size=128000)
+        cmd = build_cmd("test-model", 8080, meta)
+        self.assertEqual(cmd[cmd.index("-c") + 1], "128000")
+
+    def test_yarn_orig_ctx_is_passed_in_tokens(self) -> None:
+        """--yarn-orig-ctx must be the persisted token count, not bytes."""
+        meta = self._meta(rope_scaling_type="yarn", yarn_orig_ctx=32768)
+        cmd = build_cmd("test-model", 8080, meta)
+        self.assertEqual(cmd[cmd.index("--yarn-orig-ctx") + 1], "32768")
+
+    def test_yarn_orig_ctx_zero_is_omitted(self) -> None:
+        """A zero yarn original context means 'use the model default'."""
+        meta = self._meta(rope_scaling_type="yarn", yarn_orig_ctx=0)
+        cmd = build_cmd("test-model", 8080, meta)
+        self.assertNotIn("--yarn-orig-ctx", cmd)
+
+
 if __name__ == "__main__":
     unittest.main()
