@@ -92,11 +92,11 @@ async function promptDeleteModel(model) {
     if (data.error) {
       alert('Error: ' + data.error);
     } else {
-      log(`<b>Delete:</b> ${model} → ${data.status}`, 'green');
+      logHtml(`<b>Delete:</b> ${model} → ${data.status}`, 'green');
       refresh();
     }
   } catch (e) {
-    log('<b>Error:</b> ' + e, 'red');
+    logHtml('<b>Error:</b> ' + e, 'red');
   }
 }
 
@@ -163,10 +163,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         const result = await res.json();
         if (result.error) {
-          log('<b>Add error:</b> ' + result.error, 'red');
+          logHtml('<b>Add error:</b> ' + result.error, 'red');
           alert('Error: ' + result.error);
         } else {
-          log(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
+          logHtml(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
           // Auto-download the model after successful addition if checkbox is checked
           if (data.auto_download) {
             const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function () {
           refresh();
         }
       } catch (err) {
-        log('<b>Error:</b> ' + err, 'red');
+        logHtml('<b>Error:</b> ' + err, 'red');
         alert('Error: ' + err);
       } finally {
         submitBtn.disabled = false;
@@ -287,7 +287,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
           });
         } catch (err) {
-          log('<b>Search error:</b> ' + err, 'red');
+          logHtml('<b>Search error:</b> ' + err, 'red');
           alert('Search failed: ' + err);
         } finally {
           btn.disabled = false;

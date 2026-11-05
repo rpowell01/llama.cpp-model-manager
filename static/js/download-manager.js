@@ -77,15 +77,15 @@ async function _triggerDownload(model, url, size, force = false) {
     console.log('download response:', data);
 
     if (data.error) {
-      log('<b>Download error:</b> ' + data.error, 'red');
+      logHtml('<b>Download error:</b> ' + data.error, 'red');
       return;
     }
 
     // Show appropriate message for variant vs regular download
     if (data.is_variant) {
-      log(`<b>New variant created:</b> ${data.model}`, 'green');
+      logHtml(`<b>New variant created:</b> ${data.model}`, 'green');
     } else {
-      log(`<b>Download:</b> ${model} starting...`, 'green');
+      logHtml(`<b>Download:</b> ${model} starting...`, 'green');
     }
 
     // Show progress bar for active downloads
@@ -112,7 +112,7 @@ async function _triggerDownload(model, url, size, force = false) {
      }
 
       if (data.status === 'complete') {
-        log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
+        logHtml(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
         // Remove progress bar when already complete
         setTimeout(() => {
           const safeModelId = safeId(data.model);
@@ -129,7 +129,7 @@ async function _triggerDownload(model, url, size, force = false) {
     startProgressListener(data.model);
     refresh();
   } catch (e) {
-    log('<b>Error:</b> ' + e, 'red');
+    logHtml('<b>Error:</b> ' + e, 'red');
   }
 }
 
@@ -151,19 +151,19 @@ async function downloadModel(model, force = false) {
     console.log('download-search response:', data);
 
     if (data.error) {
-      log('<b>Download error:</b> ' + data.error, 'red');
+      logHtml('<b>Download error:</b> ' + data.error, 'red');
       return;
     }
 
     // If already complete, show message
     if (data.status === 'complete') {
-      log(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
+      logHtml(`<b>${model}:</b> already downloaded (${fmtSize(data.size)})`, 'green');
       return;
     }
 
        // If download started automatically (single result), show progress
        if (data.status === 'download started') {
-         log(`<b>Download:</b> ${model} started`, 'green');
+         logHtml(`<b>Download:</b> ${model} started`, 'green');
          showProgressBar(model, data.results?.[0]?.size || 0);
          // Inject progress bar HTML into tile DOM
          const safeModelId = safeId(model);
@@ -197,7 +197,7 @@ async function downloadModel(model, force = false) {
       showDownloadModal(model, data.results, force);
     }
   } catch (err) {
-    log('<b>Error:</b> ' + err, 'red');
+    logHtml('<b>Error:</b> ' + err, 'red');
   }
 }
 
@@ -220,7 +220,7 @@ async function downloadByFilename(model, filename, force = false) {
     console.log('download-search-filename response:', data);
 
     if (data.error) {
-      log('<b>Download error:</b> ' + data.error, 'red');
+      logHtml('<b>Download error:</b> ' + data.error, 'red');
       return;
     }
 
@@ -292,7 +292,7 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
   const fileInfo = await fileRes.json();
 
   if (fileInfo.error) {
-    log('<b>Error:</b> ' + fileInfo.error, 'red');
+    logHtml('<b>Error:</b> ' + fileInfo.error, 'red');
     return;
   }
 
@@ -310,9 +310,9 @@ async function downloadWithResume(model, resume, partialBytes = 0, force = false
   const data = await response.json();
 
   if (data.error) {
-    log('<b>Resume error:</b> ' + data.error, 'red');
+    logHtml('<b>Resume error:</b> ' + data.error, 'red');
   } else {
-    log(`<b>Download:</b> ${model} resumed`, 'green');
+    logHtml(`<b>Download:</b> ${model} resumed`, 'green');
      showProgressBar(model, fileInfo.size || 0);
      // Inject progress bar HTML into tile DOM (fix for re-download visibility)
      const safeModelId = safeId(model);

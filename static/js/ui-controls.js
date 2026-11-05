@@ -696,7 +696,7 @@ async function renderPanelProperties(data, modelName) {
             }
           } catch (err) {
             console.error("Browse error:", err);
-            log('<b>Browse error:</b> ' + err, 'red');
+            logHtml('<b>Browse error:</b> ' + err, 'red');
           }
         });
       });
@@ -2993,15 +2993,15 @@ async function toggleProxy(model, start) {
     });
     const data = await res.json();
     if (data.error) {
-      log(`<b>Proxy ${action} error:</b> ${data.error}`, 'red');
+      logHtml(`<b>Proxy ${action} error:</b> ${data.error}`, 'red');
     } else {
-      log(`<b>Proxy ${action}:</b> ${model} → ${data.status}`, 'green');
+      logHtml(`<b>Proxy ${action}:</b> ${model} → ${data.status}`, 'green');
     }
     // Refresh to update UI
     setTimeout(() => refresh(true), 500);
   } catch (e) {
     console.error('toggleProxy error:', e);
-    log(`<b>Proxy ${action} error:</b> ${e}`, 'red');
+    logHtml(`<b>Proxy ${action} error:</b> ${e}`, 'red');
   } finally {
     btn.disabled = false;
     btn.textContent = prev;

@@ -952,7 +952,9 @@ const FileBrowser = (function() {
    * Log error to UI (if log function exists)
    */
   function logError(message) {
-    if (typeof log === 'function') {
+    if (typeof logHtml === 'function') {
+      logHtml('<b>File Browser Error:</b> ' + escapeHtml(message), 'red');
+    } else if (typeof log === 'function') {
       log('<b>File Browser Error:</b> ' + escapeHtml(message), 'red');
     } else {
       console.error(message);

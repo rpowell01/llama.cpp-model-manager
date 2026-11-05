@@ -480,15 +480,15 @@ async function act(model, verb) {
     try {
       data = JSON.parse(text);
     } catch (parseError) {
-      log(`<b>${prev} error:</b> Server returned non-JSON response`, 'red');
+      logHtml(`<b>${prev} error:</b> Server returned non-JSON response`, 'red');
       console.error('Failed to parse response:', text);
       return;
     }
     console.log('Parsed data:', data);
     if (data.error) {
-      log('<b>' + prev + ' error:</b> ' + data.error, 'red');
+      logHtml('<b>' + prev + ' error:</b> ' + data.error, 'red');
     } else {
-      log(`<b>${prev}:</b> ${model} → ${data.status}${data.pid ? ' (pid ' + data.pid + ')' : ''}`, 'green');
+      logHtml(`<b>${prev}:</b> ${model} → ${data.status}${data.pid ? ' (pid ' + data.pid + ')' : ''}`, 'green');
     }
     const delay = verb === 'stop' ? 1200 : 800;
     console.log('Calling refresh after', delay, 'ms');
@@ -516,7 +516,7 @@ async function act(model, verb) {
     }, delay);
   } catch (e) {
     console.error('act() error:', e);
-    log('<b>Error:</b> ' + e, 'red');
+    logHtml('<b>Error:</b> ' + e, 'red');
     setTimeout(() => {
       btn.disabled = false;
       btn.textContent = prev;

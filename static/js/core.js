@@ -113,6 +113,7 @@ function portUrl(p) {
 
 /**
  * Log message to the log panel (for frontend-generated logs)
+ * Escapes HTML to prevent XSS. Use logHtml() for trusted HTML markup.
  * @param {string} msg - Message to log
  * @param {string} color - Optional color
  */
@@ -131,6 +132,31 @@ function log(msg, color) {
   const entries = contentEl.getElementsByTagName('span');
   if (entries.length > 1000) {
     // Remove excess entries from the end
+    while (entries.length > 1000) {
+      contentEl.removeChild(entries[entries.length - 1]);
+    }
+  }
+}
+
+/**
+ * Log trusted HTML markup to the log panel (for frontend-generated logs)
+ * Does NOT escape HTML - only use for trusted content with intentional markup.
+ * @param {string} html - HTML markup to log
+ * @param {string} color - Optional color
+ */
+function logHtml(html, color) {
+  const el = document.getElementById('log');
+  if (!el) return;
+  const contentEl = el.querySelector('.log-content');
+  if (!contentEl) return;
+  
+  const ts = new Date().toISOString().slice(11, 19);
+  const entry = `<span style="color:${color || 'inherit'}">[${ts}] ${html}</span>\n`;
+  contentEl.insertAdjacentHTML('afterbegin', entry);
+  
+  // Limit to 1000 entries to prevent excessive memory usage
+  const entries = contentEl.getElementsByTagName('span');
+  if (entries.length > 1000) {
     while (entries.length > 1000) {
       contentEl.removeChild(entries[entries.length - 1]);
     }
