@@ -19,6 +19,7 @@ from processes import (
     warmup_model,
     build_cmd,
     pids_of_llama,
+    get_server_host,
 )
 from mnemonic_proxy import (
     create_proxy_manager,
@@ -299,7 +300,9 @@ def api_start():
         }
 
         # Check if already running
+        log.info(f"Checking if port {port} is active for model {model}")
         active = check_port_active(port)
+        log.info(f"check_port_active({port}) returned: {active}")
         if active:
             if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
                 pid = _wsl_pids.get(model)
@@ -310,6 +313,7 @@ def api_start():
                 if pid:
                     return jsonify({"status": "running", "pid": pid, "port": port})
             # Port active but no PID found? Treat as running.
+            log.warning(f"Port {port} active but no PID found, treating as running")
             return jsonify({"status": "running", "pid": None, "port": port})
 
         # Mark startup timestamp
@@ -480,6 +484,8 @@ def api_start():
                     else:
                         hosts_to_try.append(get_server_host())
                     
+                    log.info(f"n_ctx verification attempt {attempt+1}/60: trying hosts {hosts_to_try} for {model}")
+                    
                     for host in hosts_to_try:
                         try:
                             resp = requests.get(f"http://{host}:{port}/props", timeout=2.0)
@@ -487,6 +493,7 @@ def api_start():
                                 props = resp.json()
                                 # n_ctx is nested in default_generation_settings in llama-server /props response
                                 actual_n_ctx = props.get("default_generation_settings", {}).get("n_ctx")
+                                log.info(f"  Host {host}: status=200, n_ctx={actual_n_ctx}")
                                 if actual_n_ctx is not None:
                                     # Allow small tolerance for llama-server rounding (e.g., 65000 -> 65024)
                                     tolerance = max(256, int(expected_ctx_size * 0.01))
@@ -496,10 +503,12 @@ def api_start():
                                         add_log_entry(f"✓ Context size verified: n_ctx={actual_n_ctx}", "green")
                                         break
                                     else:
-                                        log.debug(f"n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} ±{tolerance} (attempt {attempt+1}/60)")
-                                break  # Got response, don't try other hosts
+                                        log.info(f"  n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} ±{tolerance} (attempt {attempt+1}/60)")
+                                # Don't break here - try other hosts if n_ctx doesn't match
+                            else:
+                                log.info(f"  Host {host}: status={resp.status_code}")
                         except Exception as e:
-                            log.debug(f"Failed to check /props on {host}:{port}: {e}")
+                            log.info(f"  Host {host}: error={type(e).__name__}: {e}")
                             continue
                     
                     if ctx_verified:
@@ -507,7 +516,7 @@ def api_start():
                         
                     time.sleep(0.5)
                 except Exception as e:
-                    log.debug(f"Error during n_ctx verification: {e}")
+                    log.warning(f"Error during n_ctx verification: {e}")
                     time.sleep(0.5)
             
             if not ctx_verified:
@@ -884,9 +893,9 @@ def api_proxy_strata_context(model):
         import os
         from pathlib import Path
         
-        # Helper: parse journal for live metrics
-        def parse_journal_for_conversation(journal_path, conv_id):
-            """Parse journal.jsonl for the latest request event and recall counts for a conversation."""
+        # Helper: parse journal for live metrics (from proxy's journal endpoint)
+        def parse_journal_for_conversation(port, conv_id):
+            """Parse journal from proxy's /v1/strata/journal endpoint for the latest request event and recall counts for a conversation."""
             live = {
                 "active_tokens": None,
                 "active_tokens_est": None,
@@ -896,34 +905,36 @@ def api_proxy_strata_context(model):
                 "mode": None,
                 "recalls": 0,
             }
-            if not os.path.exists(journal_path):
+            
+            try:
+                resp = requests.get(
+                    f"http://127.0.0.1:{port}/v1/strata/journal",
+                    timeout=10,
+                    headers={"Accept": "application/json"}
+                )
+                if resp.status_code != 200:
+                    return live
+                journal_data = resp.json()
+                events = journal_data.get("events", [])
+            except Exception:
                 return live
             
             try:
-                with open(journal_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            event = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        
-                        if event.get("conv") != conv_id:
-                            continue
-                        
-                        ev_type = event.get("event")
-                        if ev_type == "request":
-                            # Latest request event has the live metrics
-                            live["active_tokens"] = event.get("prompt_tokens")
-                            live["active_tokens_est"] = event.get("est_tokens")
-                            live["virtual_tokens"] = event.get("virtual_tokens")
-                            live["cached_tokens"] = event.get("reused")
-                            live["segment"] = event.get("seg")
-                            live["mode"] = event.get("mode")
-                        elif ev_type in ("recall", "recall_use"):
-                            live["recalls"] += 1
+                for event in events:
+                    if event.get("conv") != conv_id:
+                        continue
+                    
+                    ev_type = event.get("event")
+                    if ev_type == "request":
+                        # Latest request event has the live metrics
+                        live["active_tokens"] = event.get("prompt_tokens")
+                        live["active_tokens_est"] = event.get("est_tokens")
+                        live["virtual_tokens"] = event.get("virtual_tokens")
+                        live["cached_tokens"] = event.get("reused")
+                        live["segment"] = event.get("seg")
+                        live["mode"] = event.get("mode")
+                    elif ev_type in ("recall", "recall_use"):
+                        live["recalls"] += 1
             except Exception:
                 pass
             return live
@@ -956,12 +967,12 @@ def api_proxy_strata_context(model):
                 pass
             return None
         
-        journal_path = data_dir / "journal.jsonl"
+        # journal_path removed - use proxy's journal endpoint instead
         
         # If conversation_id provided, use it directly
         if conversation_id:
             store_data = get_store_stats(proxy_port, conversation_id)
-            live_data = parse_journal_for_conversation(journal_path, conversation_id)
+            live_data = parse_journal_for_conversation(proxy_port, conversation_id)
             
             strata_context = {
                 "conversation_id": conversation_id,
@@ -1021,7 +1032,7 @@ def api_proxy_strata_context(model):
                 
                 if conv_id:
                     store_data = get_store_stats(proxy_port, conv_id)
-                    live_data = parse_journal_for_conversation(journal_path, conv_id)
+                    live_data = parse_journal_for_conversation(proxy_port, conv_id)
                     
                     strata_context = {
                         "conversation_id": conv_id,

@@ -137,8 +137,10 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default 5000)")
     args = parser.parse_args()
 
+    log.info("Creating Flask app...")
     # Create Flask app
     app = Flask(__name__)
+    log.info("Flask app created")
     
     # Set app config for template variables
     app.config["SERVER_HOST"] = args.host if args.host != "0.0.0.0" else "127.0.0.1"
@@ -146,18 +148,28 @@ def main() -> None:
     app.config["CACHE_VERSION"] = "1"
 
     # Register blueprints
+    log.info("Registering blueprints...")
     app.register_blueprint(chat_bp)
+    log.info("chat_bp registered")
     app.register_blueprint(downloads_bp)
+    log.info("downloads_bp registered")
     app.register_blueprint(hf_bp)
+    log.info("hf_bp registered")
     app.register_blueprint(lifecycle_bp)
+    log.info("lifecycle_bp registered")
     app.register_blueprint(models_bp)
+    log.info("models_bp registered")
     app.register_blueprint(status_bp)
+    log.info("status_bp registered")
     app.register_blueprint(system_bp)
+    log.info("system_bp registered")
+    log.info("All blueprints registered")
 
     # Load models cache (skip in remote mode)
     if not cfg.is_remote_mode:
         log.info("Loading models cache...")
         load_models_cache()
+        log.info("Models cache loaded")
     else:
         log.info("Remote mode: skipping local models cache")
 
@@ -173,10 +185,12 @@ def main() -> None:
         with scheduler_lock:
             if scheduler_started:
                 return
+            log.info("Initializing scheduler...")
             scheduler = init_scheduler(app, interval=METRICS_EXPORT_INTERVAL_SECONDS)
             app.config["SCHEDULER"] = scheduler
             atexit.register(scheduler.stop)
             scheduler_started = True
+            log.info("Scheduler initialized")
 
     log.info("Starting web UI on http://%s:%d from %s", args.host, args.port, BASE_DIR)
     
@@ -190,7 +204,9 @@ def main() -> None:
             log.info("  http://127.0.0.1:%d (via port forwarding)", args.port)
             log.info("Note: The Windows IP shown by Flask below is NOT accessible in WSL2 default networking mode.")
 
+    log.info("Calling app.run()...")
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
+    log.info("app.run() returned")
 
 
 if __name__ == "__main__":

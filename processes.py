@@ -490,6 +490,8 @@ def check_port_active(port: int) -> bool:
     else:
         hosts_to_try.append(get_server_host())
 
+    log.debug(f"check_port_active({port}): hosts_to_try={hosts_to_try}")
+
     # Use longer timeout for WSL environments
     timeout = 0.5 if WSL else 0.2
 
@@ -498,7 +500,7 @@ def check_port_active(port: int) -> bool:
             with socket.create_connection((host, port), timeout=timeout):
                 log.debug(f"Port {port} active on {host}")
                 return True
-        except OSError as e:
+        except (OSError, socket.gaierror) as e:
             log.debug(f"Port check for {port} on {host} failed: {e}")
             continue
 
