@@ -830,11 +830,11 @@ async function renderPanelProperties(data, modelName) {
     
 addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "directory",
       "Required: directory where KV cache slots are saved/loaded for cache reload");
-    addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1,
+    addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1, undefined,
       "Required: number of tokens to reuse from cached slot (must be > 0 for cache reload)");
-    addEditable("Keep (tokens from initial prompt)", "keep", data.keep, "number", 1, 0,
+    addEditable("Keep (tokens from initial prompt)", "keep", data.keep, "number", 1, 0, undefined,
       "Required: tokens to keep from prompt start (must be > 0 for cache reload)");
-    addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox",
+    addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox", undefined, undefined, undefined,
       "Must be OFF (false) for cache reload - SWA breaks cache persistence (see llama.cpp PR #13194)");
     
     // Chat template file with browse button
