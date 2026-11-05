@@ -880,4 +880,52 @@ def stop_all_proxies() -> dict[str, bool]:
         return results
 
 
+def regenerate_all_proxy_configs() -> dict[str, Path]:
+    """
+    Regenerate mnemonic-proxy config.json files for all known models.
+    
+    This is useful when the generate_config() logic has changed and existing
+    config.json files on disk are stale. It creates proxy managers for all
+    models in models.json and writes fresh config files.
+    
+    Returns:
+        Dictionary mapping model names to their config file paths
+    """
+    from models import get_models
+    
+    models = get_models()
+    results = {}
+    
+    for model_name, model_config in models.items():
+        try:
+            llama_port = model_config.get("port")
+            if not llama_port:
+                log.warning(f"Skipping {model_name}: no port configured")
+                continue
+            
+            # Extract mnemonic-proxy settings from model config
+            mp_config = model_config.get("mnemonic_proxy", {})
+            
+            manager = MnemonicProxyManager(
+                model_name=model_name,
+                llama_port=llama_port,
+                proxy_port=mp_config.get("port", 8096),
+                data_dir=mp_config.get("data_dir", ""),
+                slot_dir=mp_config.get("slot_dir", ""),
+                tokenizer_path=mp_config.get("tokenizer_path", ""),
+                config_override=mp_config.get("config_override", {}),
+                mcp_enabled=mp_config.get("mcp_enabled", False),
+                mcp_port=mp_config.get("mcp_port", 8133),
+            )
+            
+            config_path = manager._write_config_file()
+            results[model_name] = config_path
+            log.info(f"Regenerated mnemonic-proxy config for {model_name}: {config_path}")
+            
+        except Exception as e:
+            log.error(f"Failed to regenerate config for {model_name}: {e}")
+    
+    return results
+
+
 import shutil
