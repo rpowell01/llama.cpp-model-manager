@@ -466,7 +466,20 @@ class MnemonicProxyManager:
         return False
     
     def _cleanup(self) -> None:
-        """Clean up process references."""
+        """Clean up process references and reap child process."""
+        # Reap the child process to prevent zombies
+        if self._process:
+            try:
+                # Try to wait with a short timeout
+                self._process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                # Process still alive after kill, force reap
+                try:
+                    self._process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    pass  # Give up, process will be reaped by init
+            except Exception:
+                pass  # Ignore any other errors during reap
         self._pid = None
         self._process = None
         self._start_time = None
@@ -711,7 +724,20 @@ class MnemonicProxyManager:
             return success
     
     def _cleanup_mcp(self) -> None:
-        """Clean up MCP process references."""
+        """Clean up MCP process references and reap child process."""
+        # Reap the child process to prevent zombies
+        if self._mcp_process:
+            try:
+                # Try to wait with a short timeout
+                self._mcp_process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                # Process still alive after kill, force reap
+                try:
+                    self._mcp_process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    pass  # Give up, process will be reaped by init
+            except Exception:
+                pass  # Ignore any other errors during reap
         self._mcp_pid = None
         self._mcp_process = None
         self._mcp_start_time = None
