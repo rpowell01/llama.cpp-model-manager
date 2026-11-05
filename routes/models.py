@@ -105,13 +105,13 @@ def api_add_model():
         reasoning_budget_message=str(data.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])),
         # Mnemonic Proxy parameters
         mnemonic_proxy_enabled=bool(data.get("mnemonic_proxy", {}).get("enabled", DEFAULTS["mnemonic_proxy"]["enabled"])),
-        mnemonic_proxy_port=int(data.get("mnemonic_proxy", {}).get("port", DEFAULTS["mnemonic_proxy"]["port"])),
+        mnemonic_proxy_port=int(data.get("mnemonic_proxy", {}).get("port", DEFAULTS["mnemonic_proxy"]["port"]) or DEFAULTS["mnemonic_proxy"]["port"]),
         mnemonic_proxy_data_dir=str(data.get("mnemonic_proxy", {}).get("data_dir", DEFAULTS["mnemonic_proxy"]["data_dir"])),
         mnemonic_proxy_slot_dir=str(data.get("mnemonic_proxy", {}).get("slot_dir", DEFAULTS["mnemonic_proxy"]["slot_dir"])),
         mnemonic_proxy_tokenizer_path=str(data.get("mnemonic_proxy", {}).get("tokenizer_path", DEFAULTS["mnemonic_proxy"]["tokenizer_path"])),
         mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override", DEFAULTS["mnemonic_proxy"]["config_override"]),
         mnemonic_proxy_mcp_enabled=bool(data.get("mnemonic_proxy", {}).get("mcp_enabled", DEFAULTS["mnemonic_proxy"]["mcp_enabled"])),
-        mnemonic_proxy_mcp_port=int(data.get("mnemonic_proxy", {}).get("mcp_port", DEFAULTS["mnemonic_proxy"]["mcp_port"])),
+        mnemonic_proxy_mcp_port=int(data.get("mnemonic_proxy", {}).get("mcp_port", DEFAULTS["mnemonic_proxy"]["mcp_port"]) or DEFAULTS["mnemonic_proxy"]["mcp_port"]),
     # Chat template
     chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
     # Custom HTTP Header for Kilo Code Config
