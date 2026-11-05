@@ -561,10 +561,12 @@ async function renderPanelProperties(data, modelName) {
       step = 1,
       min,
       max,
+      hint = "",
     ) => {
       let input;
       const escapedLabel = he(label);
       const escapedValue = he(String(value));
+      const hintAttr = hint ? ` title="${he(hint)}"` : "";
       if (inputType === "checkbox") {
         input = `<input type="checkbox" class="meta-input" data-field="${he(field)}" ${value ? "checked" : ""}>`;
       } else if (inputType === "text") {
@@ -575,7 +577,7 @@ async function renderPanelProperties(data, modelName) {
         input = `<input type="number" class="meta-input" data-field="${he(field)}" value="${escapedValue}" step="${step}" ${minAttr} ${maxAttr}>`;
       }
       html += `<div class="panel-item">
-        <span class="label">${escapedLabel}</span>
+        <span class="label"${hintAttr}>${escapedLabel}</span>
         <span class="value">${input}</span>
       </div>`;
     };
@@ -591,10 +593,12 @@ async function renderPanelProperties(data, modelName) {
       label,
       field,
       value,
-      browseType = "file"
+      browseType = "file",
+      hint = ""
     ) => {
       const escapedLabel = he(label);
       const escapedValue = he(String(value));
+      const hintAttr = hint ? ` title="${he(hint)}"` : "";
       let browseBtn;
       
       if (browseType === "file") {
@@ -606,7 +610,7 @@ async function renderPanelProperties(data, modelName) {
       }
       
       html += `<div class="panel-item">
-        <span class="label">${he(label)}</span>
+        <span class="label"${hintAttr}>${he(label)}</span>
         <span class="value" style="display: flex; gap: 0.25rem; align-items: center;">
           <input type="text" class="meta-input" data-field="${he(field)}" value="${escapedValue}" style="flex: 1;">
           ${browseBtn}
@@ -824,10 +828,14 @@ async function renderPanelProperties(data, modelName) {
       <span class="value">${flashSelect}</span>
     </div>`;
     
-addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "directory");
-    addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1);
-    addEditable("Keep (tokens from initial prompt)", "keep", data.keep, "number", 1, 0);
-    addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox");
+addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "directory",
+      "Required: directory where KV cache slots are saved/loaded for cache reload");
+    addEditable("Cache Reuse (tokens)", "cache_reuse", data.cache_reuse, "number", 1, 1,
+      "Required: number of tokens to reuse from cached slot (must be > 0 for cache reload)");
+    addEditable("Keep (tokens from initial prompt)", "keep", data.keep, "number", 1, 0,
+      "Required: tokens to keep from prompt start (must be > 0 for cache reload)");
+    addEditable("SWA Full (for SWA models)", "swa_full", data.swa_full, "checkbox",
+      "Must be OFF (false) for cache reload - SWA breaks cache persistence (see llama.cpp PR #13194)");
     
     // Chat template file with browse button
     addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
@@ -1041,9 +1049,12 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     addEditable("Enable Proxy", "mnemonic_proxy.enabled", mp.enabled !== undefined ? mp.enabled : false, "checkbox");
     addEditable("Proxy Port", "mnemonic_proxy.port", mp.port !== undefined ? mp.port : 8096, "number", 1, 1);
-    addEditableWithBrowse("Data Directory", "mnemonic_proxy.data_dir", defaultDataDir, "directory");
-    addEditableWithBrowse("Slot Directory", "mnemonic_proxy.slot_dir", defaultSlotDir, "directory");
-    addEditableWithBrowse("Tokenizer Path", "mnemonic_proxy.tokenizer_path", mp.tokenizer_path || "", "file");
+    addEditableWithBrowse("Data Directory", "mnemonic_proxy.data_dir", defaultDataDir, "directory",
+      "Proxy data directory (journal, metrics, etc.)");
+    addEditableWithBrowse("Slot Directory", "mnemonic_proxy.slot_dir", defaultSlotDir, "directory",
+      "Proxy slot directory for KV cache persistence (falls back to model's slot_save_path)");
+    addEditableWithBrowse("Tokenizer Path", "mnemonic_proxy.tokenizer_path", mp.tokenizer_path || "", "file",
+      "Optional: tokenizer file for accurate token counting");
     
     // Config Override (JSON)
     const configOverride = mp.config_override || {};
