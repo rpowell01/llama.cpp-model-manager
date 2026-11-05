@@ -584,6 +584,18 @@ def api_start():
                 if proxy_started:
                     add_log_entry(f"✓ mnemonic-proxy started: {model} on port {proxy_port}", "green")
                     log.info(f"mnemonic-proxy started successfully for {model} on port {proxy_port}")
+                    
+                    # Auto-start MCP server if enabled
+                    if mcp_enabled:
+                        log.info(f"Auto-starting mnemonic-mcp for {model} on port {mcp_port}")
+                        add_log_entry(f"🔗 mnemonic-mcp auto-start: {model} on port {mcp_port}", "blue")
+                        mcp_started = proxy_manager.start_mcp()
+                        if mcp_started:
+                            add_log_entry(f"✓ mnemonic-mcp started: {model} on port {mcp_port}", "green")
+                            log.info(f"mnemonic-mcp started successfully for {model} on port {mcp_port}")
+                        else:
+                            add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
+                            log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
                 else:
                     add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
                     log.warning(f"mnemonic-proxy failed to start for {model} on port {proxy_port}")
@@ -764,6 +776,19 @@ def api_proxy_start(model):
     success = proxy_manager.start()
     if success:
         add_log_entry(f"🔗 mnemonic-proxy started: {model} on port {proxy_port}", "green")
+        
+        # Auto-start MCP server if enabled
+        if mcp_enabled:
+            log.info(f"Auto-starting mnemonic-mcp for {model} on port {mcp_port}")
+            add_log_entry(f"🔗 mnemonic-mcp auto-start: {model} on port {mcp_port}", "blue")
+            mcp_started = proxy_manager.start_mcp()
+            if mcp_started:
+                add_log_entry(f"✓ mnemonic-mcp started: {model} on port {mcp_port}", "green")
+                log.info(f"mnemonic-mcp started successfully for {model} on port {mcp_port}")
+            else:
+                add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
+                log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
+        
         return jsonify({"status": "started", "model": model, "proxy_port": proxy_port})
     else:
         add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
