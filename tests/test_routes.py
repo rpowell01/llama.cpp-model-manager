@@ -202,6 +202,28 @@ class TestStatusRoutes:
         assert response.status_code == 200
         data = response.get_json()
         assert data['mode'] == 'remote'
+
+    @patch('routes.status.get_status_registry')
+    def test_api_status_remote_mode_preserves_context_settings(self, mock_get_registry, client):
+        """Remote status must include context values used by the properties panel."""
+        from remote_client import Model
+
+        remote_model = Model(
+            name='remote-model',
+            ctx_size=128000,
+            yarn_orig_ctx=32768,
+        )
+        mock_registry = Mock()
+        mock_registry.is_remote_mode = True
+        mock_registry.list_models.return_value = [remote_model]
+        mock_get_registry.return_value = mock_registry
+
+        response = client.get('/api/status')
+
+        assert response.status_code == 200
+        model_data = response.get_json()['models'][0]
+        assert model_data['ctx_size'] == 128000
+        assert model_data['yarn_orig_ctx'] == 32768
     
     @patch('routes.status.get_status_registry')
     def test_api_next_port_local(self, mock_get_registry, client):

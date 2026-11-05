@@ -48,6 +48,88 @@ function loadTilePrefs() {
 
 let tilePrefs = loadTilePrefs();
 
+// Context and YaRN values are persisted in token counts. Keep dropdown option
+// values in the same unit so a saved value is not interpreted as kilobytes when
+// the properties panel is rendered again.
+const CONTEXT_SIZE_OPTIONS = [
+  { value: 4096, text: "4 KB (4096)" },
+  { value: 8192, text: "8 KB (8192)" },
+  { value: 16384, text: "16 KB (16384)" },
+  { value: 32768, text: "32 KB (32768)" },
+  { value: 65536, text: "64 KB (65536)" },
+  { value: 131072, text: "128 KB (131072)" },
+  { value: 262144, text: "256 KB (262144)" },
+];
+
+const YARN_ORIG_CTX_OPTIONS = [
+  { value: 0, text: "Auto (model default)" },
+  ...CONTEXT_SIZE_OPTIONS,
+];
+
+// Older versions of the dropdown sent KB values to the API even though the
+// persisted model metadata uses token counts. Treat those small legacy values
+// as KB when loading so they can be corrected on the next save.
+const LEGACY_CONTEXT_KB_VALUES = new Set([4, 8, 16, 32, 64, 128, 256]);
+
+/**
+ * Convert a persisted context value to tokens.
+ * @param {*} storedValue - Value loaded from model metadata
+ * @param {number} fallbackValue - Value to use when the stored value is invalid
+ * @returns {number} Context size in tokens
+ */
+function normalizeContextTokenValue(storedValue, fallbackValue) {
+  const numericValue = Number(storedValue);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallbackValue;
+  }
+  if (LEGACY_CONTEXT_KB_VALUES.has(numericValue)) {
+    return numericValue * 1024;
+  }
+  return numericValue;
+}
+
+/**
+ * Build context dropdown options while preserving the currently stored value.
+ * @param {*} storedValue - Value loaded from model metadata
+ * @returns {Array<{value: number, text: string}>} Dropdown options
+ */
+function getContextSizeOptions(storedValue) {
+  const tokenValue = normalizeContextTokenValue(storedValue, 4096);
+  const options = [...CONTEXT_SIZE_OPTIONS];
+  if (!options.some((option) => option.value === tokenValue)) {
+    options.push({ value: tokenValue, text: `${tokenValue} tokens (custom)` });
+  }
+  return options;
+}
+
+/**
+ * Build YaRN original-context dropdown options while preserving the stored value.
+ * @param {*} storedValue - Value loaded from model metadata
+ * @returns {Array<{value: number, text: string}>} Dropdown options
+ */
+function getYarnOrigCtxOptions(storedValue) {
+  const tokenValue = normalizeContextTokenValue(storedValue, 0);
+  const options = [...YARN_ORIG_CTX_OPTIONS];
+  if (!options.some((option) => option.value === tokenValue)) {
+    options.push({ value: tokenValue, text: `${tokenValue} tokens (custom)` });
+  }
+  return options;
+}
+
+/**
+ * Select the option matching a persisted context value.
+ * @param {Array<{value: number, text: string}>} options - Dropdown options
+ * @param {*} storedValue - Value loaded from model metadata
+ * @param {number} fallbackValue - Option value to use when no match exists
+ * @returns {number} Selected option value
+ */
+function getSelectedContextOptionValue(options, storedValue, fallbackValue) {
+  const tokenValue = normalizeContextTokenValue(storedValue, fallbackValue);
+  return options.some((option) => option.value === tokenValue)
+    ? tokenValue
+    : fallbackValue;
+}
+
 // Last rows/map handed to renderTiles, so a sort or visibility change can
 // re-render without another round trip to the server.
 let lastTileRows = [];
@@ -757,35 +839,21 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     <h3>Context & RoPE / YaRN</h3>
     <div class="panel-grid">`;
     
-    // Context Size dropdown with kilobyte values
-    const ctxSizeValue = data.ctx_size || 4096;
-    const ctxSizeKB = Math.round(ctxSizeValue / 1024);
-    const ctxSizeOptions = [
-      { value: 4, text: "4 KB (4096)" },
-      { value: 8, text: "8 KB (8192)" },
-      { value: 16, text: "16 KB (16384)" },
-      { value: 32, text: "32 KB (32768)" },
-      { value: 64, text: "64 KB (65536)" },
-      { value: 128, text: "128 KB (131072)" },
-      { value: 256, text: "256 KB (262144)" }
-    ];
-    
-    // Find the selected option
-    let selectedOption;
-    for (const option of ctxSizeOptions) {
-      if (option.value === ctxSizeKB) {
-        selectedOption = option;
-        break;
-      }
-    }
-    if (!selectedOption) selectedOption = ctxSizeOptions[0]; // Default to 4KB if not found
+    // Context Size dropdown. Option values are token counts to match the
+    // persisted models.json values and prevent reloads from resetting to 4K.
+    const ctxSizeOptions = getContextSizeOptions(data.ctx_size);
+    const selectedCtxSize = getSelectedContextOptionValue(
+      ctxSizeOptions,
+      data.ctx_size,
+      4096,
+    );
     
     html += `<div class="panel-item">
       <span class="label">Context Size</span>
       <span class="value">
         <select class="meta-input ctx_size-select" data-field="ctx_size">
           ${ctxSizeOptions.map(option => 
-            `<option value="${option.value}" ${option.value === selectedOption.value ? 'selected' : ''}>${option.text}</option>`
+            `<option value="${option.value}" ${option.value === selectedCtxSize ? 'selected' : ''}>${option.text}</option>`
           ).join('')}
         </select>
       </span>
@@ -806,35 +874,21 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     </div>`;
     
     addEditable("RoPE Scale (context factor)", "rope_scale", data.rope_scale, "number", 0.1, 0.1);
-    // YaRN Orig Context dropdown with kilobyte values
-    const yarnOrigCtxValue = data.yarn_orig_ctx || 4096;
-    const yarnOrigCtxKB = Math.round(yarnOrigCtxValue / 1024);
-    const yarnOrigCtxOptions = [
-      { value: 4, text: "4 KB (4096)" },
-      { value: 8, text: "8 KB (8192)" },
-      { value: 16, text: "16 KB (16384)" },
-      { value: 32, text: "32 KB (32768)" },
-      { value: 64, text: "64 KB (65536)" },
-      { value: 128, text: "128 KB (131072)" },
-      { value: 256, text: "256 KB (262144)" }
-    ];
-    
-    // Find the selected option
-    let selectedYarnOption;
-    for (const option of yarnOrigCtxOptions) {
-      if (option.value === yarnOrigCtxKB) {
-        selectedYarnOption = option;
-        break;
-      }
-    }
-    if (!selectedYarnOption) selectedYarnOption = yarnOrigCtxOptions[0]; // Default to 4KB if not found
+    // YaRN Orig Context dropdown. Zero is a valid value that lets llama.cpp
+    // use the model's original context size, so it is shown as Auto.
+    const yarnOrigCtxOptions = getYarnOrigCtxOptions(data.yarn_orig_ctx);
+    const selectedYarnOrigCtx = getSelectedContextOptionValue(
+      yarnOrigCtxOptions,
+      data.yarn_orig_ctx,
+      0,
+    );
     
     html += `<div class="panel-item">
       <span class="label">YaRN Orig Context</span>
       <span class="value">
         <select class="meta-input yarn_orig_ctx-select" data-field="yarn_orig_ctx">
           ${yarnOrigCtxOptions.map(option => 
-            `<option value="${option.value}" ${option.value === selectedYarnOption.value ? 'selected' : ''}>${option.text}</option>`
+            `<option value="${option.value}" ${option.value === selectedYarnOrigCtx ? 'selected' : ''}>${option.text}</option>`
           ).join('')}
         </select>
       </span>
