@@ -3105,12 +3105,16 @@ async function showProxyMetrics(model) {
               <div style="font-size: 1.75rem; font-weight: 700; color: var(--accent); font-family: monospace;">${he(strata.virtual_tokens?.toLocaleString() || 'N/A')}</div>
             </div>
             <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Archived Segments</div>
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Archived Messages</div>
               <div style="font-size: 1.75rem; font-weight: 700; color: var(--warning); font-family: monospace;">${he(strata.archived?.toLocaleString() || 'N/A')}</div>
             </div>
             <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Segments</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--info); font-family: monospace;">${he(strata.segments?.toLocaleString() || 'N/A')}</div>
+            </div>
+            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
               <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Recalls</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--success); font-family: monospace;">${he(strata.recalls?.length?.toLocaleString() || strata.recalls || 'N/A')}</div>
+              <div style="font-size: 1.75rem; font-weight: 700; color: var(--success); font-family: monospace;">${he(strata.recalls?.toLocaleString() || 'N/A')}</div>
             </div>
             <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
               <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Cached Tokens</div>

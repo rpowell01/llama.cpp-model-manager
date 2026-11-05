@@ -634,7 +634,6 @@ class MnemonicProxyManager:
         cmd += [
             "--db", str(archive_db),
             "--http", str(self.mcp_port),
-            "--read-only",  # Read-only mode for safety
         ]
         
         log.info(f"Built mnemonic-mcp command for {self.model_name}: {cmd}")
