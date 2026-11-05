@@ -783,7 +783,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `<div class="panel-item">
       <span class="label">Context Size</span>
       <span class="value">
-        <select class="meta-input ctx_size-select" data-field="ctx_size" value="${selectedOption.value}">
+        <select class="meta-input ctx_size-select" data-field="ctx_size">
           ${ctxSizeOptions.map(option => 
             `<option value="${option.value}" ${option.value === selectedOption.value ? 'selected' : ''}>${option.text}</option>`
           ).join('')}
@@ -832,7 +832,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     html += `<div class="panel-item">
       <span class="label">YaRN Orig Context</span>
       <span class="value">
-        <select class="meta-input yarn_orig_ctx-select" data-field="yarn_orig_ctx" value="${selectedYarnOption.value}">
+        <select class="meta-input yarn_orig_ctx-select" data-field="yarn_orig_ctx">
           ${yarnOrigCtxOptions.map(option => 
             `<option value="${option.value}" ${option.value === selectedYarnOption.value ? 'selected' : ''}>${option.text}</option>`
           ).join('')}
