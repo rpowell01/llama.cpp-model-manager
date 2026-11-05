@@ -416,10 +416,13 @@ class MnemonicProxyManager:
             self._cleanup()
             
             # Also stop MCP server if running
+            mcp_stopped = False
             if self.mcp_enabled and self._mcp_pid:
-                self.stop_mcp()
+                mcp_stopped = self.stop_mcp()
+                if mcp_stopped:
+                    log.info(f"Stopped mnemonic-mcp for {self.model_name}")
             
-            log.info(f"Stopped mnemonic-proxy for {self.model_name} (pid={pid}): success={success}")
+            log.info(f"Stopped mnemonic-proxy for {self.model_name} (pid={pid}): success={success}, mcp_stopped={mcp_stopped}")
             return success
     
     def _kill_process(self, pid: int) -> bool:

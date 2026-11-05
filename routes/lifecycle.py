@@ -647,7 +647,7 @@ def api_stop():
 
     success, pid = _stop_model(model, port)
     
-    # Stop mnemonic-proxy if running for this model
+    # Stop mnemonic-proxy (and MCP server if running) if running for this model
     remove_proxy_manager(model)
     add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
     
