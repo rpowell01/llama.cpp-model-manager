@@ -20,3 +20,7 @@ server.log
 .beads.gate.lock
 running_models.log
 models.json
+
+# Runtime artifacts (generated at runtime, not committed)
+data/
+metrics_exports/
