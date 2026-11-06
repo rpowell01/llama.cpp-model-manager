@@ -604,16 +604,19 @@ class MnemonicProxyManager:
             # Also trigger the engine to save the KV cache (slot) for this conversation
             # This calls the llama-server /slots/0?action=save endpoint via the proxy
             # The llama-server requires a filename parameter in the JSON body
+            # Large KV caches (30k+ tokens) can take 60+ seconds to save, so use a longer timeout
             try:
                 resp = requests.post(
                     f"http://127.0.0.1:{self.proxy_port}/slots/0?action=save",
                     json={"filename": f"base_slot_{conversation_id}.bin"},
-                    timeout=30.0
+                    timeout=120.0
                 )
                 if resp.status_code == 200:
                     log.info(f"Engine slot saved for base slot: {conversation_id}")
                 else:
                     log.warning(f"Engine slot save returned {resp.status_code}: {resp.text}")
+            except requests.exceptions.Timeout:
+                log.warning(f"Engine slot save timed out (120s) for base slot: {conversation_id} - save may still complete in background")
             except Exception as e:
                 log.warning(f"Failed to trigger engine slot save for base slot: {e}")
             
@@ -706,12 +709,14 @@ class MnemonicProxyManager:
                         resp = requests.post(
                             f"http://127.0.0.1:{self.proxy_port}/slots/0?action=restore",
                             json={"filename": f"base_slot_{conversation_id}.bin"},
-                            timeout=30.0
+                            timeout=120.0
                         )
                         if resp.status_code == 200:
                             log.info(f"Restored KV cache for base slot: {conversation_id}")
                         else:
                             log.warning(f"KV cache restore returned {resp.status_code}: {resp.text}")
+                    except requests.exceptions.Timeout:
+                        log.warning(f"KV cache restore timed out (120s) for base slot: {conversation_id} - restore may still complete in background")
                     except Exception as e:
                         log.warning(f"Failed to restore KV cache for base slot: {e}")
                 else:
