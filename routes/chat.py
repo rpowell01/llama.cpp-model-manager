@@ -119,6 +119,9 @@ def api_chat():
         if ":" in host:
             host, port_str = host.split(":", 1)
             port = int(port_str)
+        
+        # In remote mode, we don't have mnemonic-proxy - proxy directly
+        target_url = f"{remote_url}/v1/chat/completions"
     else:
         # In local mode, check local cache and port
         models = registry.list_models()
@@ -150,13 +153,72 @@ def api_chat():
 
         if not _check_model_ready(port_int, model):
             return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+        
+        # Check if mnemonic-proxy is enabled for this model
+        mnemonic_proxy_enabled = getattr(model_obj, 'mnemonic_proxy_enabled', False)
+        proxy_port = getattr(model_obj, 'mnemonic_proxy_port', 8096) if mnemonic_proxy_enabled else None
+        
+        # Determine target URL: use mnemonic-proxy if enabled, otherwise llama-server directly
+        if mnemonic_proxy_enabled and proxy_port:
+            # Route through mnemonic-proxy for strata context management
+            hosts_to_try = []
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                wsl_host = get_server_host()
+                if wsl_host and wsl_host != "127.0.0.1":
+                    hosts_to_try.append(wsl_host)
+                hosts_to_try.append("127.0.0.1")
+            else:
+                hosts_to_try.append(get_server_host())
+            
+            target_url = None
+            for host in hosts_to_try:
+                url = f"http://{host}:{proxy_port}/v1/chat/completions"
+                log.info(f"Chat proxy to {model} via mnemonic-proxy at {url}")
+                try:
+                    resp = requests.post(url, json=payload, timeout=timeout)
+                    if resp.status_code == 200:
+                        target_url = url
+                        break
+                except requests.exceptions.RequestException as e:
+                    log.warning(f"Failed to connect to mnemonic-proxy at {url}: {e}")
+                    continue
+            
+            if not target_url:
+                log.warning(f"mnemonic-proxy unavailable for {model}, falling back to direct llama-server")
+                mnemonic_proxy_enabled = False
+        
+        if not mnemonic_proxy_enabled:
+            # Fallback: direct to llama-server
+            hosts_to_try = []
+            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                wsl_host = get_server_host()
+                if wsl_host and wsl_host != "127.0.0.1":
+                    hosts_to_try.append(wsl_host)
+                hosts_to_try.append("127.0.0.1")
+            else:
+                hosts_to_try.append(get_server_host())
+            
+            target_url = None
+            for host in hosts_to_try:
+                url = f"http://{host}:{port_int}/v1/chat/completions"
+                log.info(f"Chat proxy to {model} at {url}")
+                try:
+                    resp = requests.post(url, json=payload, timeout=timeout)
+                    if resp.status_code == 200:
+                        target_url = url
+                        break
+                except requests.exceptions.RequestException as e:
+                    log.warning(f"Failed to connect to {url}: {e}")
+                    continue
+            if not target_url:
+                return jsonify({"error": "Failed to communicate with model server"}), 500
 
     # Generate session ID for slot persistence
     session_id = _generate_session_id(model)
     has_slot_cache = _get_model_slot_save_path(model) is not None
     
-    # Restore slot cache before request
-    if has_slot_cache:
+    # Restore slot cache before request (only for direct llama-server)
+    if has_slot_cache and not mnemonic_proxy_enabled:
         _restore_slot_cache(model, port_int, session_id)
 
     payload = dict(data)
@@ -174,39 +236,6 @@ def api_chat():
         else:
             timeout = 300
         
-        # Determine the target URL for chat
-        if registry.is_remote_mode:
-            # In remote mode, use the remote server URL directly
-            target_url = f"{remote_url}/v1/chat/completions"
-        else:
-            # In local mode, determine hosts to try
-            hosts_to_try = []
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-                # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
-                # Try the Windows host IP first (via get_server_host), then localhost as fallback
-                wsl_host = get_server_host()
-                if wsl_host and wsl_host != "127.0.0.1":
-                    hosts_to_try.append(wsl_host)
-                hosts_to_try.append("127.0.0.1")
-            else:
-                hosts_to_try.append(get_server_host())
-            
-            # Try each host until one succeeds
-            target_url = None
-            for host in hosts_to_try:
-                url = f"http://{host}:{port_int}/v1/chat/completions"
-                log.info(f"Chat proxy to {model} at {url}")
-                try:
-                    resp = requests.post(url, json=payload, timeout=timeout)
-                    if resp.status_code == 200:
-                        target_url = url
-                        break
-                except requests.exceptions.RequestException as e:
-                    log.warning(f"Failed to connect to {url}: {e}")
-                    continue
-            if not target_url:
-                return jsonify({"error": "Failed to communicate with model server"}), 500
-        
         # Make the chat request
         log.info(f"Chat proxy to {model} at {target_url}")
         resp = requests.post(target_url, json=payload, timeout=timeout)
@@ -220,8 +249,8 @@ def api_chat():
             log.error(f"Invalid JSON from model {model}: {resp.text[:500]}")
             return jsonify({"error": "Model returned invalid JSON response"}), 500
         
-        # Save slot cache after successful response
-        if has_slot_cache:
+        # Save slot cache after successful response (only for direct llama-server)
+        if has_slot_cache and not mnemonic_proxy_enabled:
             _save_slot_cache(model, port_int, session_id)
         
         return jsonify(json_data)
