@@ -1143,6 +1143,38 @@ def api_proxy_strata_context(model):
         return jsonify({"error": f"Failed to fetch Strata context: {str(e)}", "model": model}), 502
 
 
+@lifecycle_bp.route("/api/proxy/strata/conversations/<model>", methods=["GET"])
+def api_proxy_strata_conversations(model):
+    """Get list of conversations from mnemonic-proxy for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    proxy_port = proxy_manager.proxy_port
+    
+    try:
+        import requests
+        
+        # List conversations via proxy API
+        resp = requests.get(
+            f"http://127.0.0.1:{proxy_port}/v1/strata/conversations",
+            timeout=10,
+            headers={"Accept": "application/json"}
+        )
+        
+        if resp.status_code != 200:
+            return jsonify({"error": "Failed to fetch conversations from proxy", "model": model}), 502
+        
+        return jsonify(resp.json())
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch conversations: {str(e)}", "model": model}), 502
+
+
 @lifecycle_bp.route("/api/proxy/list", methods=["GET"])
 def api_proxy_list():
     """List all mnemonic-proxy instances with their status."""
