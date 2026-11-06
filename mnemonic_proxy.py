@@ -844,24 +844,12 @@ class MnemonicProxyManager:
             except Exception as e:
                 log.warning(f"Failed to activate base conversation in proxy: {e}")
             
-            # Explicitly trigger recall for the base conversation so the proxy
-            # uses it as the context source for new requests. The recall config
-            # (recall_struct, recall_flex, recall_multi) enables this for child
-            # conversations, but we need to prime it for the base conversation.
-            try:
-                resp = requests.post(
-                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/conversations/{conversation_id}/recall",
-                    json={"max_tokens": 32768},
-                    timeout=30.0
-                )
-                if resp.status_code == 200:
-                    log.info(f"Triggered recall for base conversation: {conversation_id}")
-                else:
-                    log.warning(f"Recall trigger returned {resp.status_code}: {resp.text}")
-            except Exception as e:
-                log.warning(f"Failed to trigger recall for base conversation: {e}")
+            # The mnemonic-proxy recall mechanism (recall_struct, recall_flex, recall_multi)
+            # automatically enables recall for child conversations branching from a sealed
+            # parent. By activating the base conversation in strata, new requests should
+            # inherit from it. No separate recall API call needed.
             
-            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context + recall primed)")
+            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context activated)")
             return True
         except Exception as e:
             log.error(f"Failed to recall base slot for {self.model_name}: {e}")
