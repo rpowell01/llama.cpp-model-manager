@@ -112,6 +112,7 @@ def api_add_model():
         mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override", DEFAULTS["mnemonic_proxy"]["config_override"]),
         mnemonic_proxy_mcp_enabled=bool(data.get("mnemonic_proxy", {}).get("mcp_enabled", DEFAULTS["mnemonic_proxy"]["mcp_enabled"])),
         mnemonic_proxy_mcp_port=int(data.get("mnemonic_proxy", {}).get("mcp_port", DEFAULTS["mnemonic_proxy"]["mcp_port"]) or DEFAULTS["mnemonic_proxy"]["mcp_port"]),
+        mnemonic_proxy_base_slot_auto=bool(data.get("mnemonic_proxy", {}).get("base_slot_auto", DEFAULTS["mnemonic_proxy"]["base_slot_auto"])),
     # Chat template
     chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
     # Custom HTTP Header for Kilo Code Config

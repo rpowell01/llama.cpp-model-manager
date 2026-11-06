@@ -585,6 +585,7 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
                 },
                 "mcp_enabled": False,
                 "mcp_port": 8133,
+                "base_slot_auto": False,
             }
 
 

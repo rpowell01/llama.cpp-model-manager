@@ -596,6 +596,25 @@ def api_start():
                         else:
                             add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
                             log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
+                    
+                    # Auto-load base slot if enabled
+                    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
+                    if base_slot_auto:
+                        log.info(f"Base slot automation enabled for {model}, checking for base slot...")
+                        base_slot = proxy_manager.get_base_slot()
+                        if base_slot:
+                            log.info(f"Base slot found for {model}: {base_slot.get('conversation_id')}, recalling...")
+                            add_log_entry(f"🔄 Auto-recalling base slot for {model}: {base_slot.get('conversation_id')}", "blue")
+                            recalled = proxy_manager.recall_base_slot()
+                            if recalled:
+                                add_log_entry(f"✓ Base slot recalled for {model}", "green")
+                                log.info(f"Base slot recalled successfully for {model}")
+                            else:
+                                add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
+                                log.warning(f"Failed to recall base slot for {model}")
+                        else:
+                            log.info(f"No base slot found for {model}, will prompt user to save first conversation")
+                            add_log_entry(f"ℹ No base slot set for {model} - start a conversation and use 'Save as Base Slot' in model properties", "blue")
                 else:
                     add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
                     log.warning(f"mnemonic-proxy failed to start for {model} on port {proxy_port}")
@@ -788,6 +807,25 @@ def api_proxy_start(model):
             else:
                 add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
                 log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
+        
+        # Auto-load base slot if enabled
+        base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
+        if base_slot_auto:
+            log.info(f"Base slot automation enabled for {model}, checking for base slot...")
+            base_slot = proxy_manager.get_base_slot()
+            if base_slot:
+                log.info(f"Base slot found for {model}: {base_slot.get('conversation_id')}, recalling...")
+                add_log_entry(f"🔄 Auto-recalling base slot for {model}: {base_slot.get('conversation_id')}", "blue")
+                recalled = proxy_manager.recall_base_slot()
+                if recalled:
+                    add_log_entry(f"✓ Base slot recalled for {model}", "green")
+                    log.info(f"Base slot recalled successfully for {model}")
+                else:
+                    add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
+                    log.warning(f"Failed to recall base slot for {model}")
+            else:
+                log.info(f"No base slot found for {model}, will prompt user to save first conversation")
+                add_log_entry(f"ℹ No base slot set for {model} - start a conversation and use 'Save as Base Slot' in model properties", "blue")
         
         return jsonify({"status": "started", "model": model, "proxy_port": proxy_port})
     else:

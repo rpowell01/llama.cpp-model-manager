@@ -1068,6 +1068,21 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Enable MCP Server", "mnemonic_proxy.mcp_enabled", mp.mcp_enabled !== undefined ? mp.mcp_enabled : false, "checkbox");
     addEditable("MCP Port", "mnemonic_proxy.mcp_port", mp.mcp_port !== undefined ? mp.mcp_port : 8133, "number", 1, 1);
     
+    // Base Slot Automation
+    addEditable("Automate Base Slot Context Prefill", "mnemonic_proxy.base_slot_auto", mp.base_slot_auto !== undefined ? mp.base_slot_auto : false, "checkbox",
+      "Automatically load base slot on model start (if exists) or prompt to save first conversation as base slot");
+    
+    // Base Slot Actions (shown when automation is enabled)
+    html += `<div class="panel-item" id="base-slot-actions" style="display: ${mp.base_slot_auto ? '' : 'none'}; margin-top: 0.5rem;">
+      <span class="label">Base Slot Actions</span>
+      <span class="value" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button type="button" class="btn btn-sm" id="base-slot-save-btn" data-model="${he(modelName)}" title="Save current conversation as base slot">💾 Save as Base Slot</button>
+        <button type="button" class="btn btn-sm btn-danger" id="base-slot-clear-btn" data-model="${he(modelName)}" title="Clear base slot">🗑 Clear Base Slot</button>
+        <button type="button" class="btn btn-sm" id="base-slot-recall-btn" data-model="${he(modelName)}" title="Recall base slot now">🔄 Recall Base Slot</button>
+        <span id="base-slot-status" style="align-self: center; font-size: 0.85rem; color: var(--muted);"></span>
+      </span>
+    </div>`;
+    
     html += `</div></div>`;
 
   // Agent/Tool Parameters
@@ -1358,6 +1373,137 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     cpuMoeCheckbox.addEventListener('change', toggleCpuMoe);
     // Initial state
     toggleCpuMoe();
+  }
+
+  // Initialize Base Slot Automation checkbox toggle (shows/hides base slot actions)
+  const baseSlotAutoCheckbox = content.querySelector('.meta-input[data-field="mnemonic_proxy.base_slot_auto"]');
+  const baseSlotActions = content.querySelector('#base-slot-actions');
+  if (baseSlotAutoCheckbox && baseSlotActions) {
+    const toggleBaseSlotActions = () => {
+      const show = baseSlotAutoCheckbox.checked;
+      baseSlotActions.style.display = show ? '' : 'none';
+    };
+    baseSlotAutoCheckbox.addEventListener('change', toggleBaseSlotActions);
+    // Initial state
+    toggleBaseSlotActions();
+  }
+
+  // Base Slot Action Buttons
+  const baseSlotSaveBtn = content.querySelector('#base-slot-save-btn');
+  const baseSlotClearBtn = content.querySelector('#base-slot-clear-btn');
+  const baseSlotRecallBtn = content.querySelector('#base-slot-recall-btn');
+  const baseSlotStatus = content.querySelector('#base-slot-status');
+  
+  async function updateBaseSlotStatus(model) {
+    if (!baseSlotStatus) return;
+    try {
+      const resp = await fetch(`/api/proxy/base-slot/get/${encodeURIComponent(model)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.base_slot) {
+          baseSlotStatus.textContent = `✓ Base slot: ${data.base_slot.conversation_id}`;
+          baseSlotStatus.style.color = 'var(--success)';
+        } else {
+          baseSlotStatus.textContent = 'No base slot set';
+          baseSlotStatus.style.color = 'var(--muted)';
+        }
+      }
+    } catch (e) {
+      baseSlotStatus.textContent = 'Error loading status';
+      baseSlotStatus.style.color = 'var(--danger)';
+    }
+  }
+
+  if (baseSlotSaveBtn) {
+    baseSlotSaveBtn.addEventListener('click', async () => {
+      const model = baseSlotSaveBtn.dataset.model;
+      if (!model) return;
+      
+      // Get current conversation ID from proxy
+      try {
+        const convResp = await fetch(`/api/proxy/strata/conversations/${encodeURIComponent(model)}`);
+        if (!convResp.ok) {
+          alert('Failed to get conversations');
+          return;
+        }
+        const convData = await convResp.json();
+        if (!convData.conversations || convData.conversations.length === 0) {
+          alert('No conversations found. Start a conversation first.');
+          return;
+        }
+        
+        // Use the most recent conversation
+        const latestConv = convData.conversations[0].conversation;
+        
+        const saveResp = await fetch(`/api/proxy/base-slot/save/${encodeURIComponent(model)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: latestConv })
+        });
+        
+        if (saveResp.ok) {
+          alert(`Base slot saved: ${latestConv}`);
+          updateBaseSlotStatus(model);
+        } else {
+          const err = await saveResp.json().catch(() => ({}));
+          alert(`Failed to save: ${err.error || 'unknown'}`);
+        }
+      } catch (e) {
+        alert(`Error: ${e.message}`);
+      }
+    });
+  }
+
+  if (baseSlotClearBtn) {
+    baseSlotClearBtn.addEventListener('click', async () => {
+      const model = baseSlotClearBtn.dataset.model;
+      if (!model) return;
+      
+      if (!confirm('Clear base slot? This will remove the saved system prompt context.')) return;
+      
+      try {
+        const resp = await fetch(`/api/proxy/base-slot/clear/${encodeURIComponent(model)}`, {
+          method: 'POST'
+        });
+        if (resp.ok) {
+          alert('Base slot cleared');
+          updateBaseSlotStatus(model);
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          alert(`Failed to clear: ${err.error || 'unknown'}`);
+        }
+      } catch (e) {
+        alert(`Error: ${e.message}`);
+      }
+    });
+  }
+
+  if (baseSlotRecallBtn) {
+    baseSlotRecallBtn.addEventListener('click', async () => {
+      const model = baseSlotRecallBtn.dataset.model;
+      if (!model) return;
+      
+      try {
+        const resp = await fetch(`/api/proxy/base-slot/recall/${encodeURIComponent(model)}`, {
+          method: 'POST'
+        });
+        if (resp.ok) {
+          alert('Base slot recalled successfully');
+          updateBaseSlotStatus(model);
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          alert(`Failed to recall: ${err.error || 'unknown'}`);
+        }
+      } catch (e) {
+        alert(`Error: ${e.message}`);
+      }
+    });
+  }
+
+  // Load initial base slot status
+  const panel = content.closest(".properties-panel");
+  if (panel && panel.dataset.modelName) {
+    updateBaseSlotStatus(panel.dataset.modelName);
   }
 
   // Reset Generation Parameters button handler

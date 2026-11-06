@@ -216,6 +216,7 @@ DEFAULTS: dict[str, Any] = {
         },
         "mcp_enabled": False,
         "mcp_port": 8133,
+        "base_slot_auto": False,
     },
 }
 
