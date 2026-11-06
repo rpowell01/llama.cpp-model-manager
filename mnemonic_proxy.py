@@ -686,12 +686,12 @@ class MnemonicProxyManager:
             log.info(f"Saved base slot for {self.model_name}: conversation {conversation_id}")
             
             # Also trigger the engine to save the KV cache (slot) for this conversation
-            # This calls the llama-server /slots/0?action=save endpoint via the proxy
+            # This calls the llama-server /slots/0?action=save endpoint DIRECTLY (not via proxy)
             # The llama-server requires a filename parameter in the JSON body
             # Large KV caches (30k+ tokens) can take 60+ seconds to save, so use a longer timeout
             try:
                 resp = requests.post(
-                    f"http://127.0.0.1:{self.proxy_port}/slots/0?action=save",
+                    f"http://127.0.0.1:{self.llama_port}/slots/0?action=save",
                     json={"filename": f"base_slot_{conversation_id}.bin"},
                     timeout=120.0
                 )
