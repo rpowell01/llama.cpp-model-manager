@@ -1317,9 +1317,43 @@ def api_proxy_base_slot_clear(model):
     if not model:
         return jsonify({"error": "Missing model name"}), 400
     
+    # Get model config to create proxy manager if not running
+    registry = g.registry
+    models = registry.list_models()
+    model_dict = None
+    for m in models:
+        if m.name == model:
+            model_dict = m
+            break
+    if not model_dict:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    # Get proxy config from model
+    llama_port = int(model_dict.port)
+    proxy_port = getattr(model_dict, 'mnemonic_proxy_port', 8096)
+    data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
+    slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
+    tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
+    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
+    mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
+    mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
+    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
+    
+    # Get or create proxy manager (create if not running)
     proxy_manager = get_proxy_manager(model)
     if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+        proxy_manager = create_proxy_manager(
+            model_name=model,
+            llama_port=llama_port,
+            proxy_port=proxy_port,
+            data_dir=data_dir,
+            slot_dir=slot_dir,
+            tokenizer_path=tokenizer_path,
+            config_override=config_override,
+            mcp_enabled=mcp_enabled,
+            mcp_port=mcp_port,
+            base_slot_auto=base_slot_auto,
+        )
     
     success = proxy_manager.clear_base_slot()
     if success:
