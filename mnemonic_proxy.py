@@ -804,7 +804,7 @@ class MnemonicProxyManager:
             return False
         
         try:
-            # First, restore the KV cache from the saved slot file
+            # First, restore the KV cache from the saved slot file via llama-server
             slot_dir = self.slot_dir
             if not slot_dir:
                 model_config = self._get_model_config() or {}
@@ -814,7 +814,7 @@ class MnemonicProxyManager:
                 if slot_path.exists():
                     try:
                         resp = requests.post(
-                            f"http://127.0.0.1:{self.proxy_port}/slots/0?action=restore",
+                            f"http://127.0.0.1:{self.llama_port}/slots/0?action=restore",
                             json={"filename": f"base_slot_{conversation_id}.bin"},
                             timeout=120.0
                         )
@@ -829,10 +829,22 @@ class MnemonicProxyManager:
                 else:
                     log.warning(f"Base slot KV cache file not found: {slot_path}")
             
-            # KV cache restore loads the model context (system prompt + conversation history).
-            # The proxy's archive (SQLite) already retains the full conversation for future
-            # recall/masking operations. No separate recall API call needed.
-            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache restored)")
+            # Also activate the conversation in the proxy's strata layer so subsequent
+            # requests continue this conversation instead of creating a new one.
+            # This ensures the prompt cache can match the restored system prompt.
+            try:
+                resp = requests.get(
+                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/conversations/{conversation_id}",
+                    timeout=10.0
+                )
+                if resp.status_code == 200:
+                    log.info(f"Activated base conversation in proxy strata: {conversation_id}")
+                else:
+                    log.warning(f"Failed to activate base conversation in proxy: {resp.status_code}")
+            except Exception as e:
+                log.warning(f"Failed to activate base conversation in proxy: {e}")
+            
+            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context restored)")
             return True
         except Exception as e:
             log.error(f"Failed to recall base slot for {self.model_name}: {e}")
