@@ -561,10 +561,25 @@ def api_start():
                 data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
                 slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
                 tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
-                config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
                 mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
                 mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
                 base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
+                
+                # Get mnemonic_proxy nested config and merge with config_override
+                mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
+                config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
+                
+                # Merge all mnemonic_proxy settings into config_override (config_override takes precedence)
+                proxy_settings = [
+                    'mask_anchor', 'autosave', 'window_estimate_slack',
+                    'slot_save', 'seal_experimental', 'mask_reasoning', 'mask_tool_args',
+                    'notes_max_tokens', 'response_floor',
+                    'recall_struct', 'recall_flex', 'recall_multi', 'auto_recall',
+                    'tools_paging', 'engine_tokenize'
+                ]
+                for setting in proxy_settings:
+                    if setting in mnemonic_proxy_config and setting not in config_override:
+                        config_override[setting] = mnemonic_proxy_config[setting]
                 
                 log.info(f"Starting mnemonic-proxy for {model} on port {proxy_port}")
                 add_log_entry(f"🔗 mnemonic-proxy: {model} on port {proxy_port}", "blue")
@@ -748,10 +763,26 @@ def api_proxy_start(model):
     data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
     slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
     tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
-    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
     mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
     mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
     base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
+    
+    # Get mnemonic_proxy nested config and merge with config_override
+    mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
+    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
+    
+    # Merge all mnemonic_proxy settings into config_override (config_override takes precedence)
+    # These are the settings that the proxy needs but aren't in the minimal generated config
+    proxy_settings = [
+        'mask_anchor', 'autosave', 'window_estimate_slack',
+        'slot_save', 'seal_experimental', 'mask_reasoning', 'mask_tool_args',
+        'notes_max_tokens', 'response_floor',
+        'recall_struct', 'recall_flex', 'recall_multi', 'auto_recall',
+        'tools_paging', 'engine_tokenize'
+    ]
+    for setting in proxy_settings:
+        if setting in mnemonic_proxy_config and setting not in config_override:
+            config_override[setting] = mnemonic_proxy_config[setting]
     
     # Fetch actual n_ctx from llama-server for proxy config
     actual_n_ctx = 32768  # default fallback
