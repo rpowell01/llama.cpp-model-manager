@@ -642,14 +642,33 @@ class MnemonicProxyManager:
         """
         Clear the base slot.
         
+        This removes the marker file AND the saved KV cache slot file.
+        
         Returns:
             True if cleared successfully, False otherwise
         """
         try:
             base_slot_path = self._get_base_slot_path()
+            conversation_id = None
             if base_slot_path.exists():
+                with open(base_slot_path, "r") as f:
+                    data = json.load(f)
+                    conversation_id = data.get("conversation_id")
                 base_slot_path.unlink()
                 log.info(f"Cleared base slot for {self.model_name}")
+            
+            # Also delete the saved slot file if it exists
+            if conversation_id:
+                slot_dir = self.slot_dir
+                if not slot_dir:
+                    model_config = self._get_model_config() or {}
+                    slot_dir = model_config.get("slot_save_path", "")
+                if slot_dir:
+                    slot_path = Path(slot_dir) / f"base_slot_{conversation_id}.bin"
+                    if slot_path.exists():
+                        slot_path.unlink()
+                        log.info(f"Deleted base slot KV cache file: {slot_path}")
+            
             return True
         except Exception as e:
             log.error(f"Failed to clear base slot for {self.model_name}: {e}")
@@ -659,7 +678,8 @@ class MnemonicProxyManager:
         """
         Recall the base slot conversation (load system prompt into context).
         
-        This uses the proxy's recall mechanism to load the base conversation.
+        This uses the proxy's recall mechanism to load the base conversation
+        AND restores the KV cache from the saved slot file.
         
         Returns:
             True if recall initiated successfully, False otherwise
@@ -674,7 +694,30 @@ class MnemonicProxyManager:
             return False
         
         try:
-            # Use the proxy's recall endpoint to load the base conversation
+            # First, restore the KV cache from the saved slot file
+            slot_dir = self.slot_dir
+            if not slot_dir:
+                model_config = self._get_model_config() or {}
+                slot_dir = model_config.get("slot_save_path", "")
+            if slot_dir:
+                slot_path = Path(slot_dir) / f"base_slot_{conversation_id}.bin"
+                if slot_path.exists():
+                    try:
+                        resp = requests.post(
+                            f"http://127.0.0.1:{self.proxy_port}/slots/0?action=restore",
+                            json={"filename": f"base_slot_{conversation_id}.bin"},
+                            timeout=30.0
+                        )
+                        if resp.status_code == 200:
+                            log.info(f"Restored KV cache for base slot: {conversation_id}")
+                        else:
+                            log.warning(f"KV cache restore returned {resp.status_code}: {resp.text}")
+                    except Exception as e:
+                        log.warning(f"Failed to restore KV cache for base slot: {e}")
+                else:
+                    log.warning(f"Base slot KV cache file not found: {slot_path}")
+            
+            # Then use the proxy's recall endpoint to load the base conversation context
             resp = requests.post(
                 f"http://127.0.0.1:{self.proxy_port}/v1/strata/recall",
                 json={"conversation_id": conversation_id},
