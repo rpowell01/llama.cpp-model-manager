@@ -603,12 +603,17 @@ class MnemonicProxyManager:
                             event_ts = event.get("ts", 0)
                             # Only consider events that happened after proxy started
                             if event_ts >= proxy_start_time:
-                                # First request completed in this session - save as base slot
-                                conv_id = event.get("conv")
-                                if conv_id:
-                                    log.info(f"First request detected for {self.model_name} (conv={conv_id}), auto-saving base slot")
-                                    self.save_base_slot(conv_id)
-                                    break
+                                # Verify request actually completed (has prompt_tokens > 0)
+                                prompt_tokens = event.get("prompt_tokens", 0)
+                                if prompt_tokens > 0:
+                                    # First request completed in this session - save as base slot
+                                    conv_id = event.get("conv")
+                                    if conv_id:
+                                        log.info(f"First request completed for {self.model_name} (conv={conv_id}, tokens={prompt_tokens}), auto-saving base slot")
+                                        self.save_base_slot(conv_id)
+                                        break
+                                else:
+                                    log.debug(f"Skipping request event without prompt_tokens for {self.model_name}")
                     
                     # If we saved, the get_base_slot() check at the top will exit the loop
                 
