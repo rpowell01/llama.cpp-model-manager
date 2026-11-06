@@ -849,26 +849,14 @@ class MnemonicProxyManager:
             except Exception as e:
                 log.warning(f"Failed to activate base conversation in proxy: {e}")
             
-            # Seal the base conversation so auto_recall works for new conversations.
-            # auto_recall only branches from SEALED parent conversations.
-            try:
-                resp = requests.post(
-                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/conversations/{conversation_id}/seal",
-                    timeout=10.0
-                )
-                if resp.status_code == 200:
-                    log.info(f"Sealed base conversation for auto_recall: {conversation_id}")
-                else:
-                    log.warning(f"Failed to seal base conversation: {resp.status_code} - {resp.text}")
-            except Exception as e:
-                log.warning(f"Failed to seal base conversation: {e}")
-            
             # The mnemonic-proxy recall mechanism (recall_struct, recall_flex, recall_multi)
             # automatically enables recall for child conversations branching from a sealed
-            # parent. By activating and sealing the base conversation, new requests will
-            # branch from it via auto_recall.
+            # parent. By activating the base conversation in strata, new requests will
+            # inherit from it via auto_recall. No separate seal API call needed (the seal
+            # endpoint is not available in v0.3.24, and the base conversation was not
+            # previously sealed in the archive).
             
-            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context activated + sealed)")
+            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context activated)")
             return True
         except Exception as e:
             log.error(f"Failed to recall base slot for {self.model_name}: {e}")
