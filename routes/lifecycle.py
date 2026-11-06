@@ -1170,3 +1170,86 @@ def api_proxy_mcp_status(model):
         return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
     
     return jsonify(proxy_manager.get_mcp_status())
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mnemonic Proxy Base Slot API Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@lifecycle_bp.route("/api/proxy/base-slot/save/<model>", methods=["POST"])
+def api_proxy_base_slot_save(model):
+    """Save current conversation as base slot (for system prompt persistence)."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    data = request.get_json(force=True) or {}
+    conversation_id = data.get("conversation_id", "").strip()
+    if not conversation_id:
+        return jsonify({"error": "Missing conversation_id"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    success = proxy_manager.save_base_slot(conversation_id)
+    if success:
+        add_log_entry(f"💾 Base slot saved for {model}: {conversation_id}", "green")
+        return jsonify({"status": "saved", "model": model, "conversation_id": conversation_id})
+    else:
+        add_log_entry(f"⚠ Failed to save base slot for {model}", "orange")
+        return jsonify({"error": "Failed to save base slot", "model": model}), 500
+
+
+@lifecycle_bp.route("/api/proxy/base-slot/get/<model>", methods=["GET"])
+def api_proxy_base_slot_get(model):
+    """Get base slot information for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    base_slot = proxy_manager.get_base_slot()
+    return jsonify({"model": model, "base_slot": base_slot})
+
+
+@lifecycle_bp.route("/api/proxy/base-slot/recall/<model>", methods=["POST"])
+def api_proxy_base_slot_recall(model):
+    """Recall the base slot conversation (load system prompt into context)."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    success = proxy_manager.recall_base_slot()
+    if success:
+        add_log_entry(f"🔄 Base slot recalled for {model}", "green")
+        return jsonify({"status": "recalled", "model": model})
+    else:
+        add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
+        return jsonify({"error": "Failed to recall base slot", "model": model}), 500
+
+
+@lifecycle_bp.route("/api/proxy/base-slot/clear/<model>", methods=["POST"])
+def api_proxy_base_slot_clear(model):
+    """Clear the base slot for a model."""
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    success = proxy_manager.clear_base_slot()
+    if success:
+        add_log_entry(f"🗑 Base slot cleared for {model}", "blue")
+        return jsonify({"status": "cleared", "model": model})
+    else:
+        return jsonify({"error": "Failed to clear base slot", "model": model}), 500

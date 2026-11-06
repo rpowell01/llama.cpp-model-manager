@@ -570,6 +570,106 @@ class MnemonicProxyManager:
         
         return status
     
+    # ==================== Base Slot Management ====================
+    
+    def _get_base_slot_path(self) -> Path:
+        """Get the path to the base slot marker file."""
+        data_dir = self._resolve_data_dir()
+        return data_dir / "base_slot.json"
+    
+    def save_base_slot(self, conversation_id: str) -> bool:
+        """
+        Save a conversation as the base slot (for system prompt persistence).
+        
+        Args:
+            conversation_id: ID of the conversation to save as base slot
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            base_slot_data = {
+                "conversation_id": conversation_id,
+                "created_at": time.time(),
+                "model_name": self.model_name,
+            }
+            base_slot_path = self._get_base_slot_path()
+            with open(base_slot_path, "w") as f:
+                json.dump(base_slot_data, f, indent=2)
+            log.info(f"Saved base slot for {self.model_name}: conversation {conversation_id}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to save base slot for {self.model_name}: {e}")
+            return False
+    
+    def get_base_slot(self) -> Optional[dict]:
+        """
+        Get the base slot information.
+        
+        Returns:
+            Dictionary with base slot info or None if not set
+        """
+        try:
+            base_slot_path = self._get_base_slot_path()
+            if base_slot_path.exists():
+                with open(base_slot_path, "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            log.error(f"Failed to read base slot for {self.model_name}: {e}")
+        return None
+    
+    def clear_base_slot(self) -> bool:
+        """
+        Clear the base slot.
+        
+        Returns:
+            True if cleared successfully, False otherwise
+        """
+        try:
+            base_slot_path = self._get_base_slot_path()
+            if base_slot_path.exists():
+                base_slot_path.unlink()
+                log.info(f"Cleared base slot for {self.model_name}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to clear base slot for {self.model_name}: {e}")
+            return False
+    
+    def recall_base_slot(self) -> bool:
+        """
+        Recall the base slot conversation (load system prompt into context).
+        
+        This uses the proxy's recall mechanism to load the base conversation.
+        
+        Returns:
+            True if recall initiated successfully, False otherwise
+        """
+        base_slot = self.get_base_slot()
+        if not base_slot:
+            log.warning(f"No base slot set for {self.model_name}")
+            return False
+        
+        conversation_id = base_slot.get("conversation_id")
+        if not conversation_id:
+            return False
+        
+        try:
+            # Use the proxy's recall endpoint to load the base conversation
+            resp = requests.post(
+                f"http://127.0.0.1:{self.proxy_port}/v1/strata/recall",
+                json={"conversation_id": conversation_id},
+                timeout=10.0
+            )
+            if resp.status_code == 200:
+                log.info(f"Recalled base slot for {self.model_name}: {conversation_id}")
+                return True
+            else:
+                log.error(f"Failed to recall base slot: {resp.status_code} {resp.text}")
+                return False
+        except Exception as e:
+            log.error(f"Failed to recall base slot for {self.model_name}: {e}")
+            return False
+    
     def get_logs(self, lines: int = 100) -> list[str]:
         """
         Get recent log lines from the mnemonic-proxy process.
