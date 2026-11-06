@@ -569,11 +569,15 @@ class MnemonicProxyManager:
         """
         Monitor the proxy's journal for the first request event.
         When detected and no base slot exists, save the current conversation as base slot.
+        Only considers events that occurred after the proxy started (to avoid old events from previous sessions).
         """
         log.debug(f"Base slot monitor started for {self.model_name}")
         
         # Wait a bit for proxy to fully initialize
         time.sleep(2.0)
+        
+        # Get the proxy start time to filter out old journal events
+        proxy_start_time = self._start_time or time.time()
         
         while not self._base_slot_monitor_stop.is_set():
             try:
@@ -593,15 +597,18 @@ class MnemonicProxyManager:
                     journal_data = resp.json()
                     events = journal_data.get("events", [])
                     
-                    # Look for the first "request" event (indicates first completion)
+                    # Look for the first "request" event AFTER proxy started
                     for event in events:
                         if event.get("event") == "request":
-                            # First request completed - save as base slot
-                            conv_id = event.get("conv")
-                            if conv_id:
-                                log.info(f"First request detected for {self.model_name} (conv={conv_id}), auto-saving base slot")
-                                self.save_base_slot(conv_id)
-                                break
+                            event_ts = event.get("ts", 0)
+                            # Only consider events that happened after proxy started
+                            if event_ts >= proxy_start_time:
+                                # First request completed in this session - save as base slot
+                                conv_id = event.get("conv")
+                                if conv_id:
+                                    log.info(f"First request detected for {self.model_name} (conv={conv_id}), auto-saving base slot")
+                                    self.save_base_slot(conv_id)
+                                    break
                     
                     # If we saved, the get_base_slot() check at the top will exit the loop
                 
