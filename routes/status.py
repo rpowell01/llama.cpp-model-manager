@@ -225,6 +225,7 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         "config_override": base_proxy_config.get("config_override", {}),
         "mcp_enabled": base_proxy_config.get("mcp_enabled", False),
         "mcp_port": base_proxy_config.get("mcp_port", 8133) if base_proxy_config.get("mcp_enabled") else None,
+        "base_slot_auto": base_proxy_config.get("base_slot_auto", False),
         "mcp": {"enabled": False, "running": False, "port": None, "pid": None, "uptime_seconds": 0},
         "model_name": model,
     }
