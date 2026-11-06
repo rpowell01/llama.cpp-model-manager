@@ -327,6 +327,11 @@ class MnemonicProxyManager:
         if self.config_override:
             config.update(self.config_override)
         
+        # Enable auto_recall when base_slot_auto is enabled so new conversations
+        # automatically recall from the base conversation (system prompt)
+        if self.base_slot_auto:
+            config["auto_recall"] = True
+        
         # MCP server config
         if self.mcp_enabled:
             config["mcp_port"] = self.mcp_port
