@@ -729,32 +729,43 @@ class MnemonicProxyManager:
         """
         Clear the base slot.
         
-        This removes the marker file AND the saved KV cache slot file.
+        This removes the marker file AND the saved KV cache slot file(s).
         
         Returns:
             True if cleared successfully, False otherwise
         """
         try:
             base_slot_path = self._get_base_slot_path()
-            conversation_id = None
-            if base_slot_path.exists():
-                with open(base_slot_path, "r") as f:
-                    data = json.load(f)
-                    conversation_id = data.get("conversation_id")
-                base_slot_path.unlink()
-                log.info(f"Cleared base slot for {self.model_name}")
+            data_dir = self._resolve_data_dir()
             
-            # Also delete the saved slot file if it exists
-            if conversation_id:
-                slot_dir = self.slot_dir
-                if not slot_dir:
-                    model_config = self._get_model_config() or {}
-                    slot_dir = model_config.get("slot_save_path", "")
-                if slot_dir:
-                    slot_path = Path(slot_dir) / f"base_slot_{conversation_id}.bin"
-                    if slot_path.exists():
-                        slot_path.unlink()
-                        log.info(f"Deleted base slot KV cache file: {slot_path}")
+            # Delete the marker file
+            if base_slot_path.exists():
+                base_slot_path.unlink()
+                log.info(f"Cleared base slot marker for {self.model_name}")
+            
+            # Delete any base_slot_*.bin files in the data directory (where llama.cpp saves them)
+            # Use glob to catch all variants regardless of conversation_id mismatches
+            for slot_file in data_dir.glob("base_slot_*.bin"):
+                try:
+                    slot_file.unlink()
+                    log.info(f"Deleted base slot KV cache file: {slot_file}")
+                except Exception as e:
+                    log.warning(f"Failed to delete {slot_file}: {e}")
+            
+            # Also check slot_dir if different from data_dir (fallback)
+            slot_dir = self.slot_dir
+            if not slot_dir:
+                model_config = self._get_model_config() or {}
+                slot_dir = model_config.get("slot_save_path", "")
+            if slot_dir:
+                slot_dir_path = Path(slot_dir)
+                if slot_dir_path != data_dir:
+                    for slot_file in slot_dir_path.glob("base_slot_*.bin"):
+                        try:
+                            slot_file.unlink()
+                            log.info(f"Deleted base slot KV cache file from slot_dir: {slot_file}")
+                        except Exception as e:
+                            log.warning(f"Failed to delete {slot_file}: {e}")
             
             return True
         except Exception as e:
