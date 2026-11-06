@@ -1084,6 +1084,7 @@ def create_proxy_manager(
     config_override: Optional[dict] = None,
     mcp_enabled: bool = False,
     mcp_port: int = 8133,
+    base_slot_auto: bool = False,
 ) -> MnemonicProxyManager:
     """Create or get a proxy manager for a model."""
     with _proxy_managers_lock:
@@ -1098,6 +1099,7 @@ def create_proxy_manager(
                 config_override=config_override,
                 mcp_enabled=mcp_enabled,
                 mcp_port=mcp_port,
+                base_slot_auto=base_slot_auto,
             )
         return _proxy_managers[model_name]
 
