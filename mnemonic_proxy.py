@@ -603,9 +603,11 @@ class MnemonicProxyManager:
             
             # Also trigger the engine to save the KV cache (slot) for this conversation
             # This calls the llama-server /slots/0?action=save endpoint via the proxy
+            # The llama-server requires a filename parameter in the JSON body
             try:
                 resp = requests.post(
                     f"http://127.0.0.1:{self.proxy_port}/slots/0?action=save",
+                    json={"filename": f"base_slot_{conversation_id}.bin"},
                     timeout=30.0
                 )
                 if resp.status_code == 200:
