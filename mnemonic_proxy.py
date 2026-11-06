@@ -581,6 +581,9 @@ class MnemonicProxyManager:
         """
         Save a conversation as the base slot (for system prompt persistence).
         
+        This creates the marker file AND triggers the engine to save the KV cache
+        for the current conversation via the llama-server /slots/save endpoint.
+        
         Args:
             conversation_id: ID of the conversation to save as base slot
             
@@ -597,6 +600,21 @@ class MnemonicProxyManager:
             with open(base_slot_path, "w") as f:
                 json.dump(base_slot_data, f, indent=2)
             log.info(f"Saved base slot for {self.model_name}: conversation {conversation_id}")
+            
+            # Also trigger the engine to save the KV cache (slot) for this conversation
+            # This calls the llama-server /slots/0?action=save endpoint via the proxy
+            try:
+                resp = requests.post(
+                    f"http://127.0.0.1:{self.proxy_port}/slots/0?action=save",
+                    timeout=30.0
+                )
+                if resp.status_code == 200:
+                    log.info(f"Engine slot saved for base slot: {conversation_id}")
+                else:
+                    log.warning(f"Engine slot save returned {resp.status_code}: {resp.text}")
+            except Exception as e:
+                log.warning(f"Failed to trigger engine slot save for base slot: {e}")
+            
             return True
         except Exception as e:
             log.error(f"Failed to save base slot for {self.model_name}: {e}")
