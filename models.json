@@ -544,27 +544,24 @@
       "slot_dir": "./data/mellum2-12b-a2.5b-instruct.i1-q4-k-m",
       "tokenizer_path": "",
       "config_override": {
-        "engine": "llama.cpp",
-        "upstream": "http://127.0.0.1:9931",
-        "slot_dir": "data/mellum2-12b-a2.5b-instruct.i1-q4-k-m",
-        "autosave": true,
-        "mask_anchor": true,
-        "mask_reasoning": true,
-        "mask_tool_args": true,
         "slot_save": true,
         "seal_experimental": true,
+        "mask_reasoning": true,
+        "mask_tool_args": true,
         "notes_max_tokens": 12288,
         "response_floor": 16384,
         "recall_struct": true,
         "recall_flex": true,
         "recall_multi": true,
-        "auto_recall": true,
         "tools_paging": true,
-        "engine_tokenize": true
+        "engine_tokenize": true,
+        "mask_anchor": true,
+        "autosave": true,
+        "window_estimate_slack": 0.15
       },
       "mcp_enabled": false,
       "mcp_port": null,
-      "base_slot_auto": true
+      "base_slot_auto": false
     },
     "log_verbosity": 4
   },
