@@ -722,18 +722,11 @@ class MnemonicProxyManager:
                 else:
                     log.warning(f"Base slot KV cache file not found: {slot_path}")
             
-            # Then use the proxy's recall endpoint to load the base conversation context
-            resp = requests.post(
-                f"http://127.0.0.1:{self.proxy_port}/v1/strata/recall",
-                json={"conversation_id": conversation_id},
-                timeout=10.0
-            )
-            if resp.status_code == 200:
-                log.info(f"Recalled base slot for {self.model_name}: {conversation_id}")
-                return True
-            else:
-                log.error(f"Failed to recall base slot: {resp.status_code} {resp.text}")
-                return False
+            # KV cache restore loads the model context (system prompt + conversation history).
+            # The proxy's archive (SQLite) already retains the full conversation for future
+            # recall/masking operations. No separate recall API call needed.
+            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache restored)")
+            return True
         except Exception as e:
             log.error(f"Failed to recall base slot for {self.model_name}: {e}")
             return False
