@@ -564,6 +564,7 @@ def api_start():
                 config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
                 mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
                 mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
+                base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
                 
                 log.info(f"Starting mnemonic-proxy for {model} on port {proxy_port}")
                 add_log_entry(f"🔗 mnemonic-proxy: {model} on port {proxy_port}", "blue")
@@ -578,6 +579,7 @@ def api_start():
                     config_override=config_override,
                     mcp_enabled=mcp_enabled,
                     mcp_port=mcp_port,
+                    base_slot_auto=base_slot_auto,
                 )
                 
                 proxy_started = proxy_manager.start()
@@ -749,6 +751,7 @@ def api_proxy_start(model):
     config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
     mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
     mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
+    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
     
     # Fetch actual n_ctx from llama-server for proxy config
     actual_n_ctx = 32768  # default fallback
@@ -790,6 +793,7 @@ def api_proxy_start(model):
         config_override=config_override,
         mcp_enabled=mcp_enabled,
         mcp_port=mcp_port,
+        base_slot_auto=base_slot_auto,
     )
     
     success = proxy_manager.start()

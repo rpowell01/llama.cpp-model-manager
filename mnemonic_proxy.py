@@ -85,6 +85,7 @@ class MnemonicProxyManager:
         config_override: Optional[dict] = None,
         mcp_enabled: bool = False,
         mcp_port: int = 8133,
+        base_slot_auto: bool = False,
     ):
         """
         Initialize the MnemonicProxyManager.
@@ -99,6 +100,7 @@ class MnemonicProxyManager:
             config_override: Optional config overrides for mnemonic-proxy
             mcp_enabled: Whether to enable MCP server (default False)
             mcp_port: Port for MCP server (default 8133)
+            base_slot_auto: Whether to automatically save base slot after first request
         """
         _validate_local_mode()
         
@@ -115,6 +117,7 @@ class MnemonicProxyManager:
         }
         self.mcp_enabled = mcp_enabled
         self.mcp_port = mcp_port
+        self.base_slot_auto = base_slot_auto
         
         # Process tracking
         self._pid: Optional[int] = None
@@ -127,6 +130,10 @@ class MnemonicProxyManager:
         self._mcp_process: Optional[subprocess.Popen] = None
         self._mcp_lock = threading.Lock()
         self._mcp_start_time: Optional[float] = None
+        
+        # Base slot auto-save monitoring
+        self._base_slot_monitor_thread: Optional[threading.Thread] = None
+        self._base_slot_monitor_stop = threading.Event()
         
         # Ensure data directory exists
         self._ensure_data_dir()
@@ -385,6 +392,9 @@ class MnemonicProxyManager:
                 # Wait a moment and verify it's up (proxy may need 2-3 seconds to fully start)
                 time.sleep(3.0)
                 if self.is_running():
+                    # Start base slot auto-save monitor if enabled and no base slot exists
+                    if self.base_slot_auto and not self.get_base_slot():
+                        self._start_base_slot_monitor()
                     return True
                 else:
                     log.error(f"mnemonic-proxy for {self.model_name} failed to start")
@@ -470,6 +480,9 @@ class MnemonicProxyManager:
     
     def _cleanup(self) -> None:
         """Clean up process references and reap child process."""
+        # Stop base slot monitor
+        self._stop_base_slot_monitor()
+        
         # Reap the child process to prevent zombies
         if self._process:
             try:
@@ -530,6 +543,77 @@ class MnemonicProxyManager:
             return resp.status_code == 200
         except Exception:
             return False
+    
+    def _start_base_slot_monitor(self) -> None:
+        """Start background thread to monitor journal for first request and auto-save base slot."""
+        if self._base_slot_monitor_thread and self._base_slot_monitor_thread.is_alive():
+            return
+        
+        self._base_slot_monitor_stop.clear()
+        self._base_slot_monitor_thread = threading.Thread(
+            target=self._base_slot_monitor_loop,
+            daemon=True,
+            name=f"base-slot-monitor-{self.model_name}"
+        )
+        self._base_slot_monitor_thread.start()
+        log.info(f"Started base slot auto-save monitor for {self.model_name}")
+    
+    def _stop_base_slot_monitor(self) -> None:
+        """Stop the base slot auto-save monitor thread."""
+        self._base_slot_monitor_stop.set()
+        if self._base_slot_monitor_thread and self._base_slot_monitor_thread.is_alive():
+            self._base_slot_monitor_thread.join(timeout=5.0)
+            log.info(f"Stopped base slot auto-save monitor for {self.model_name}")
+    
+    def _base_slot_monitor_loop(self) -> None:
+        """
+        Monitor the proxy's journal for the first request event.
+        When detected and no base slot exists, save the current conversation as base slot.
+        """
+        log.debug(f"Base slot monitor started for {self.model_name}")
+        
+        # Wait a bit for proxy to fully initialize
+        time.sleep(5.0)
+        
+        while not self._base_slot_monitor_stop.is_set():
+            try:
+                # Check if base slot already exists (might have been created by another call)
+                if self.get_base_slot():
+                    log.info(f"Base slot already exists for {self.model_name}, stopping monitor")
+                    break
+                
+                # Fetch journal from proxy
+                resp = requests.get(
+                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/journal",
+                    timeout=10.0,
+                    headers={"Accept": "application/json"}
+                )
+                
+                if resp.status_code == 200:
+                    journal_data = resp.json()
+                    events = journal_data.get("events", [])
+                    
+                    # Look for the first "request" event (indicates first completion)
+                    for event in events:
+                        if event.get("event") == "request":
+                            # First request completed - save as base slot
+                            conv_id = event.get("conv")
+                            if conv_id:
+                                log.info(f"First request detected for {self.model_name} (conv={conv_id}), auto-saving base slot")
+                                self.save_base_slot(conv_id)
+                                break
+                    
+                    # If we saved, the get_base_slot() check at the top will exit the loop
+                
+            except requests.exceptions.Timeout:
+                log.debug(f"Journal fetch timeout for {self.model_name}")
+            except Exception as e:
+                log.debug(f"Base slot monitor error for {self.model_name}: {e}")
+            
+            # Check every 10 seconds
+            self._base_slot_monitor_stop.wait(10.0)
+        
+        log.debug(f"Base slot monitor stopped for {self.model_name}")
     
     def get_status(self) -> dict[str, Any]:
         """
