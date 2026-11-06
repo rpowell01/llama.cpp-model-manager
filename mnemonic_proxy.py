@@ -573,7 +573,7 @@ class MnemonicProxyManager:
         log.debug(f"Base slot monitor started for {self.model_name}")
         
         # Wait a bit for proxy to fully initialize
-        time.sleep(5.0)
+        time.sleep(2.0)
         
         while not self._base_slot_monitor_stop.is_set():
             try:
@@ -610,8 +610,8 @@ class MnemonicProxyManager:
             except Exception as e:
                 log.debug(f"Base slot monitor error for {self.model_name}: {e}")
             
-            # Check every 10 seconds
-            self._base_slot_monitor_stop.wait(10.0)
+            # Check every 2 seconds
+            self._base_slot_monitor_stop.wait(2.0)
         
         log.debug(f"Base slot monitor stopped for {self.model_name}")
     
