@@ -567,19 +567,60 @@ def api_start():
                 
                 # Get mnemonic_proxy nested config and merge with config_override
                 mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
+                nested_config_override = mnemonic_proxy_config.get('config_override', {}) or {}
                 config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
                 
-                # Merge all mnemonic_proxy settings into config_override (config_override takes precedence)
+                # Merge all mnemonic_proxy.config_override settings into config_override (config_override takes precedence)
+                # Full list of mnemonic-proxy Config fields (from ctxproxy.core.Config)
                 proxy_settings = [
-                    'mask_anchor', 'autosave', 'window_estimate_slack',
-                    'slot_save', 'seal_experimental', 'mask_reasoning', 'mask_tool_args',
-                    'notes_max_tokens', 'response_floor',
-                    'recall_struct', 'recall_flex', 'recall_multi', 'auto_recall',
-                    'tools_paging', 'engine_tokenize'
+                    # Window / context
+                    'window', 'window_margin', 'window_estimate_slack',
+                    # Image / vision
+                    'image_tokens',
+                    # Masking
+                    'mask_trigger', 'mask_target',
+                    'min_batch_tokens',
+                    'keep_recent_tokens', 'min_age_turns',
+                    'mask_reasoning', 'mask_tool_args',
+                    'mask_anchor', 'anchor_min_tokens',
+                    # Segments / slots
+                    'segments_enabled', 'tail_max', 'notes_max_tokens',
+                    'slot_save', 'seal_experimental',
+                    'response_floor',
+                    # Auto config
+                    'auto_config', 'state_kb_per_token',
+                    # Recall
+                    'inject_recall', 'max_recall_rounds', 'recall_max_tokens',
+                    'recall_tool_name', 'tools_tool_name',
+                    'prompt_language',
+                    'rich_receipts',
+                    'recall_struct', 'recall_flex', 'recall_multi',
+                    'auto_recall', 'auto_recall_hint',
+                    'recall_leaf_select',
+                    'answer_thinking_after_recall', 'answer_thinking_budget',
+                    'truncation_guard',
+                    # Tools
+                    'tools_paging', 'tools_core',
+                    # Receipts
+                    'typed_receipts', 'receipt_guard',
+                    # Pins
+                    'pins_max_tokens',
+                    # Autosave
+                    'autosave', 'autosave_idle_s', 'autosave_keep', 'autosave_max_gb', 'autosave_min_free_gb',
+                    # Autorestore
+                    'autorestore', 'autorestore_min_gain',
+                    # KV Archive
+                    'kv_archive', 'kv_archive_idle_s', 'kv_archive_min_age_s',
+                    # Engine
+                    'engine', 'slot_id', 'engine_tokenize',
+                    # Router
+                    'router_model', 'router_load_timeout_s', 'router_keepalive_s',
+                    # Live dump
+                    'live_dump',
                 ]
                 for setting in proxy_settings:
-                    if setting in mnemonic_proxy_config and setting not in config_override:
-                        config_override[setting] = mnemonic_proxy_config[setting]
+                    if setting in nested_config_override and setting not in config_override:
+                        config_override[setting] = nested_config_override[setting]
                 
                 log.info(f"Starting mnemonic-proxy for {model} on port {proxy_port}")
                 add_log_entry(f"🔗 mnemonic-proxy: {model} on port {proxy_port}", "blue")
@@ -769,20 +810,60 @@ def api_proxy_start(model):
     
     # Get mnemonic_proxy nested config and merge with config_override
     mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
+    nested_config_override = mnemonic_proxy_config.get('config_override', {}) or {}
     config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
     
-    # Merge all mnemonic_proxy settings into config_override (config_override takes precedence)
-    # These are the settings that the proxy needs but aren't in the minimal generated config
+    # Merge all mnemonic_proxy.config_override settings into config_override (config_override takes precedence)
+    # Full list of mnemonic-proxy Config fields (from ctxproxy.core.Config)
     proxy_settings = [
-        'mask_anchor', 'autosave', 'window_estimate_slack',
-        'slot_save', 'seal_experimental', 'mask_reasoning', 'mask_tool_args',
-        'notes_max_tokens', 'response_floor',
-        'recall_struct', 'recall_flex', 'recall_multi', 'auto_recall',
-        'tools_paging', 'engine_tokenize'
+        # Window / context
+        'window', 'window_margin', 'window_estimate_slack',
+        # Image / vision
+        'image_tokens',
+        # Masking
+        'mask_trigger', 'mask_target',
+        'min_batch_tokens',
+        'keep_recent_tokens', 'min_age_turns',
+        'mask_reasoning', 'mask_tool_args',
+        'mask_anchor', 'anchor_min_tokens',
+        # Segments / slots
+        'segments_enabled', 'tail_max', 'notes_max_tokens',
+        'slot_save', 'seal_experimental',
+        'response_floor',
+        # Auto config
+        'auto_config', 'state_kb_per_token',
+        # Recall
+        'inject_recall', 'max_recall_rounds', 'recall_max_tokens',
+        'recall_tool_name', 'tools_tool_name',
+        'prompt_language',
+        'rich_receipts',
+        'recall_struct', 'recall_flex', 'recall_multi',
+        'auto_recall', 'auto_recall_hint',
+        'recall_leaf_select',
+        'answer_thinking_after_recall', 'answer_thinking_budget',
+        'truncation_guard',
+        # Tools
+        'tools_paging', 'tools_core',
+        # Receipts
+        'typed_receipts', 'receipt_guard',
+        # Pins
+        'pins_max_tokens',
+        # Autosave
+        'autosave', 'autosave_idle_s', 'autosave_keep', 'autosave_max_gb', 'autosave_min_free_gb',
+        # Autorestore
+        'autorestore', 'autorestore_min_gain',
+        # KV Archive
+        'kv_archive', 'kv_archive_idle_s', 'kv_archive_min_age_s',
+        # Engine
+        'engine', 'slot_id', 'engine_tokenize',
+        # Router
+        'router_model', 'router_load_timeout_s', 'router_keepalive_s',
+        # Live dump
+        'live_dump',
     ]
     for setting in proxy_settings:
-        if setting in mnemonic_proxy_config and setting not in config_override:
-            config_override[setting] = mnemonic_proxy_config[setting]
+        if setting in nested_config_override and setting not in config_override:
+            config_override[setting] = nested_config_override[setting]
     
     # Fetch actual n_ctx from llama-server for proxy config
     actual_n_ctx = 32768  # default fallback
