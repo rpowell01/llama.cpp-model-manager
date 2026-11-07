@@ -112,7 +112,6 @@ def api_add_model():
         mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override", DEFAULTS["mnemonic_proxy"]["config_override"]),
         mnemonic_proxy_mcp_enabled=bool(data.get("mnemonic_proxy", {}).get("mcp_enabled", DEFAULTS["mnemonic_proxy"]["mcp_enabled"])),
         mnemonic_proxy_mcp_port=int(data.get("mnemonic_proxy", {}).get("mcp_port", DEFAULTS["mnemonic_proxy"]["mcp_port"]) or DEFAULTS["mnemonic_proxy"]["mcp_port"]),
-        mnemonic_proxy_base_slot_auto=bool(data.get("mnemonic_proxy", {}).get("base_slot_auto", DEFAULTS["mnemonic_proxy"]["base_slot_auto"])),
     # Chat template
     chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
     # Custom HTTP Header for Kilo Code Config
@@ -276,6 +275,9 @@ def api_update_model_meta():
     "reasoning_budget_message": str,
     # Mnemonic Proxy fields (nested object)
     "mnemonic_proxy": dict,
+    # llama.cpp platform and backend selection
+    "llama_cpp_platform": str,
+    "llama_cpp_backend": str,
     }
     # Validate rating fields before any mutation: an invalid rating must be
     # rejected without leaving a bad value behind in the cached model meta.
@@ -326,6 +328,9 @@ def api_update_model_meta():
                     # Preserve dict objects (e.g., mnemonic_proxy nested config)
                     if not isinstance(value, dict):
                         value = {}
+                    # For mnemonic_proxy, merge with existing dict instead of replacing
+                    if field == "mnemonic_proxy" and field in meta and isinstance(meta[field], dict):
+                        value = {**meta[field], **value}
                 elif typ is list:
                     # Preserve list objects
                     if not isinstance(value, list):
@@ -808,3 +813,38 @@ def api_refresh_models():
     except Exception as e:
         log.exception("Failed to refresh models cache")
         return jsonify({"error": f"Failed to refresh models: {str(e)}"}), 500
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Platform/Backend directory configuration API
+# ──────────────────────────────────────────────────────────────────────────────
+
+@models_bp.route("/api/platform-backend-config", methods=["GET"])
+def api_get_platform_backend_config():
+    """Get all platform/backend directory mappings."""
+    from config import get_all_platform_backend_dirs
+    return jsonify(get_all_platform_backend_dirs())
+
+
+@models_bp.route("/api/platform-backend-config", methods=["POST"])
+def api_set_platform_backend_config():
+    """Update platform/backend directory mappings."""
+    from config import set_all_platform_backend_dirs, PLATFORM_BACKEND_COMBINATIONS
+    
+    data = request.get_json(force=True) or {}
+    
+    # Validate that only known keys are provided
+    invalid_keys = [k for k in data.keys() if k not in PLATFORM_BACKEND_COMBINATIONS]
+    if invalid_keys:
+        return jsonify({"error": f"Invalid platform/backend combinations: {invalid_keys}"}), 400
+    
+    # Validate that values are strings
+    for key, value in data.items():
+        if not isinstance(value, str):
+            return jsonify({"error": f"Value for {key} must be a string"}), 400
+    
+    set_all_platform_backend_dirs(data)
+    return jsonify({
+        "status": "platform backend config updated",
+        "config": get_all_platform_backend_dirs()
+    })

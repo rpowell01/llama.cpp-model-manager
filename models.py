@@ -262,6 +262,9 @@ def add_model_entry(
     mnemonic_proxy_config_override: Optional[dict] = None,
     mnemonic_proxy_mcp_enabled: bool = False,
     mnemonic_proxy_mcp_port: int = 8133,
+    # llama.cpp platform and backend selection
+    llama_cpp_platform: str = "auto",  # "auto", "windows", "linux"
+    llama_cpp_backend: str = "auto",   # "auto", "vulkan", "sycl", "openvino", "cpu"
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
@@ -391,6 +394,9 @@ def add_model_entry(
                 "mcp_enabled": mnemonic_proxy_mcp_enabled,
                 "mcp_port": mnemonic_proxy_mcp_port,
             },
+            # llama.cpp platform and backend selection
+            "llama_cpp_platform": llama_cpp_platform,
+            "llama_cpp_backend": llama_cpp_backend,
         }
         save_models(models)
         return True
@@ -565,6 +571,9 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "reuse_port": DEFAULTS["reuse_port"],
         # Chat template
         "chat_template_file": DEFAULTS["chat_template_file"],
+        # llama.cpp platform and backend selection
+        "llama_cpp_platform": DEFAULTS.get("llama_cpp_platform", "auto"),
+        "llama_cpp_backend": DEFAULTS.get("llama_cpp_backend", "auto"),
     }
     for model in models.values():
         for field, default_value in default_fields.items():
@@ -585,7 +594,6 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
                 },
                 "mcp_enabled": False,
                 "mcp_port": 8133,
-                "base_slot_auto": False,
             }
 
 
@@ -673,6 +681,9 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                     "mcp_enabled": False,
                     "mcp_port": 8133,
                 },
+                # llama.cpp platform and backend selection
+                "llama_cpp_platform": DEFAULTS.get("llama_cpp_platform", "auto"),
+                "llama_cpp_backend": DEFAULTS.get("llama_cpp_backend", "auto"),
                 "file_size_gb": file_size_gb,
                 "file_exists": True,
             }

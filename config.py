@@ -212,12 +212,22 @@ DEFAULTS: dict[str, Any] = {
         "config_override": {
             "mask_anchor": True,
             "autosave": True,
-            "window_estimate_slack": 0.15
+            "window_estimate_slack": 0.15,
+            # Cold archive (kv_archive) - requires Python >= 3.14 or zstandard package
+            # "kv_archive": True,
+            # "kv_archive_idle_s": 600,
+            # "kv_archive_min_age_s": 1800,
+            # "kv_archive_level": 3,
+            # "kv_archive_threads": 4,
+            # "kv_archive_poll_s": 60,
+            # "kv_archive_min_bytes": 67108864,  # 64 MB
         },
         "mcp_enabled": False,
         "mcp_port": 8133,
-        "base_slot_auto": False,
     },
+    # llama.cpp platform and backend selection
+    "llama_cpp_platform": "auto",  # "auto", "windows", "linux"
+    "llama_cpp_backend": "auto",   # "auto", "vulkan", "sycl", "openvino", "cpu"
 }
 
 # Flask server port (set by main.py at runtime)
@@ -804,6 +814,119 @@ if METRICS_EXPORT_MODELS_ENV:
     METRICS_EXPORT_MODELS = [m.strip() for m in METRICS_EXPORT_MODELS_ENV.split(",") if m.strip()]
 else:
     METRICS_EXPORT_MODELS = []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# llama.cpp platform/backend directory configuration
+#
+# Global configuration for llama-server directory paths per platform/backend
+# combination. This allows per-model selection of platform (windows/linux) and
+# backend (vulkan/sycl/openvino/cpu) with each combination mapping to a
+# specific llama-server directory.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Config file for platform/backend directory mappings
+PLATFORM_BACKEND_CONFIG_FILE = BASE_DIR / ".llama-platform-config.json"
+
+# Default platform/backend combinations (6 total)
+PLATFORM_BACKEND_COMBINATIONS = [
+    "windows-vulkan",
+    "windows-sycl", 
+    "windows-openvino",
+    "linux-vulkan",
+    "linux-sycl",
+    "linux-openvino",
+]
+
+# Default empty configuration
+_DEFAULT_PLATFORM_BACKEND_CONFIG = {combo: "" for combo in PLATFORM_BACKEND_COMBINATIONS}
+
+# Cache for platform/backend config
+_platform_backend_config: dict[str, str] | None = None
+
+
+def _load_platform_backend_config() -> dict[str, str]:
+    """Load platform/backend directory configuration from file."""
+    global _platform_backend_config
+    if _platform_backend_config is not None:
+        return _platform_backend_config
+    
+    config = _DEFAULT_PLATFORM_BACKEND_CONFIG.copy()
+    try:
+        if PLATFORM_BACKEND_CONFIG_FILE.exists():
+            import json
+            with open(PLATFORM_BACKEND_CONFIG_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            # Merge with defaults, keeping only known keys
+            for key in PLATFORM_BACKEND_COMBINATIONS:
+                if key in loaded:
+                    config[key] = loaded[key]
+    except Exception as e:
+        log.warning(f"Failed to load platform/backend config: {e}")
+    
+    _platform_backend_config = config
+    return config
+
+
+def _save_platform_backend_config(config: dict[str, str]) -> None:
+    """Save platform/backend directory configuration to file."""
+    global _platform_backend_config
+    try:
+        import json
+        # Only save known keys
+        save_config = {k: v for k, v in config.items() if k in PLATFORM_BACKEND_COMBINATIONS}
+        with open(PLATFORM_BACKEND_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(save_config, f, indent=2)
+        _platform_backend_config = save_config
+        log.info("Saved platform/backend config")
+    except Exception as e:
+        log.error(f"Failed to save platform/backend config: {e}")
+
+
+def get_platform_backend_dir(platform: str, backend: str) -> str:
+    """
+    Get the llama-server directory for a platform/backend combination.
+    
+    Args:
+        platform: "windows" or "linux"
+        backend: "vulkan", "sycl", "openvino", or "cpu"
+        
+    Returns:
+        Directory path string, or empty string if not configured
+    """
+    config = _load_platform_backend_config()
+    key = f"{platform}-{backend}"
+    return config.get(key, "")
+
+
+def set_platform_backend_dir(platform: str, backend: str, directory: str) -> None:
+    """
+    Set the llama-server directory for a platform/backend combination.
+    
+    Args:
+        platform: "windows" or "linux"
+        backend: "vulkan", "sycl", "openvino", or "cpu"
+        directory: Directory path (empty string to clear)
+    """
+    config = _load_platform_backend_config()
+    key = f"{platform}-{backend}"
+    if key in config:
+        config[key] = directory
+        _save_platform_backend_config(config)
+
+
+def get_all_platform_backend_dirs() -> dict[str, str]:
+    """Get all platform/backend directory mappings."""
+    return _load_platform_backend_config().copy()
+
+
+def set_all_platform_backend_dirs(dirs: dict[str, str]) -> None:
+    """Set all platform/backend directory mappings at once."""
+    config = _load_platform_backend_config()
+    for key in PLATFORM_BACKEND_COMBINATIONS:
+        if key in dirs:
+            config[key] = dirs[key]
+    _save_platform_backend_config(config)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Remote configuration support

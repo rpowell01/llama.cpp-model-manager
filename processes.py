@@ -32,6 +32,7 @@ from config import (
     WSL,
     convert_path_for_binary,
     resolve_model_path,
+    get_platform_backend_dir,
 )
 from models import InvalidModeError
 
@@ -631,12 +632,56 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
     
-    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL
+    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL, get_platform_backend_dir
     
-    # Determine binary type and build command accordingly
-    is_windows_binary = LLAMA_SERVER_TYPE == "windows"
-    is_linux_binary = LLAMA_SERVER_TYPE == "linux"
-    uses_serve_subcommand = LLAMA_SERVER_USES_SERVE
+    # Get model's platform and backend selection (default to "auto" for backward compatibility)
+    llama_cpp_platform = meta.get("llama_cpp_platform", "auto")
+    llama_cpp_backend = meta.get("llama_cpp_backend", "auto")
+    
+    # Determine the llama-server directory based on platform/backend selection
+    # If "auto", fall back to global auto-detection (LLAMA_SERVER)
+    llama_server_dir = ""
+    if llama_cpp_platform != "auto" and llama_cpp_backend != "auto":
+        llama_server_dir = get_platform_backend_dir(llama_cpp_platform, llama_cpp_backend)
+    
+    # Find the appropriate binary in the selected directory
+    llama_server_binary = None
+    uses_serve_subcommand = False
+    
+    if llama_server_dir:
+        # Use the configured directory for this platform/backend combination
+        server_dir = Path(llama_server_dir)
+        if llama_cpp_platform == "windows":
+            # Windows binary: llama-server.exe
+            candidate = server_dir / "llama-server.exe"
+            if candidate.exists():
+                llama_server_binary = candidate
+            else:
+                candidate = server_dir / "llama-server"
+                if candidate.exists():
+                    llama_server_binary = candidate
+        else:  # linux
+            # Linux binary: llama-server (new SYCL) or llama (old with serve subcommand)
+            candidate = server_dir / "llama-server"
+            if candidate.exists():
+                llama_server_binary = candidate
+                uses_serve_subcommand = False
+            else:
+                candidate = server_dir / "llama"
+                if candidate.exists():
+                    llama_server_binary = candidate
+                    uses_serve_subcommand = True
+    
+    # Fall back to global auto-detection if no specific directory configured or binary not found
+    if llama_server_binary is None:
+        from config import LLAMA_SERVER, LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
+        llama_server_binary = config.LLAMA_SERVER
+        uses_serve_subcommand = LLAMA_SERVER_USES_SERVE
+        llama_cpp_platform = LLAMA_SERVER_TYPE or "auto"
+    
+    # Determine binary type for bind host logic
+    is_windows_binary = llama_cpp_platform == "windows"
+    is_linux_binary = llama_cpp_platform == "linux"
     
     # Determine bind host: in WSL+Windows binary mode, bind to 0.0.0.0 so Windows host
     # accepts connections from WSL. In all other cases, use the configured default.
@@ -650,7 +695,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if uses_serve_subcommand:
         # Linux llama binary uses "llama serve" subcommand (old llama.cpp)
         cmd: list[str] = [
-            str(config.LLAMA_SERVER),
+            str(llama_server_binary),
             "serve",
             "-m",
             convert_path_for_binary(model_path),
@@ -671,7 +716,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     else:
         # Windows llama-server.exe or Linux llama-server (new SYCL version)
         cmd: list[str] = [
-            str(config.LLAMA_SERVER),
+            str(llama_server_binary),
             "-m",
             convert_path_for_binary(model_path),
             "--alias",
