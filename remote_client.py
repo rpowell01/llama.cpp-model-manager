@@ -157,7 +157,6 @@ class Model:
     mnemonic_proxy_config_override: Optional[Dict[str, Any]] = None
     mnemonic_proxy_mcp_enabled: bool = False
     mnemonic_proxy_mcp_port: int = 8133
-    mnemonic_proxy_base_slot_auto: bool = False
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Model":
@@ -268,7 +267,6 @@ class Model:
             mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override"),
             mnemonic_proxy_mcp_enabled=data.get("mnemonic_proxy", {}).get("mcp_enabled", False),
             mnemonic_proxy_mcp_port=data.get("mnemonic_proxy", {}).get("mcp_port", 8133),
-            mnemonic_proxy_base_slot_auto=data.get("mnemonic_proxy", {}).get("base_slot_auto", False),
         )
 
 

@@ -563,7 +563,6 @@ def api_start():
                 tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
                 mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
                 mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
-                base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
                 
                 # Get mnemonic_proxy nested config and merge with config_override
                 mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
@@ -635,7 +634,6 @@ def api_start():
                     config_override=config_override,
                     mcp_enabled=mcp_enabled,
                     mcp_port=mcp_port,
-                    base_slot_auto=base_slot_auto,
                 )
                 
                 proxy_started = proxy_manager.start()
@@ -654,25 +652,6 @@ def api_start():
                         else:
                             add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
                             log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
-                    
-                    # Auto-load base slot if enabled
-                    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
-                    if base_slot_auto:
-                        log.info(f"Base slot automation enabled for {model}, checking for base slot...")
-                        base_slot = proxy_manager.get_base_slot()
-                        if base_slot:
-                            log.info(f"Base slot found for {model}: {base_slot.get('conversation_id')}, recalling...")
-                            add_log_entry(f"🔄 Auto-recalling base slot for {model}: {base_slot.get('conversation_id')}", "blue")
-                            recalled = proxy_manager.recall_base_slot()
-                            if recalled:
-                                add_log_entry(f"✓ Base slot recalled for {model}", "green")
-                                log.info(f"Base slot recalled successfully for {model}")
-                            else:
-                                add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
-                                log.warning(f"Failed to recall base slot for {model}")
-                        else:
-                            log.info(f"No base slot found for {model}, will prompt user to save first conversation")
-                            add_log_entry(f"ℹ No base slot set for {model} - start a conversation and use 'Save as Base Slot' in model properties", "blue")
                 else:
                     add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
                     log.warning(f"mnemonic-proxy failed to start for {model} on port {proxy_port}")
@@ -806,7 +785,6 @@ def api_proxy_start(model):
     tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
     mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
     mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
-    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
     
     # Get mnemonic_proxy nested config and merge with config_override
     mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
@@ -905,7 +883,6 @@ def api_proxy_start(model):
         config_override=config_override,
         mcp_enabled=mcp_enabled,
         mcp_port=mcp_port,
-        base_slot_auto=base_slot_auto,
     )
     
     success = proxy_manager.start()
@@ -924,26 +901,6 @@ def api_proxy_start(model):
                 add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
                 log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
         
-        # Auto-load base slot if enabled
-        base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
-        if base_slot_auto:
-            log.info(f"Base slot automation enabled for {model}, checking for base slot...")
-            base_slot = proxy_manager.get_base_slot()
-            if base_slot:
-                log.info(f"Base slot found for {model}: {base_slot.get('conversation_id')}, recalling...")
-                add_log_entry(f"🔄 Auto-recalling base slot for {model}: {base_slot.get('conversation_id')}", "blue")
-                recalled = proxy_manager.recall_base_slot()
-                if recalled:
-                    add_log_entry(f"✓ Base slot recalled for {model}", "green")
-                    log.info(f"Base slot recalled successfully for {model}")
-                else:
-                    add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
-                    log.warning(f"Failed to recall base slot for {model}")
-            else:
-                log.info(f"No base slot found for {model}, will prompt user to save first conversation")
-                add_log_entry(f"ℹ No base slot set for {model} - start a conversation and use 'Save as Base Slot' in model properties", "blue")
-        
-        return jsonify({"status": "started", "model": model, "proxy_port": proxy_port})
     else:
         add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
         return jsonify({"error": "Failed to start mnemonic-proxy", "model": model}), 500
@@ -1362,112 +1319,6 @@ def api_proxy_mcp_status(model):
 # Mnemonic Proxy Base Slot API Endpoints
 # ──────────────────────────────────────────────────────────────────────────────
 
-@lifecycle_bp.route("/api/proxy/base-slot/save/<model>", methods=["POST"])
-def api_proxy_base_slot_save(model):
-    """Save current conversation as base slot (for system prompt persistence)."""
-    model = model.strip()
-    if not model:
-        return jsonify({"error": "Missing model name"}), 400
-    
-    data = request.get_json(force=True) or {}
-    conversation_id = data.get("conversation_id", "").strip()
-    if not conversation_id:
-        return jsonify({"error": "Missing conversation_id"}), 400
-    
-    proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    success = proxy_manager.save_base_slot(conversation_id)
-    if success:
-        add_log_entry(f"💾 Base slot saved for {model}: {conversation_id}", "green")
-        return jsonify({"status": "saved", "model": model, "conversation_id": conversation_id})
-    else:
-        add_log_entry(f"⚠ Failed to save base slot for {model}", "orange")
-        return jsonify({"error": "Failed to save base slot", "model": model}), 500
-
-
-@lifecycle_bp.route("/api/proxy/base-slot/get/<model>", methods=["GET"])
-def api_proxy_base_slot_get(model):
-    """Get base slot information for a model."""
-    model = model.strip()
-    if not model:
-        return jsonify({"error": "Missing model name"}), 400
-    
-    proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    base_slot = proxy_manager.get_base_slot()
-    return jsonify({"model": model, "base_slot": base_slot})
-
-
-@lifecycle_bp.route("/api/proxy/base-slot/recall/<model>", methods=["POST"])
-def api_proxy_base_slot_recall(model):
-    """Recall the base slot conversation (load system prompt into context)."""
-    model = model.strip()
-    if not model:
-        return jsonify({"error": "Missing model name"}), 400
-    
-    proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    success = proxy_manager.recall_base_slot()
-    if success:
-        add_log_entry(f"🔄 Base slot recalled for {model}", "green")
-        return jsonify({"status": "recalled", "model": model})
-    else:
-        add_log_entry(f"⚠ Failed to recall base slot for {model}", "orange")
-        return jsonify({"error": "Failed to recall base slot", "model": model}), 500
-
-
-@lifecycle_bp.route("/api/proxy/base-slot/clear/<model>", methods=["POST"])
-def api_proxy_base_slot_clear(model):
-    """Clear the base slot for a model."""
-    model = model.strip()
-    if not model:
-        return jsonify({"error": "Missing model name"}), 400
-    
-    # Get model config to create proxy manager if not running
-    registry = g.registry
-    models = registry.list_models()
-    model_dict = None
-    for m in models:
-        if m.name == model:
-            model_dict = m
-            break
-    if not model_dict:
-        return jsonify({"error": f"Unknown model '{model}'"}), 404
-    
-    # Get proxy config from model
-    llama_port = int(model_dict.port)
-    proxy_port = getattr(model_dict, 'mnemonic_proxy_port', 8096)
-    data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
-    slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
-    tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
-    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
-    mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
-    mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
-    base_slot_auto = getattr(model_dict, 'mnemonic_proxy_base_slot_auto', False)
-    
-    # Get or create proxy manager (create if not running)
-    proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        proxy_manager = create_proxy_manager(
-            model_name=model,
-            llama_port=llama_port,
-            proxy_port=proxy_port,
-            data_dir=data_dir,
-            slot_dir=slot_dir,
-            tokenizer_path=tokenizer_path,
-            config_override=config_override,
-            mcp_enabled=mcp_enabled,
-            mcp_port=mcp_port,
-            base_slot_auto=base_slot_auto,
-        )
-    
-    success = proxy_manager.clear_base_slot()
     if success:
         add_log_entry(f"🗑 Base slot cleared for {model}", "blue")
         return jsonify({"status": "cleared", "model": model})

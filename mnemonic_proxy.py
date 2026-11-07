@@ -16,6 +16,12 @@ Requirements:
 
 from __future__ import annotations
 
+# Import zstd shim first to provide compression.zstd for kvarchive on Python < 3.14
+try:
+    import compression_zstd_shim  # noqa: F401
+except ImportError:
+    pass  # Shim not available, kvarchive will use metadata_only mode
+
 import json
 import logging
 import os
@@ -85,7 +91,6 @@ class MnemonicProxyManager:
         config_override: Optional[dict] = None,
         mcp_enabled: bool = False,
         mcp_port: int = 8133,
-        base_slot_auto: bool = False,
     ):
         """
         Initialize the MnemonicProxyManager.
@@ -100,7 +105,6 @@ class MnemonicProxyManager:
             config_override: Optional config overrides for mnemonic-proxy
             mcp_enabled: Whether to enable MCP server (default False)
             mcp_port: Port for MCP server (default 8133)
-            base_slot_auto: Whether to automatically save base slot after first request
         """
         _validate_local_mode()
         
@@ -113,11 +117,18 @@ class MnemonicProxyManager:
         self.config_override = config_override or {
             "mask_anchor": True,
             "autosave": True,
-            "window_estimate_slack": 0.15
+            "window_estimate_slack": 0.15,
+            # Cold archive (kv_archive) - requires Python >= 3.14 or zstandard package
+            # "kv_archive": True,
+            # "kv_archive_idle_s": 600,
+            # "kv_archive_min_age_s": 1800,
+            # "kv_archive_level": 3,
+            # "kv_archive_threads": 4,
+            # "kv_archive_poll_s": 60,
+            # "kv_archive_min_bytes": 67108864,  # 64 MB
         }
         self.mcp_enabled = mcp_enabled
         self.mcp_port = mcp_port
-        self.base_slot_auto = base_slot_auto
         
         # Process tracking
         self._pid: Optional[int] = None
@@ -130,10 +141,6 @@ class MnemonicProxyManager:
         self._mcp_process: Optional[subprocess.Popen] = None
         self._mcp_lock = threading.Lock()
         self._mcp_start_time: Optional[float] = None
-        
-        # Base slot auto-save monitoring
-        self._base_slot_monitor_thread: Optional[threading.Thread] = None
-        self._base_slot_monitor_stop = threading.Event()
         
         # Ensure data directory exists
         self._ensure_data_dir()
@@ -327,11 +334,6 @@ class MnemonicProxyManager:
         if self.config_override:
             config.update(self.config_override)
         
-        # Enable auto_recall when base_slot_auto is enabled so new conversations
-        # automatically recall from the base conversation (system prompt)
-        if self.base_slot_auto:
-            config["auto_recall"] = True
-        
         # MCP server config
         if self.mcp_enabled:
             config["mcp_port"] = self.mcp_port
@@ -397,9 +399,6 @@ class MnemonicProxyManager:
                 # Wait a moment and verify it's up (proxy may need 2-3 seconds to fully start)
                 time.sleep(3.0)
                 if self.is_running():
-                    # Start base slot auto-save monitor if enabled and no base slot exists
-                    if self.base_slot_auto and not self.get_base_slot():
-                        self._start_base_slot_monitor()
                     return True
                 else:
                     log.error(f"mnemonic-proxy for {self.model_name} failed to start")
@@ -485,9 +484,6 @@ class MnemonicProxyManager:
     
     def _cleanup(self) -> None:
         """Clean up process references and reap child process."""
-        # Stop base slot monitor
-        self._stop_base_slot_monitor()
-        
         # Reap the child process to prevent zombies
         if self._process:
             try:
@@ -549,89 +545,6 @@ class MnemonicProxyManager:
         except Exception:
             return False
     
-    def _start_base_slot_monitor(self) -> None:
-        """Start background thread to monitor journal for first request and auto-save base slot."""
-        if self._base_slot_monitor_thread and self._base_slot_monitor_thread.is_alive():
-            return
-        
-        self._base_slot_monitor_stop.clear()
-        self._base_slot_monitor_thread = threading.Thread(
-            target=self._base_slot_monitor_loop,
-            daemon=True,
-            name=f"base-slot-monitor-{self.model_name}"
-        )
-        self._base_slot_monitor_thread.start()
-        log.info(f"Started base slot auto-save monitor for {self.model_name}")
-    
-    def _stop_base_slot_monitor(self) -> None:
-        """Stop the base slot auto-save monitor thread."""
-        self._base_slot_monitor_stop.set()
-        if self._base_slot_monitor_thread and self._base_slot_monitor_thread.is_alive():
-            self._base_slot_monitor_thread.join(timeout=5.0)
-            log.info(f"Stopped base slot auto-save monitor for {self.model_name}")
-    
-    def _base_slot_monitor_loop(self) -> None:
-        """
-        Monitor the proxy's journal for the first request event.
-        When detected and no base slot exists, save the current conversation as base slot.
-        Only considers events that occurred after the proxy started (to avoid old events from previous sessions).
-        """
-        log.debug(f"Base slot monitor started for {self.model_name}")
-        
-        # Wait a bit for proxy to fully initialize
-        time.sleep(2.0)
-        
-        # Get the proxy start time to filter out old journal events
-        proxy_start_time = self._start_time or time.time()
-        
-        while not self._base_slot_monitor_stop.is_set():
-            try:
-                # Check if base slot already exists (might have been created by another call)
-                if self.get_base_slot():
-                    log.info(f"Base slot already exists for {self.model_name}, stopping monitor")
-                    break
-                
-                # Fetch journal from proxy
-                resp = requests.get(
-                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/journal",
-                    timeout=10.0,
-                    headers={"Accept": "application/json"}
-                )
-                
-                if resp.status_code == 200:
-                    journal_data = resp.json()
-                    events = journal_data.get("events", [])
-                    
-                    # Look for the first "request" event AFTER proxy started
-                    for event in events:
-                        if event.get("event") == "request":
-                            event_ts = event.get("ts", 0)
-                            # Only consider events that happened after proxy started
-                            if event_ts >= proxy_start_time:
-                                # Verify request actually completed (has prompt_tokens > 0)
-                                prompt_tokens = event.get("prompt_tokens", 0)
-                                if prompt_tokens > 0:
-                                    # First request completed in this session - save as base slot
-                                    conv_id = event.get("conv")
-                                    if conv_id:
-                                        log.info(f"First request completed for {self.model_name} (conv={conv_id}, tokens={prompt_tokens}), auto-saving base slot")
-                                        self.save_base_slot(conv_id)
-                                        break
-                                else:
-                                    log.debug(f"Skipping request event without prompt_tokens for {self.model_name}")
-                    
-                    # If we saved, the get_base_slot() check at the top will exit the loop
-                
-            except requests.exceptions.Timeout:
-                log.debug(f"Journal fetch timeout for {self.model_name}")
-            except Exception as e:
-                log.debug(f"Base slot monitor error for {self.model_name}: {e}")
-            
-            # Check every 2 seconds
-            self._base_slot_monitor_stop.wait(2.0)
-        
-        log.debug(f"Base slot monitor stopped for {self.model_name}")
-    
     def get_status(self) -> dict[str, Any]:
         """
         Get detailed status of the mnemonic-proxy.
@@ -670,197 +583,6 @@ class MnemonicProxyManager:
                 pass
         
         return status
-    
-    # ==================== Base Slot Management ====================
-    
-    def _get_base_slot_path(self) -> Path:
-        """Get the path to the base slot marker file."""
-        data_dir = self._resolve_data_dir()
-        return data_dir / "base_slot.json"
-    
-    def save_base_slot(self, conversation_id: str) -> bool:
-        """
-        Save a conversation as the base slot (for system prompt persistence).
-        
-        This creates the marker file AND triggers the engine to save the KV cache
-        for the current conversation via the llama-server /slots/save endpoint.
-        
-        Args:
-            conversation_id: ID of the conversation to save as base slot
-            
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        try:
-            base_slot_data = {
-                "conversation_id": conversation_id,
-                "created_at": time.time(),
-                "model_name": self.model_name,
-            }
-            base_slot_path = self._get_base_slot_path()
-            with open(base_slot_path, "w") as f:
-                json.dump(base_slot_data, f, indent=2)
-            log.info(f"Saved base slot for {self.model_name}: conversation {conversation_id}")
-            
-            # Also trigger the engine to save the KV cache (slot) for this conversation
-            # This calls the llama-server /slots/0?action=save endpoint DIRECTLY (not via proxy)
-            # The llama-server requires a filename parameter in the JSON body
-            # Large KV caches (30k+ tokens) can take 60+ seconds to save, so use a longer timeout
-            try:
-                resp = requests.post(
-                    f"http://127.0.0.1:{self.llama_port}/slots/0?action=save",
-                    json={"filename": f"base_slot_{conversation_id}.bin"},
-                    timeout=120.0
-                )
-                if resp.status_code == 200:
-                    log.info(f"Engine slot saved for base slot: {conversation_id}")
-                else:
-                    log.warning(f"Engine slot save returned {resp.status_code}: {resp.text}")
-            except requests.exceptions.Timeout:
-                log.warning(f"Engine slot save timed out (120s) for base slot: {conversation_id} - save may still complete in background")
-            except Exception as e:
-                log.warning(f"Failed to trigger engine slot save for base slot: {e}")
-            
-            return True
-        except Exception as e:
-            log.error(f"Failed to save base slot for {self.model_name}: {e}")
-            return False
-    
-    def get_base_slot(self) -> Optional[dict]:
-        """
-        Get the base slot information.
-        
-        Returns:
-            Dictionary with base slot info or None if not set
-        """
-        try:
-            base_slot_path = self._get_base_slot_path()
-            if base_slot_path.exists():
-                with open(base_slot_path, "r") as f:
-                    return json.load(f)
-        except Exception as e:
-            log.error(f"Failed to read base slot for {self.model_name}: {e}")
-        return None
-    
-    def clear_base_slot(self) -> bool:
-        """
-        Clear the base slot.
-        
-        This removes the marker file AND the saved KV cache slot file(s).
-        
-        Returns:
-            True if cleared successfully, False otherwise
-        """
-        try:
-            base_slot_path = self._get_base_slot_path()
-            data_dir = self._resolve_data_dir()
-            
-            # Delete the marker file
-            if base_slot_path.exists():
-                base_slot_path.unlink()
-                log.info(f"Cleared base slot marker for {self.model_name}")
-            
-            # Delete any base_slot_*.bin files in the data directory (where llama.cpp saves them)
-            # Use glob to catch all variants regardless of conversation_id mismatches
-            for slot_file in data_dir.glob("base_slot_*.bin"):
-                try:
-                    slot_file.unlink()
-                    log.info(f"Deleted base slot KV cache file: {slot_file}")
-                except Exception as e:
-                    log.warning(f"Failed to delete {slot_file}: {e}")
-            
-            # Also check slot_dir if different from data_dir (fallback)
-            slot_dir = self.slot_dir
-            if not slot_dir:
-                model_config = self._get_model_config() or {}
-                slot_dir = model_config.get("slot_save_path", "")
-            if slot_dir:
-                slot_dir_path = Path(slot_dir)
-                if slot_dir_path != data_dir:
-                    for slot_file in slot_dir_path.glob("base_slot_*.bin"):
-                        try:
-                            slot_file.unlink()
-                            log.info(f"Deleted base slot KV cache file from slot_dir: {slot_file}")
-                        except Exception as e:
-                            log.warning(f"Failed to delete {slot_file}: {e}")
-            
-            return True
-        except Exception as e:
-            log.error(f"Failed to clear base slot for {self.model_name}: {e}")
-            return False
-    
-    def recall_base_slot(self) -> bool:
-        """
-        Recall the base slot conversation (load system prompt into context).
-        
-        This uses the proxy's recall mechanism to load the base conversation
-        AND restores the KV cache from the saved slot file.
-        
-        Returns:
-            True if recall initiated successfully, False otherwise
-        """
-        base_slot = self.get_base_slot()
-        if not base_slot:
-            log.warning(f"No base slot set for {self.model_name}")
-            return False
-        
-        conversation_id = base_slot.get("conversation_id")
-        if not conversation_id:
-            return False
-        
-        try:
-            # First, restore the KV cache from the saved slot file via llama-server
-            slot_dir = self.slot_dir
-            if not slot_dir:
-                model_config = self._get_model_config() or {}
-                slot_dir = model_config.get("slot_save_path", "")
-            if slot_dir:
-                slot_path = Path(slot_dir) / f"base_slot_{conversation_id}.bin"
-                if slot_path.exists():
-                    try:
-                        resp = requests.post(
-                            f"http://127.0.0.1:{self.llama_port}/slots/0?action=restore",
-                            json={"filename": f"base_slot_{conversation_id}.bin"},
-                            timeout=120.0
-                        )
-                        if resp.status_code == 200:
-                            log.info(f"Restored KV cache for base slot: {conversation_id}")
-                        else:
-                            log.warning(f"KV cache restore returned {resp.status_code}: {resp.text}")
-                    except requests.exceptions.Timeout:
-                        log.warning(f"KV cache restore timed out (120s) for base slot: {conversation_id} - restore may still complete in background")
-                    except Exception as e:
-                        log.warning(f"Failed to restore KV cache for base slot: {e}")
-                else:
-                    log.warning(f"Base slot KV cache file not found: {slot_path}")
-            
-            # Also activate the conversation in the proxy's strata layer so subsequent
-            # requests continue this conversation instead of creating a new one.
-            # This ensures the prompt cache can match the restored system prompt.
-            try:
-                resp = requests.get(
-                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/conversations/{conversation_id}",
-                    timeout=10.0
-                )
-                if resp.status_code == 200:
-                    log.info(f"Activated base conversation in proxy strata: {conversation_id}")
-                else:
-                    log.warning(f"Failed to activate base conversation in proxy: {resp.status_code}")
-            except Exception as e:
-                log.warning(f"Failed to activate base conversation in proxy: {e}")
-            
-            # The mnemonic-proxy recall mechanism (recall_struct, recall_flex, recall_multi)
-            # automatically enables recall for child conversations branching from a sealed
-            # parent. By activating the base conversation in strata, new requests will
-            # inherit from it via auto_recall. No separate seal API call needed (the seal
-            # endpoint is not available in v0.3.24, and the base conversation was not
-            # previously sealed in the archive).
-            
-            log.info(f"Recalled base slot for {self.model_name}: {conversation_id} (KV cache + strata context activated)")
-            return True
-        except Exception as e:
-            log.error(f"Failed to recall base slot for {self.model_name}: {e}")
-            return False
     
     def get_logs(self, lines: int = 100) -> list[str]:
         """
@@ -1131,7 +853,6 @@ def create_proxy_manager(
     config_override: Optional[dict] = None,
     mcp_enabled: bool = False,
     mcp_port: int = 8133,
-    base_slot_auto: bool = False,
 ) -> MnemonicProxyManager:
     """Create or get a proxy manager for a model."""
     with _proxy_managers_lock:
@@ -1146,7 +867,6 @@ def create_proxy_manager(
                 config_override=config_override,
                 mcp_enabled=mcp_enabled,
                 mcp_port=mcp_port,
-                base_slot_auto=base_slot_auto,
             )
         return _proxy_managers[model_name]
 
