@@ -1619,7 +1619,7 @@
     "spec_ngram_size_n": 12,
     "spec_ngram_size_m": 48,
     "spec_ngram_min_hits": 1,
-    "warmup_enabled": false,
+    "warmup_enabled": true,
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
     "cache_reuse": 32768,
@@ -1634,21 +1634,7 @@
       "data_dir": "./data/groot-19b-a3b-261023-q4-k-m",
       "slot_dir": "./data/groot-19b-a3b-261023-q4-k-m",
       "tokenizer_path": "",
-      "config_override": {
-        "autosave": true,
-        "autosave_idle_s": 60,
-        "autosave_min_tokens": 4096,
-        "engine_tokenize": true,
-        "keep_recent_tokens": 1600,
-        "mask_anchor": true,
-        "mask_target": 8000,
-        "mask_tool_args": true,
-        "mask_trigger": 14000,
-        "min_age_turns": 1,
-        "min_batch_tokens": 2000,
-        "slot_save": true,
-        "window_estimate_slack": 0.15
-      },
+      "config_override": {},
       "mcp_enabled": true,
       "mcp_port": 8831
     },
@@ -1658,8 +1644,8 @@
     "reasoning_preserve": true,
     "gpu_layers": 99,
     "device": "",
-    "cpu_moe": false,
-    "n_cpu_moe": 0,
+    "cpu_moe": true,
+    "n_cpu_moe": 32,
     "cache_type_k": "f16",
     "cache_type_v": "f16",
     "numa": true,
@@ -1695,7 +1681,7 @@
     "use_generation_params": false,
     "reasoning": "auto",
     "reasoning_effort": "default",
-    "llama_cpp_platform": "auto",
-    "llama_cpp_backend": "auto"
+    "llama_cpp_platform": "windows",
+    "llama_cpp_backend": "sycl"
   }
 }
