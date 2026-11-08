@@ -399,6 +399,17 @@ def api_start():
         with _start_timestamps_lock:
             _start_timestamps[model] = time.time()
 
+        # Ensure slot_save_path directory exists if configured
+        slot_save_path = meta.get("slot_save_path", "")
+        if slot_save_path:
+            try:
+                slot_path = Path(slot_save_path)
+                slot_path.mkdir(parents=True, exist_ok=True)
+                log.info(f"Ensured slot_save_path directory exists: {slot_path}")
+            except Exception as e:
+                log.warning(f"Failed to create slot_save_path directory '{slot_save_path}': {e}")
+                add_log_entry(f"Warning: Could not create slot_save_path directory: {e}", "yellow")
+
         # Build command
         cmd = build_cmd(model, port, meta)
         env = os.environ.copy()
