@@ -320,13 +320,32 @@
             <button type="submit" id="platform-backend-config-save" style="padding: 0.5rem 1rem; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Save changes</button>
           </div>
         </form>
+
+        <!-- Backend binary updater -->
+        <div id="platform-backend-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
+          <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Backend Binaries</h4>
+          <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
+            Download and install the latest llama.cpp builds for every platform/backend combination
+            into the directories configured above.
+          </p>
+          <div id="platform-backend-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
+          <div id="platform-backend-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
+            <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
+              <div id="platform-backend-update-progress-bar" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" id="platform-backend-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--green, #22c55e); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Backends</button>
+            <span id="platform-backend-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
+          </div>
+        </div>
       </div>
     </div>
 
 <script src="{{ url_for('static', filename='js/core.js') }}?v=20261105a"></script>
 <script src="{{ url_for('system.serve_state_js') }}?v=20261105a"></script>
 <script src="{{ url_for('static', filename='js/file-browser.js') }}?v=20261105a"></script>
-<script src="{{ url_for('static', filename='js/ui-controls.js') }}?v=20261105d"></script>
+<script src="{{ url_for('static', filename='js/ui-controls.js') }}?v=20261107a"></script>
 <script src="{{ url_for('static', filename='js/model-manager.js') }}?v=20261105a"></script>
 <script src="{{ url_for('static', filename='js/download-manager.js') }}?v=20261105a"></script>
 <script src="{{ url_for('static', filename='js/chat.js') }}?v=20261105a"></script>
@@ -919,6 +938,12 @@ const platformBackendConfigFields = document.getElementById('platform-backend-co
 const platformBackendConfigStatus = document.getElementById('platform-backend-config-status');
 const platformBackendConfigClose = document.getElementById('platform-backend-config-modal-close');
 const platformBackendConfigRefresh = document.getElementById('platform-backend-config-refresh');
+const platformBackendUpdateBtn = document.getElementById('platform-backend-update-btn');
+const platformBackendUpdateStatus = document.getElementById('platform-backend-update-status');
+const platformBackendUpdateProgressWrap = document.getElementById('platform-backend-update-progress-wrap');
+const platformBackendUpdateProgressBar = document.getElementById('platform-backend-update-progress-bar');
+const platformBackendUpdateTag = document.getElementById('platform-backend-update-tag');
+let platformBackendUpdatePoll = null;
 
 const PLATFORM_BACKEND_COMBINATIONS = [
   "windows-vulkan",
@@ -945,7 +970,7 @@ async function fetchPlatformBackendConfig() {
 
 function populatePlatformBackendConfig(config) {
   if (!platformBackendConfigFields) return;
-  
+
   // Generate form fields for each combination
   let html = '';
   PLATFORM_BACKEND_COMBINATIONS.forEach((combo) => {
@@ -958,7 +983,7 @@ function populatePlatformBackendConfig(config) {
           ${displayName}
         </label>
         <div style="display: flex; gap: 0.25rem; align-items: center;">
-          <input type="text" class="platform-backend-dir-input" data-combo="${combo}" 
+          <input type="text" class="platform-backend-dir-input" data-combo="${combo}"
                  value="${value}" placeholder="e.g. C:/llama.cpp/bin or /home/user/llama.cpp/bin"
                  style="flex: 1; padding: 0.4rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
           <button type="button" class="browse-btn" data-field="${combo}" data-browse-type="directory" style="padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--bg-primary); color: var(--fg-primary); cursor: pointer;">📁</button>
@@ -967,10 +992,10 @@ function populatePlatformBackendConfig(config) {
     `;
   });
   platformBackendConfigFields.innerHTML = html;
-  
+
   // Initialize browse buttons for the new fields
   initBrowseButtons(platformBackendConfigFields);
-  
+
   setPlatformBackendConfigStatus('Loaded platform/backend configuration.', 'success');
   setTimeout(() => setPlatformBackendConfigStatus(''), 2000);
 }
@@ -1022,9 +1047,154 @@ if (platformBackendConfigForm) {
 ModalManager.register('platform-backend-config-modal', () => {
   if (platformBackendConfigForm) platformBackendConfigForm.reset();
   if (platformBackendConfigStatus) platformBackendConfigStatus.textContent = '';
+  // Stop polling while the modal is closed; the update itself keeps running and
+  // polling resumes the next time the modal is opened.
+  stopPlatformBackendUpdatePolling();
 });
 
 window.openPlatformBackendConfigModal = openPlatformBackendConfigModal;
+
+// ──────────────────────────────────────────────────────────────
+// Backend binary updater (downloads + extracts latest builds)
+// ──────────────────────────────────────────────────────────────
+
+function setPlatformBackendUpdateStatus(message, type = 'info') {
+  if (!platformBackendUpdateStatus) return;
+  platformBackendUpdateStatus.textContent = message;
+  platformBackendUpdateStatus.style.color =
+    type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--text2)';
+}
+
+function setPlatformBackendUpdateProgress(percent) {
+  if (!platformBackendUpdateProgressBar) return;
+  platformBackendUpdateProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  if (platformBackendUpdateProgressWrap) {
+    platformBackendUpdateProgressWrap.style.display = percent > 0 && percent < 100 ? 'block' : 'none';
+  }
+}
+
+async function fetchLatestLlamaRelease() {
+  const resp = await fetch('/api/llama-latest-release', { method: 'GET' });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data.tag;
+}
+
+function stopPlatformBackendUpdatePolling() {
+  if (platformBackendUpdatePoll) {
+    clearInterval(platformBackendUpdatePoll);
+    platformBackendUpdatePoll = null;
+  }
+}
+
+async function pollPlatformBackendUpdateStatus() {
+  try {
+    const resp = await fetch('/api/llama-update-status', { method: 'GET' });
+    const data = await resp.json();
+    if (data.running) {
+      setPlatformBackendUpdateProgress(data.progress || 0);
+      setPlatformBackendUpdateStatus(data.message || 'Updating…');
+      return;
+    }
+
+    // Finished
+    stopPlatformBackendUpdatePolling();
+    setPlatformBackendUpdateProgress(100);
+    if (platformBackendUpdateBtn) {
+      platformBackendUpdateBtn.disabled = false;
+      platformBackendUpdateBtn.textContent = '⬇ Update Backends';
+    }
+
+    const result = data.result || {};
+    if (result.success) {
+      const combos = (result.updated_combinations || []).join(', ');
+      setPlatformBackendUpdateStatus(
+        `Updated to ${result.tag || 'latest'} (${combos || 'no changes'})`, 'success'
+      );
+      // Reload the directory fields so the new paths show up
+      const config = await fetchPlatformBackendConfig();
+      populatePlatformBackendConfig(config);
+    } else {
+      const errors = (result.errors || []).join('; ');
+      setPlatformBackendUpdateStatus(`Update failed: ${errors || 'unknown error'}`, 'error');
+    }
+  } catch (e) {
+    stopPlatformBackendUpdatePolling();
+    setPlatformBackendUpdateStatus('Failed to check update status: ' + e.message, 'error');
+    if (platformBackendUpdateBtn) {
+      platformBackendUpdateBtn.disabled = false;
+      platformBackendUpdateBtn.textContent = '⬇ Update Backends';
+    }
+  }
+}
+
+async function startPlatformBackendUpdate() {
+  if (platformBackendUpdateBtn) {
+    platformBackendUpdateBtn.disabled = true;
+    platformBackendUpdateBtn.textContent = 'Updating…';
+  }
+  setPlatformBackendUpdateProgress(0);
+  setPlatformBackendUpdateStatus('Starting update…');
+
+  try {
+    // Show which nightly build will be used (latest is resolved server-side)
+    try {
+      const tag = await fetchLatestLlamaRelease();
+      if (platformBackendUpdateTag) platformBackendUpdateTag.textContent = `latest nightly: ${tag}`;
+    } catch (e) {
+      if (platformBackendUpdateTag) platformBackendUpdateTag.textContent = '';
+    }
+
+    const resp = await fetch('/api/llama-update-backends', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+
+    setPlatformBackendUpdateStatus('Downloading and extracting builds…');
+    stopPlatformBackendUpdatePolling();
+    platformBackendUpdatePoll = setInterval(pollPlatformBackendUpdateStatus, 1000);
+  } catch (e) {
+    setPlatformBackendUpdateStatus('Failed to start update: ' + e.message, 'error');
+    if (platformBackendUpdateBtn) {
+      platformBackendUpdateBtn.disabled = false;
+      platformBackendUpdateBtn.textContent = '⬇ Update Backends';
+    }
+  }
+}
+
+if (platformBackendUpdateBtn) {
+  platformBackendUpdateBtn.addEventListener('click', startPlatformBackendUpdate);
+}
+
+// Show the latest nightly tag when the modal opens, and resume polling if an
+// update is already running (e.g. the modal was closed mid-update).
+const _origOpenPlatformBackendConfigModal = openPlatformBackendConfigModal;
+openPlatformBackendConfigModal = async function () {
+  await _origOpenPlatformBackendConfigModal();
+  if (platformBackendUpdateTag && !platformBackendUpdateTag.textContent) {
+    try {
+      const tag = await fetchLatestLlamaRelease();
+      platformBackendUpdateTag.textContent = `latest nightly: ${tag}`;
+    } catch (e) { /* ignore - tag display is informational */ }
+  }
+  try {
+    const resp = await fetch('/api/llama-update-status', { method: 'GET' });
+    const data = await resp.json();
+    if (data.running) {
+      setPlatformBackendUpdateProgress(data.progress || 0);
+      setPlatformBackendUpdateStatus(data.message || 'Updating…');
+      if (platformBackendUpdateBtn) {
+        platformBackendUpdateBtn.disabled = true;
+        platformBackendUpdateBtn.textContent = 'Updating…';
+      }
+      stopPlatformBackendUpdatePolling();
+      platformBackendUpdatePoll = setInterval(pollPlatformBackendUpdateStatus, 1000);
+    }
+  } catch (e) { /* ignore */ }
+};
 
 /**
  * Agent Configuration Modal

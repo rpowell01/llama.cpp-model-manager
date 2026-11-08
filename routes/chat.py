@@ -154,6 +154,10 @@ def api_chat():
         if not _check_model_ready(port_int, model):
             return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
         
+        # Resolve the model's platform so WSL+Windows models use the right host set
+        model_platform = getattr(model_obj, 'llama_cpp_platform', 'auto') or "auto"
+        _is_wsl_windows_model = WSL and model_platform == "windows"
+
         # Check if mnemonic-proxy is enabled for this model
         mnemonic_proxy_enabled = getattr(model_obj, 'mnemonic_proxy_enabled', False)
         proxy_port = getattr(model_obj, 'mnemonic_proxy_port', 8096) if mnemonic_proxy_enabled else None
@@ -162,7 +166,7 @@ def api_chat():
         if mnemonic_proxy_enabled and proxy_port:
             # Route through mnemonic-proxy for strata context management
             hosts_to_try = []
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            if _is_wsl_windows_model:
                 wsl_host = get_server_host()
                 if wsl_host and wsl_host != "127.0.0.1":
                     hosts_to_try.append(wsl_host)
@@ -190,7 +194,7 @@ def api_chat():
         if not mnemonic_proxy_enabled:
             # Fallback: direct to llama-server
             hosts_to_try = []
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            if _is_wsl_windows_model:
                 wsl_host = get_server_host()
                 if wsl_host and wsl_host != "127.0.0.1":
                     hosts_to_try.append(wsl_host)

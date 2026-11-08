@@ -498,6 +498,96 @@ function updateTilePrefs(changes) {
  * @param {Object} data - Model data row
  * @param {string} modelName - Model name
  */
+/**
+ * Initialize browse button event handlers
+ * @param {HTMLElement} container - Container element to search for browse buttons
+ */
+function initBrowseButtons(container) {
+  container.querySelectorAll(".browse-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const field = btn.dataset.field;
+      const browseType = btn.dataset.browseType;
+      const input = container.querySelector(`.meta-input[data-field="${field}"]`);
+      
+      if (!input) return;
+      
+      try {
+        let result;
+        
+        // Try Electron API first (for Electron apps) - returns full paths
+        if (window.electronAPI && typeof window.electronAPI.selectDirectory === 'function') {
+          if (browseType === "directory") {
+            result = await window.electronAPI.selectDirectory();
+          } else if (browseType === "file") {
+            result = await window.electronAPI.selectFile({ filters: [{ name: "All Files", extensions: ["*"] }] });
+          } else if (browseType === "model-file") {
+            result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
+          }
+          
+          if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+            input.value = result.filePaths[0];
+          }
+        } 
+        // Use custom File Browser module for File System Access API
+        // This maintains an in-memory path stack to return full paths
+        else if ('showDirectoryPicker' in window) {
+          if (window.FileBrowser && typeof window.FileBrowser.openWithStartPath === 'function') {
+            // Use current input value as start path hint (may contain full path like C:/folder)
+            const startPath = input.value || undefined;
+            window.FileBrowser.openWithStartPath({
+              type: browseType,
+              startPath: startPath,
+              onSelect: (fullPath, entry) => {
+                input.value = fullPath;
+                // Trigger change event so any listeners know the value changed
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            });
+          } else {
+            // Fallback if FileBrowser module not loaded
+            console.warn('FileBrowser module not available, falling back to native picker');
+            if (browseType === "directory" && 'showDirectoryPicker' in window) {
+              const dirHandle = await window.showDirectoryPicker();
+              result = { canceled: false, filePaths: [dirHandle.name] };
+            } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
+              const options = browseType === "model-file" 
+                ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
+                : { types: [{ description: "All Files", accept: { "*/*": ["*"] } }] };
+              const fileHandles = await window.showOpenFilePicker(options);
+              if (fileHandles.length > 0) {
+                const file = await fileHandles[0].getFile();
+                result = { canceled: false, filePaths: [file.name] };
+              }
+            }
+            
+            if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+              input.value = result.filePaths[0];
+            }
+          }
+        }
+        // Last resort: prompt for manual path entry (user must enter full path)
+        else {
+          const message = browseType === "directory" 
+            ? "Enter full directory path:" 
+            : browseType === "model-file" 
+              ? "Enter full path to GGUF model file:" 
+              : "Enter full file path:";
+          const path = prompt(message, input.value);
+          if (path) {
+            result = { canceled: false, filePaths: [path] };
+            input.value = result.filePaths[0];
+          }
+        }
+      } catch (err) {
+        console.error("Browse error:", err);
+        logHtml('<b>Browse error:</b> ' + err, 'red');
+      }
+    });
+  });
+}
+
+window.initBrowseButtons = initBrowseButtons;
+
 async function renderPanelProperties(data, modelName) {
   const content = document.getElementById("panel-content");
   if (!content) return;
@@ -588,6 +678,7 @@ async function renderPanelProperties(data, modelName) {
      * @param {string} field - Field name
      * @param {string} value - Current value
      * @param {string} browseType - Type of browse: 'file', 'directory', 'model-file'
+     * @param {string} hint - Optional tooltip text shown on hover
      */
     const addEditableWithBrowse = (
       label,
@@ -618,94 +709,6 @@ async function renderPanelProperties(data, modelName) {
       </div>`;
     };
 
-    /**
-     * Initialize browse button event handlers
-     * @param {HTMLElement} container - Container element to search for browse buttons
-     */
-    function initBrowseButtons(container) {
-      container.querySelectorAll(".browse-btn").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const field = btn.dataset.field;
-          const browseType = btn.dataset.browseType;
-          const input = container.querySelector(`.meta-input[data-field="${field}"]`);
-          
-          if (!input) return;
-          
-          try {
-            let result;
-            
-            // Try Electron API first (for Electron apps) - returns full paths
-            if (window.electronAPI && typeof window.electronAPI.selectDirectory === 'function') {
-              if (browseType === "directory") {
-                result = await window.electronAPI.selectDirectory();
-              } else if (browseType === "file") {
-                result = await window.electronAPI.selectFile({ filters: [{ name: "All Files", extensions: ["*"] }] });
-              } else if (browseType === "model-file") {
-                result = await window.electronAPI.selectFile({ filters: [{ name: "GGUF Files", extensions: ["gguf"] }] });
-              }
-              
-              if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-                input.value = result.filePaths[0];
-              }
-            } 
-            // Use custom File Browser module for File System Access API
-            // This maintains an in-memory path stack to return full paths
-            else if ('showDirectoryPicker' in window) {
-              if (window.FileBrowser && typeof window.FileBrowser.openWithStartPath === 'function') {
-                // Use current input value as start path hint (may contain full path like C:/folder)
-                const startPath = input.value || undefined;
-                window.FileBrowser.openWithStartPath({
-                  type: browseType,
-                  startPath: startPath,
-                  onSelect: (fullPath, entry) => {
-                    input.value = fullPath;
-                    // Trigger change event so any listeners know the value changed
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                  }
-                });
-              } else {
-                // Fallback if FileBrowser module not loaded
-                console.warn('FileBrowser module not available, falling back to native picker');
-                if (browseType === "directory" && 'showDirectoryPicker' in window) {
-                  const dirHandle = await window.showDirectoryPicker();
-                  result = { canceled: false, filePaths: [dirHandle.name] };
-                } else if ((browseType === "file" || browseType === "model-file") && 'showOpenFilePicker' in window) {
-                  const options = browseType === "model-file" 
-                    ? { types: [{ description: "GGUF Files", accept: { "model/gguf": [".gguf"] } }] }
-                    : { types: [{ description: "All Files", accept: { "*/*": ["*"] } }] };
-                  const fileHandles = await window.showOpenFilePicker(options);
-                  if (fileHandles.length > 0) {
-                    const file = await fileHandles[0].getFile();
-                    result = { canceled: false, filePaths: [file.name] };
-                  }
-                }
-                
-                if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-                  input.value = result.filePaths[0];
-                }
-              }
-            }
-            // Last resort: prompt for manual path entry (user must enter full path)
-            else {
-              const message = browseType === "directory" 
-                ? "Enter full directory path:" 
-                : browseType === "model-file" 
-                  ? "Enter full path to GGUF model file:" 
-                  : "Enter full file path:";
-              const path = prompt(message, input.value);
-              if (path) {
-                result = { canceled: false, filePaths: [path] };
-                input.value = result.filePaths[0];
-              }
-            }
-          } catch (err) {
-            console.error("Browse error:", err);
-            logHtml('<b>Browse error:</b> ' + err, 'red');
-          }
-        });
-      });
-    }
-
     addItem("Model Name", modelName);
     addEditable("Port", "port", data.port, "number", 1, 0);
     // Reuse Port checkbox
@@ -734,7 +737,7 @@ async function renderPanelProperties(data, modelName) {
     
     // Log Verbosity
     addEditable("Log Verbosity", "log_verbosity", data.log_verbosity !== undefined ? data.log_verbosity : 3, "number", 1, 0);
-    
+
     // llama.cpp Platform dropdown
     const platformVal = data.llama_cpp_platform || "auto";
     let platformSelect = `<select class="meta-input" data-field="llama_cpp_platform">`;
@@ -747,7 +750,7 @@ async function renderPanelProperties(data, modelName) {
       <span class="label" title="Select llama.cpp platform (windows/linux) for this model">llama.cpp Platform</span>
       <span class="value">${platformSelect}</span>
     </div>`;
-    
+
     // llama.cpp Backend dropdown
     const backendVal = data.llama_cpp_backend || "auto";
     let backendSelect = `<select class="meta-input" data-field="llama_cpp_backend">`;
@@ -760,7 +763,7 @@ async function renderPanelProperties(data, modelName) {
       <span class="label" title="Select llama.cpp backend (vulkan/sycl/openvino/cpu) for this model">Backend</span>
       <span class="value">${backendSelect}</span>
     </div>`;
-    
+
     html += `</div></div>`;
 
   // Performance & Threading
@@ -1093,7 +1096,7 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     addEditable("Enable MCP Server", "mnemonic_proxy.mcp_enabled", mp.mcp_enabled !== undefined ? mp.mcp_enabled : false, "checkbox");
     addEditable("MCP Port", "mnemonic_proxy.mcp_port", mp.mcp_port !== undefined ? mp.mcp_port : 8133, "number", 1, 1);
-
+    
     html += `</div></div>`;
 
   // Agent/Tool Parameters

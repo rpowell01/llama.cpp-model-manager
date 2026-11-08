@@ -156,7 +156,7 @@ async function initBinaryPreference() {
   const binaryPrefRow = document.getElementById('binaryPrefRow');
   const binaryPrefSelect = document.getElementById('binaryPrefSelect');
   const binaryPrefStatus = document.getElementById('binaryPrefStatus');
-  
+
   if (!binaryPrefRow || !binaryPrefSelect) {
     return; // Not in WSL or elements not found
   }
@@ -167,11 +167,11 @@ async function initBinaryPreference() {
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
-    
+
     // Only show the binary preference row in WSL
     if (data.platform === 'wsl') {
       binaryPrefRow.style.display = 'block';
-      
+
       // Set the current value
       if (data.prefer_linux === null) {
         binaryPrefSelect.value = 'auto';
@@ -180,10 +180,10 @@ async function initBinaryPreference() {
       } else {
         binaryPrefSelect.value = 'windows';
       }
-      
+
       // Update status display
       updateBinaryPrefStatus(data);
-      
+
       // Add change listener
       binaryPrefSelect.addEventListener('change', async function() {
         const value = this.value;
@@ -191,35 +191,35 @@ async function initBinaryPreference() {
         if (value === 'linux') preferLinux = true;
         else if (value === 'windows') preferLinux = false;
         // 'auto' keeps preferLinux as null
-        
+
         binaryPrefStatus.textContent = 'Switching...';
         binaryPrefStatus.style.color = 'var(--yellow)';
-        
+
         try {
           const setResponse = await fetch('/api/binary-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prefer_linux: preferLinux })
           });
-          
+
           if (!setResponse.ok) {
             throw new Error(`HTTP ${setResponse.status}`);
           }
-          
+
           const setData = await setResponse.json();
           updateBinaryPrefStatus(setData);
-          
+
           // Show success message briefly
           binaryPrefStatus.textContent = setData.message || 'Binary preference updated';
           binaryPrefStatus.style.color = 'var(--green)';
-          
+
           // Refresh the model list to show updated binary info
           setTimeout(() => {
             binaryPrefStatus.textContent = `Current: ${setData.is_linux_binary ? 'Linux' : 'Windows'} binary`;
             binaryPrefStatus.style.color = 'var(--text2)';
             refresh();
           }, 1000);
-          
+
         } catch (e) {
           console.error('Failed to set binary preference:', e);
           binaryPrefStatus.textContent = 'Error: ' + e.message;
@@ -240,7 +240,7 @@ async function initBinaryPreference() {
 function updateBinaryPrefStatus(data) {
   const binaryPrefStatus = document.getElementById('binaryPrefStatus');
   if (!binaryPrefStatus) return;
-  
+
   if (data.prefer_linux === null) {
     binaryPrefStatus.textContent = `Auto-detect: using ${data.is_linux_binary ? 'Linux' : 'Windows'} binary`;
   } else if (data.prefer_linux === true) {

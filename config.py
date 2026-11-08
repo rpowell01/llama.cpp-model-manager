@@ -696,7 +696,7 @@ def resolve_model_path(model_path_str: str) -> Path:
         return BASE_DIR / model_path
 
 
-def convert_path_for_binary(path: Path) -> str:
+def convert_path_for_binary(path: Path, is_windows_binary: bool | None = None) -> str:
     r"""Convert path for the binary being used.
 
     On Linux with Windows binary (WSL), convert /mnt/c/... to C:/...
@@ -707,13 +707,16 @@ def convert_path_for_binary(path: Path) -> str:
 
     Args:
         path: The Path object to convert
+        is_windows_binary: If True, convert WSL paths to Windows paths.
+                          If None, auto-detect from LLAMA_SERVER_TYPE.
 
     Returns:
         String representation of the path, converted if necessary
     """
     path_str = str(path)
-    # Check if we're using a Windows binary (via LLAMA_SERVER_TYPE)
-    is_windows_binary = LLAMA_SERVER_TYPE == "windows"
+    # Check if we're using a Windows binary (via LLAMA_SERVER_TYPE or explicit parameter)
+    if is_windows_binary is None:
+        is_windows_binary = LLAMA_SERVER_TYPE == "windows"
     
     if is_windows_binary and path_str.startswith('/mnt/'):
         # Convert /mnt/X/... to X:/...
@@ -839,6 +842,7 @@ PLATFORM_BACKEND_COMBINATIONS = [
 
 # Default empty configuration
 _DEFAULT_PLATFORM_BACKEND_CONFIG = {combo: "" for combo in PLATFORM_BACKEND_COMBINATIONS}
+_DEFAULT_PLATFORM_BACKEND_CONFIG["global_default"] = ""
 
 # Cache for platform/backend config
 _platform_backend_config: dict[str, str] | None = None
@@ -860,6 +864,9 @@ def _load_platform_backend_config() -> dict[str, str]:
             for key in PLATFORM_BACKEND_COMBINATIONS:
                 if key in loaded:
                     config[key] = loaded[key]
+            # Load global_default if present
+            if "global_default" in loaded:
+                config["global_default"] = loaded["global_default"]
     except Exception as e:
         log.warning(f"Failed to load platform/backend config: {e}")
     
@@ -872,8 +879,9 @@ def _save_platform_backend_config(config: dict[str, str]) -> None:
     global _platform_backend_config
     try:
         import json
-        # Only save known keys
-        save_config = {k: v for k, v in config.items() if k in PLATFORM_BACKEND_COMBINATIONS}
+        # Only save known keys (combinations + global_default)
+        allowed_keys = PLATFORM_BACKEND_COMBINATIONS + ["global_default"]
+        save_config = {k: v for k, v in config.items() if k in allowed_keys}
         with open(PLATFORM_BACKEND_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(save_config, f, indent=2)
         _platform_backend_config = save_config
@@ -925,7 +933,44 @@ def set_all_platform_backend_dirs(dirs: dict[str, str]) -> None:
     for key in PLATFORM_BACKEND_COMBINATIONS:
         if key in dirs:
             config[key] = dirs[key]
+    # Also handle global_default if provided
+    if "global_default" in dirs:
+        config["global_default"] = dirs["global_default"]
     _save_platform_backend_config(config)
+
+
+def get_global_default_platform_backend() -> str:
+    """Get the global default platform/backend combination.
+    
+    Returns:
+        The combo key (e.g. "linux-vulkan") or empty string if not set.
+    """
+    config = _load_platform_backend_config()
+    return config.get("global_default", "")
+
+
+def get_platform_backend_dir(platform: str, backend: str) -> str:
+    """
+    Get the llama-server directory for a platform/backend combination.
+    
+    Args:
+        platform: "windows" or "linux"
+        backend: "vulkan", "sycl", "openvino", or "cpu"
+        
+    Returns:
+        Directory path string, or empty string if not configured
+    """
+    config = _load_platform_backend_config()
+    # If auto is requested and a global default is set, use the global default
+    if platform == "auto" or backend == "auto":
+        global_default = config.get("global_default", "")
+        if global_default:
+            parts = global_default.split("-")
+            if len(parts) == 2:
+                platform = parts[0]
+                backend = parts[1]
+    key = f"{platform}-{backend}"
+    return config.get(key, "")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

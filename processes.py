@@ -193,13 +193,17 @@ def _get_wsl_host_ip() -> str | None:
     return None
 
 
-def get_server_host() -> str:
+def get_server_host(platform: str = "auto") -> str:
     """
     Determine which host the client should use to connect to the server.
     For WSL2 running a Windows llama-server.exe, the server binds on the Windows
     host's IP (obtained from resolv.conf) and must be reachable from WSL. For all
     other configurations, use 127.0.0.1 for client connections (0.0.0.0 is a bind
     address, not a valid connect address).
+    
+    Args:
+        platform: "windows", "linux", or "auto". When "auto", the global
+                  config.LLAMA_SERVER is used to detect WSL+Windows mode.
     
     Note: The host is resolved on each call to handle network changes (e.g., DHCP
     lease renewal in WSL+Windows mode) that could result in stale cached IPs.
@@ -208,7 +212,11 @@ def get_server_host() -> str:
     
     # When running in WSL with a Windows binary, the server runs on Windows
     # and listens on the Windows host IP. We need to connect to that IP.
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+    if platform == "auto":
+        platform = "windows" if (WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe')) else "linux"
+    is_wsl_windows = WSL and platform == "windows"
+    
+    if is_wsl_windows:
         wsl_host = _get_wsl_host_ip()
         if wsl_host:
             if not _wsl_host_logged:
@@ -242,16 +250,53 @@ def _validate_local_mode() -> None:
 # Wrap existing functions with mode validation
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
-def find_pid_by_port(port: int) -> int | None:
-    """Find PID of process listening on the given port."""
+def find_pid_by_port(port: int, platform: str = "auto") -> int | None:
+    """Find PID of process listening on the given port.
+
+    Args:
+        port: Port number to check
+        platform: "windows", "linux", or "auto".
+
+    "auto" checks **both** namespaces and returns whichever one actually has a
+    listener. This matters because a model's configured platform can be changed
+    while it is stopped, so the process still holding the port may live in the
+    namespace of the *previous* configuration. Resolving only the configured
+    namespace would miss it and report the stop as successful without killing
+    anything.
+    """
     _validate_local_mode()
-    
-    # In WSL+Windows mode, use netstat to find the PID
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+
+    if platform == "windows":
         return _find_pid_by_port_wsl(port)
-    
-    # Standard Linux/Unix approach
-    return _find_pid_by_port_unix(port)
+    if platform == "linux":
+        return _find_pid_by_port_unix(port)
+
+    for finder in (_find_pid_by_port_wsl, _find_pid_by_port_unix):
+        try:
+            pid = finder(port)
+        except Exception:
+            pid = None
+        if pid:
+            return pid
+    return None
+
+
+def find_pids_by_port(port: int) -> list[tuple[int, str]]:
+    """Find every PID listening on a port, across both namespaces.
+
+    Returns:
+        List of (pid, platform) tuples where platform is "windows" or "linux".
+    """
+    _validate_local_mode()
+    found: list[tuple[int, str]] = []
+    for platform, finder in (("windows", _find_pid_by_port_wsl), ("linux", _find_pid_by_port_unix)):
+        try:
+            pid = finder(port)
+        except Exception:
+            pid = None
+        if pid:
+            found.append((pid, platform))
+    return found
 
 
 def _find_pid_by_port_wsl(port: int) -> int | None:
@@ -334,30 +379,33 @@ def _find_pid_by_port_unix(port: int) -> int | None:
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def pids_of_llama() -> list[int]:
-    """Find PIDs of all llama-server processes."""
+    """Find PIDs of all llama-server processes, in both namespaces.
+
+    On WSL this deliberately checks the Linux *and* the Windows process tables,
+    because a leftover llama-server may belong to either the current or the
+    previous platform configuration.
+    """
     _validate_local_mode()
     pids: list[int] = []
-    # On WSL with Windows binary, use tasklist via cmd.exe to find llama-server processes
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+
+    # Windows processes (only meaningful under WSL)
+    if WSL:
         try:
             cmd_path = "/mnt/c/Windows/System32/cmd.exe"
             if os.path.exists(cmd_path):
                 result = subprocess.run(
-                    [cmd_path, "/c", "tasklist 2>&1 | findstr /i llama"],
+                    [cmd_path, "/c", "tasklist /FO CSV /NH 2>&1"],
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-                # Parse tasklist output: "llama-server.exe PID ..."
                 for line in result.stdout.strip().splitlines():
-                    parts = line.split()
+                    parts = [p.strip('"') for p in line.split(",")]
                     if len(parts) >= 2 and "llama-server" in parts[0].lower():
                         try:
                             pids.append(int(parts[1]))
                         except ValueError:
                             pass
-                if pids:
-                    return pids
         except Exception:
             pass
 
@@ -388,100 +436,289 @@ def pids_of_llama() -> list[int]:
     return pids
 
 
+def _get_model_platform(model: str = "") -> str:
+    """Resolve a model's llama_cpp_platform from models.json ("windows"/"linux"/"auto")."""
+    if not model:
+        return "auto"
+    try:
+        from models import get_models
+        meta = get_models().get(model)
+        if meta:
+            return meta.get("llama_cpp_platform", "auto") or "auto"
+    except Exception:
+        pass
+    return "auto"
+
+
+def _is_windows_process(pid: int, model: str = "") -> bool:
+    """Determine whether a PID refers to a Windows (not Linux) process.
+
+    Detection order:
+      1. Explicit platform from the model's config (most reliable on WSL).
+      2. Membership in _wsl_pids (stores Windows PIDs for WSL+Windows models).
+      3. /proc/<pid>/exe path heuristic (Windows exes appear under /mnt/c).
+    """
+    if not WSL:
+        return False
+
+    if model and _get_model_platform(model) == "windows":
+        return True
+
+    try:
+        from state import _wsl_pids, _wsl_pids_lock
+        with _wsl_pids_lock:
+            if pid in _wsl_pids.values():
+                return True
+    except ImportError:
+        pass
+
+    try:
+        exe_str = str(Path(f"/proc/{pid}/exe").resolve())
+        if exe_str.startswith("/mnt/c/") and exe_str.endswith(".exe"):
+            return True
+    except (OSError, ProcessLookupError):
+        pass  # Not a Linux-visible PID: typically a Windows PID
+
+    return False
+
+
+def _windows_process_alive(pid: int) -> bool:
+    """Check whether a Windows PID is still running (via tasklist)."""
+    cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+    if not os.path.exists(cmd_path):
+        return False
+    try:
+        result = subprocess.run(
+            [cmd_path, "/c", f'tasklist /FI "PID eq {pid}" /NH'],
+            capture_output=True, text=True, timeout=10,
+        )
+        out = result.stdout.strip()
+        if not out or "INFO:" in out or "No tasks" in out:
+            return False
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) == pid:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _wait_windows_process_gone(pid: int, timeout: float = 10.0,
+                               interval: float = 0.5) -> bool:
+    """Poll until a Windows PID no longer exists.
+
+    taskkill returns before the process has actually exited; a llama-server
+    holding a large mlock'd model can take a long time to release its memory
+    and close its listening socket.
+
+    Returns:
+        True if the process disappeared within the timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        if not _windows_process_alive(pid):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+
+
+def _linux_process_alive(pid: int) -> bool:
+    """Check whether a Linux PID is still running."""
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except ImportError:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
-def _kill_tree(pid: int, model: str = "") -> bool:
-    """Kill a process and all its children. Returns True if successful."""
+def _kill_tree(pid: int, model: str = "", platform: str = "auto") -> bool:
+    """Kill a process and all its children. Returns True only if it is really gone.
+
+    Args:
+        pid: Process ID (a Linux PID, or a Windows PID when platform == "windows")
+        model: Model name, used to resolve the platform when not given explicitly
+        platform: "windows", "linux", or "auto" (auto-detected)
+    """
     _validate_local_mode()
+    if platform == "auto":
+        platform = _get_model_platform(model)
+    is_windows_process = (platform == "windows") or (WSL and _is_windows_process(pid, model))
+
     try:
-        # On WSL with Windows binary, use taskkill via cmd.exe
-        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-            log.info(f"Killing Windows process {pid} via taskkill (WSL mode)")
+        if is_windows_process:
+            log.info(f"Killing Windows process {pid} via taskkill (model={model}, platform={platform})")
             cmd_path = "/mnt/c/Windows/System32/cmd.exe"
-            if os.path.exists(cmd_path):
-                result = subprocess.run(
-                    [cmd_path, "/c", f"taskkill /F /T /PID {pid} 2>&1"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                log.info(f"Kill result for {pid}: stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
-                # Check if taskkill succeeded
-                taskkill_succeeded = "successful" in result.stdout.lower() or result.returncode == 0
-                
-                # ALWAYS run fallback to ensure no orphaned llama-server processes
-                log.info(f"Running fallback cleanup: killing all llama-server.exe processes")
-                fallback_result = subprocess.run(
-                    [cmd_path, "/c", "taskkill /F /IM llama-server.exe 2>&1"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                log.info(f"Fallback kill all result: stdout={fallback_result.stdout.strip()}")
-                fallback_succeeded = "successful" in fallback_result.stdout.lower() or fallback_result.returncode == 0
-                
-                return taskkill_succeeded or fallback_succeeded
-            # Fallback if cmd.exe not found
-            log.info(f"cmd.exe not found, running fallback cleanup")
-            result = subprocess.run(
-                ["/mnt/c/Windows/System32/cmd.exe", "/c", "taskkill /F /IM llama-server.exe 2>&1"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            log.info(f"Fallback kill all result: stdout={result.stdout.strip()}")
-            return "successful" in result.stdout.lower() or result.returncode == 0
-        elif WINDOWS:
-            # Use taskkill to kill process tree on Windows
+            if not os.path.exists(cmd_path):
+                log.error("cmd.exe not found; cannot kill Windows process")
+                return False
+
+            commands = [
+                f"taskkill /F /T /PID {pid}",
+                f"taskkill /F /PID {pid}",
+                "taskkill /F /IM llama-server.exe",
+            ]
+            for attempt, command in enumerate(commands):
+                try:
+                    result = subprocess.run(
+                        [cmd_path, "/c", command + " 2>&1"],
+                        capture_output=True, text=True, timeout=15,
+                    )
+                    log.info(
+                        f"taskkill attempt {attempt + 1} for pid={pid}: "
+                        f"rc={result.returncode}, out={result.stdout.strip()}"
+                    )
+                except Exception as e:
+                    log.warning(f"taskkill attempt {attempt + 1} failed: {e}")
+
+                # taskkill reports success before the process has fully exited.
+                # A llama-server holding a large mlock'd model can take many
+                # seconds to tear down, so poll until the PID really disappears.
+                if _wait_windows_process_gone(pid, timeout=10.0):
+                    log.info(f"Windows process {pid} confirmed gone after attempt {attempt + 1}")
+                    return True
+
+            return not _windows_process_alive(pid)
+
+        if WINDOWS:
             result = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(pid)],
-                capture_output=True,
-                text=True,
-                timeout=10,
+                capture_output=True, text=True, timeout=10,
             )
             return result.returncode == 0
-        else:
-            # On Linux, kill the process group (negative PID)
-            # First try to kill the process group
+
+        # Native Linux: kill only this process and its children (never the
+        # process group, which would take down the Flask web server).
+        import psutil
+        try:
+            parent = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            return True
+        children = parent.children(recursive=True)
+        for p in children + [parent]:
             try:
-                os.killpg(pid, signal.SIGTERM)
-                time.sleep(0.5)
-                # Check if still alive
-                try:
-                    os.killpg(pid, 0)
-                    # Still alive, use SIGKILL
-                    os.killpg(pid, signal.SIGKILL)
-                except OSError:
-                    pass  # Process already dead
+                p.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        gone, alive = psutil.wait_procs(children + [parent], timeout=3)
+        for p in alive:
+            try:
+                p.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        if alive:
+            psutil.wait_procs(alive, timeout=2)
+        return not _linux_process_alive(pid)
+    except ImportError:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
                 return True
-            except (OSError, ProcessLookupError):
-                # Process group doesn't exist, try killing just the process
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    time.sleep(0.5)
-                    try:
-                        os.kill(pid, 0)
-                        os.kill(pid, signal.SIGKILL)
-                    except OSError:
-                        pass
-                    return True
-                except (OSError, ProcessLookupError):
-                    return True  # Already dead
+            return not _linux_process_alive(pid)
+        except (OSError, ProcessLookupError):
+            return True  # Already dead
     except Exception as e:
         log.error(f"Failed to kill process {pid}: {e}")
         return False
 
 
+def _port_has_listener(port: int, platform: str = "auto") -> bool:
+    """Authoritative check for whether something is still listening on a port.
+
+    Uses netstat on the Windows side and ss/lsof on the Linux side, which is far
+    more reliable than a socket connect across the WSL/Windows boundary (a
+    terminating process can leave the socket bound while refusing connections,
+    and WSL port-forwarding can report transient failures).
+
+    With platform="auto" BOTH namespaces are checked, because the process still
+    holding the port may belong to the previous platform configuration.
+
+    Args:
+        port: Port number.
+        platform: "windows", "linux", or "auto" (both).
+    """
+    if WSL:
+        if platform == "windows":
+            return _windows_port_listener_pid(port) is not None
+        if platform == "linux":
+            return _find_pid_by_port_unix(port) is not None
+        # auto: a listener in either namespace blocks the port
+        if _windows_port_listener_pid(port) is not None:
+            return True
+        if _find_pid_by_port_unix(port) is not None:
+            return True
+        # Fall through to the socket check if both namespace probes failed
+        # (e.g. cmd.exe unavailable) so we never report "free" incorrectly.
+    return check_port_active(port, platform)
+
+
+def _windows_port_listener_pid(port: int) -> int | None:
+    """Return the Windows PID listening on a port, or None."""
+    cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+    if not os.path.exists(cmd_path):
+        return None
+    try:
+        result = subprocess.run(
+            [cmd_path, "/c", f"netstat -ano 2>&1 | findstr :{port}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        for line in result.stdout.splitlines():
+            if "LISTENING" not in line.upper():
+                continue
+            parts = line.split()
+            # "TCP 0.0.0.0:PORT 0.0.0.0:0 LISTENING PID"
+            if len(parts) >= 5 and parts[-1].isdigit():
+                return int(parts[-1])
+        return None
+    except Exception:
+        return None
+
+
+def wait_port_free(port: int, platform: str = "auto", timeout: float = 15.0,
+                   interval: float = 0.25) -> bool:
+    """Wait until nothing is listening on a port.
+
+    A llama-server holding a large mlock'd model can take several seconds to
+    release its socket after being killed, so callers must poll rather than
+    sampling once.
+
+    Returns:
+        True if the port became free within the timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        if not _port_has_listener(port, platform):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+
+
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
-def check_port_active(port: int) -> bool:
+def check_port_active(port: int, platform: str = "auto") -> bool:
     """Check if a port is active (has a listener)."""
     _validate_local_mode()
     import socket
 
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+    is_wsl_windows = WSL and (
+        platform == "windows"
+        or (platform == "auto" and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'))
+    )
+    if is_wsl_windows:
         # In WSL+Windows mode, the server binds to 0.0.0.0 on Windows
         # Try the Windows host IP first (via get_server_host), then localhost as fallback
         wsl_host = get_server_host()
@@ -523,8 +760,14 @@ def _check_model_ready(port: int, model_name: str | None = None) -> bool:
     """
     _validate_local_mode()
     
-    # First, do a fast socket check - if port isn't even listening, no model can be ready
-    if not check_port_active(port):
+    # Resolve the model's platform up front so every check below uses the right
+    # process namespace (Windows PIDs/netstat vs. Linux sockets).
+    platform = _get_model_platform(model_name or "")
+
+    # First, do a fast port check - if nothing is listening, no model can be ready.
+    # For WSL+Windows models this uses netstat on the Windows side, which is far
+    # more reliable than a socket connect across the WSL/Windows boundary.
+    if not _port_has_listener(port, platform):
         return False
     
     # If no specific model name requested, just return True since port is active
@@ -542,13 +785,17 @@ def _check_model_ready(port: int, model_name: str | None = None) -> bool:
     
     # Determine hosts to try - in WSL+Windows mode, try multiple options
     hosts_to_try = []
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-        wsl_host = get_server_host()
+    is_wsl_windows = WSL and (
+        platform == "windows"
+        or (platform == "auto" and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'))
+    )
+    if is_wsl_windows:
+        wsl_host = get_server_host("windows")
         if wsl_host and wsl_host != "127.0.0.1":
             hosts_to_try.append(wsl_host)
         hosts_to_try.append("127.0.0.1")
     else:
-        hosts_to_try.append(get_server_host())
+        hosts_to_try.append(get_server_host(platform))
 
     for host in hosts_to_try:
         url = f"http://{host}:{port}/v1/models"
@@ -632,7 +879,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
     
-    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL, get_platform_backend_dir
+    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL, get_platform_backend_dir, convert_path_for_binary, DEFAULTS
     
     # Get model's platform and backend selection (default to "auto" for backward compatibility)
     llama_cpp_platform = meta.get("llama_cpp_platform", "auto")
@@ -650,16 +897,29 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     if llama_server_dir:
         # Use the configured directory for this platform/backend combination
-        server_dir = Path(llama_server_dir)
+        if WSL and llama_cpp_platform == "windows":
+            # In WSL, convert Windows path (C:/...) to WSL path (/mnt/c/...)
+            # so we can check if the binary exists in the WSL filesystem
+            llama_server_dir_wsl = llama_server_dir.replace("C:/", "/mnt/c/").replace("/", "/")
+            server_dir = Path(llama_server_dir_wsl)
+        else:
+            server_dir = Path(llama_server_dir)
+        
         if llama_cpp_platform == "windows":
             # Windows binary: llama-server.exe
-            candidate = server_dir / "llama-server.exe"
-            if candidate.exists():
-                llama_server_binary = candidate
-            else:
-                candidate = server_dir / "llama-server"
+            # In WSL, check for the binary at the converted path
+            if WSL:
+                candidate = server_dir / "llama-server.exe"
                 if candidate.exists():
                     llama_server_binary = candidate
+            else:
+                candidate = server_dir / "llama-server.exe"
+                if candidate.exists():
+                    llama_server_binary = candidate
+                else:
+                    candidate = server_dir / "llama-server"
+                    if candidate.exists():
+                        llama_server_binary = candidate
         else:  # linux
             # Linux binary: llama-server (new SYCL) or llama (old with serve subcommand)
             candidate = server_dir / "llama-server"
@@ -683,13 +943,32 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     is_windows_binary = llama_cpp_platform == "windows"
     is_linux_binary = llama_cpp_platform == "linux"
     
-    # Determine bind host: in WSL+Windows binary mode, bind to 0.0.0.0 so Windows host
-    # accepts connections from WSL. In all other cases, use the configured default.
-    bind_host = "0.0.0.0" if (WSL and is_windows_binary) else DEFAULTS["host"]
+    # Check if we're using Linux SYCL backend (requires Intel oneAPI wrapper)
+    is_linux_sycl = (llama_cpp_backend == "sycl" and llama_cpp_platform == "linux")
+    
+    # Determine bind host:
+    #  - WSL + Windows binary: bind 0.0.0.0 so the Windows host accepts
+    #    connections coming from WSL.
+    #  - WSL + Linux binary: bind 127.0.0.1 only. Binding 0.0.0.0 makes WSL2
+    #    register a port-forwarding rule that RESERVES the port on the Windows
+    #    side, and that reservation outlives the process. It then blocks any
+    #    later Windows llama-server.exe from binding the same port, which is
+    #    exactly the "couldn't bind HTTP server socket" seen when switching a
+    #    model from linux to windows. The Flask app and mnemonic-proxy both run
+    #    inside WSL, so 127.0.0.1 is sufficient.
+    if WSL and is_windows_binary:
+        bind_host = "0.0.0.0"
+    elif WSL and is_linux_binary:
+        bind_host = "127.0.0.1"
+    else:
+        bind_host = DEFAULTS["host"]
 
     # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
     model_path_str = meta.get("model_path", "")
     model_path = resolve_model_path(model_path_str)
+
+    # Determine if we're using a Windows binary for path conversion
+    is_windows_binary_for_paths = is_windows_binary
 
     # Build command based on binary type
     if uses_serve_subcommand:
@@ -698,7 +977,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             str(llama_server_binary),
             "serve",
             "-m",
-            convert_path_for_binary(model_path),
+            convert_path_for_binary(model_path, is_windows_binary_for_paths),
             "--alias",
             model,
             "--host",
@@ -718,7 +997,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         cmd: list[str] = [
             str(llama_server_binary),
             "-m",
-            convert_path_for_binary(model_path),
+            convert_path_for_binary(model_path, is_windows_binary_for_paths),
             "--alias",
             model,
             "--host",
@@ -733,6 +1012,16 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             "--timeout",
             str(meta.get("timeout", DEFAULTS["timeout"])),
         ]
+    
+    # For Linux SYCL, prepend the wrapper script to set up Intel oneAPI environment
+    if is_linux_sycl:
+        wrapper_path = BASE_DIR / "llama-server-sycl-wrapper.sh"
+        if wrapper_path.exists():
+            # Replace the binary path with the wrapper, passing original binary as first arg
+            cmd = [str(wrapper_path), str(llama_server_binary)] + cmd[1:]
+            log.info(f"Using SYCL wrapper for Linux SYCL backend: {wrapper_path}")
+        else:
+            log.warning(f"SYCL wrapper not found at {wrapper_path}, running without Intel oneAPI env")
     
     # WSL workaround: systemd-run wrapper removed - doesn't work with Linux binary in WSL
     # The Linux binary in WSL has memory allocation issues that systemd-run cannot resolve
@@ -822,12 +1111,15 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     # MoE CPU offloading
     cpu_moe = meta.get("cpu_moe", DEFAULTS["cpu_moe"])
+    n_cpu_moe = meta.get("n_cpu_moe", DEFAULTS["n_cpu_moe"])
     if cpu_moe:
+        # --cpu-moe means offload ALL MoE experts to CPU
+        # Mutually exclusive with --n-cpu-moe
         cmd += ["--cpu-moe"]
-    else:
-        n_cpu_moe = meta.get("n_cpu_moe", DEFAULTS["n_cpu_moe"])
-        if n_cpu_moe and n_cpu_moe > 0:
-            cmd += ["--n-cpu-moe", str(n_cpu_moe)]
+    elif n_cpu_moe and n_cpu_moe > 0:
+        # --n-cpu-moe N means offload N MoE experts to CPU
+        # Only used when cpu_moe is false
+        cmd += ["--n-cpu-moe", str(n_cpu_moe)]
     
     cache_type_k = meta.get("cache_type_k", DEFAULTS["cache_type_k"])
     if cache_type_k and cache_type_k != "f16":
@@ -854,7 +1146,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     slot_save_path = meta.get("slot_save_path", DEFAULTS["slot_save_path"])
     if slot_save_path:
         # Convert path for Windows binary if running in WSL (same as model path)
-        slot_save_path = convert_path_for_binary(Path(slot_save_path))
+        slot_save_path = convert_path_for_binary(Path(slot_save_path), is_windows_binary_for_paths)
         cmd += ["--slot-save-path", slot_save_path]
     
     # Chat template file
@@ -950,7 +1242,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             spec_draft_model = meta.get("spec_draft_model", DEFAULTS["spec_draft_model"])
             if spec_draft_model:
                 draft_path = resolve_model_path(spec_draft_model)
-                cmd += ["--spec-draft-model", convert_path_for_binary(draft_path)]
+                cmd += ["--spec-draft-model", convert_path_for_binary(draft_path, is_windows_binary_for_paths)]
             
             spec_draft_hf_repo = meta.get("spec_draft_hf_repo", DEFAULTS["spec_draft_hf_repo"])
             if spec_draft_hf_repo:

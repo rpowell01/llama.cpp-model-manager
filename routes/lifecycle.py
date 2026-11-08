@@ -7,12 +7,14 @@ import psutil
 from flask import Blueprint, jsonify, request, g
 import subprocess
 import os
+from pathlib import Path
 
 import config
 from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, convert_path_for_binary, Config
 from models import ModelRegistry, InvalidModeError
 from processes import (
     find_pid_by_port,
+    find_pids_by_port,
     _kill_tree,
     check_port_active,
     _check_model_ready,
@@ -20,6 +22,8 @@ from processes import (
     build_cmd,
     pids_of_llama,
     get_server_host,
+    wait_port_free,
+    _port_has_listener,
 )
 from mnemonic_proxy import (
     create_proxy_manager,
@@ -40,6 +44,11 @@ from state import (
 )
 
 log = logging.getLogger("llamaweb")
+
+# How long a freshly started model may take to load and begin serving.
+# A 16-30 GB GGUF from a cold page cache takes minutes, not seconds, so the
+# readiness budget must be generous or a healthy load is reported as a failure.
+MODEL_READY_TIMEOUT_SECONDS = 600.0
 
 # Global model registry instance
 _model_registry = None
@@ -86,44 +95,74 @@ def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
     Returns:
         Tuple of (success, pid)
     """
-    # Find PID
-    pid = find_pid_by_port(port)
-    if not pid:
-        # Try WSL pids
-        with _wsl_pids_lock:
-            pid = _wsl_pids.get(model)
-    
-    if not pid:
-        # No PID found, just clean up state
-        with _recent_stops_lock:
-            _recent_stops[model] = time.time()
-        with _start_timestamps_lock:
-            _start_timestamps.pop(model, None)
-        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-            with _wsl_pids_lock:
-                _wsl_pids.pop(model, None)
-        return True, None
-    
-    success = _kill_tree(pid, model)
-    log.info(f"Kill result for {model} (pid={pid}): success={success}")
-    
-    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+    # A model's platform/backend can be edited while it is stopped, so the
+    # process actually holding the port may live in the namespace of the
+    # *previous* configuration. Resolution is therefore namespace-agnostic:
+    # find every listener on the port in both namespaces and kill them all.
+    from models import get_models
+    model_meta = get_models().get(model, {})
+    llama_cpp_platform = model_meta.get("llama_cpp_platform", "auto") or "auto"
+
+    # Every PID listening on this port, tagged with its namespace.
+    targets = find_pids_by_port(port)
+    # Also consider the PID recorded when the model was started (a Windows
+    # listener can be transiently invisible to netstat during startup).
+    with _wsl_pids_lock:
+        stored_pid = _wsl_pids.get(model)
+    if stored_pid and all(stored_pid != p for p, _ in targets):
+        targets.append((stored_pid, "windows" if WSL else "linux"))
+
+    if not targets:
+        # Nothing is listening. Only claim success if the port really is free,
+        # otherwise fall through to the force-kill path below.
+        if not _port_has_listener(port):
+            with _recent_stops_lock:
+                _recent_stops[model] = time.time()
+            with _start_timestamps_lock:
+                _start_timestamps.pop(model, None)
+            if WSL and llama_cpp_platform == "windows":
+                with _wsl_pids_lock:
+                    _wsl_pids.pop(model, None)
+            return True, None
+        log.warning(
+            f"No PID resolvable for {model} on port {port} but the port is "
+            f"still occupied; escalating to force-kill"
+        )
+
+    pid = None
+    for target_pid, target_platform in targets:
+        log.info(f"Killing {model} listener pid={target_pid} (namespace={target_platform})")
+        if _kill_tree(target_pid, model, target_platform):
+            pid = target_pid
+        else:
+            log.warning(f"Kill reported failure for pid={target_pid} ({target_platform})")
+
+    # The port is the ground truth. taskkill reports success long before a
+    # llama-server holding a large mlock'd model has released its socket, so
+    # poll (rather than sample once) before deciding the model is stopped.
+    port_free = wait_port_free(port, timeout=20.0)
+
+    # Last resort: force-kill every llama-server process in both namespaces.
+    if not port_free:
+        log.warning(f"Port {port} still occupied after kill; force-killing all llama-server processes for {model}")
+        _force_kill_all_llama()
+        port_free = wait_port_free(port, timeout=25.0)
+
+    # A model is only stopped once nothing is listening on its port.
+    success = port_free or not _port_has_listener(port)
+    log.info(f"Stop result for {model}: pid={pid}, port_free={port_free}, success={success}")
+
+    if WSL:
         with _wsl_pids_lock:
             old_pid = _wsl_pids.pop(model, None)
         log.info(f"Cleared stored PID for WSL model {model}: old_pid={old_pid}")
-    
+
     with _recent_stops_lock:
         _recent_stops[model] = time.time()
-    
-    # Wait for port to be released
-    for _ in range(30):
-        time.sleep(0.1)
-        if not check_port_active(port):
-            break
-    
+
     with _start_timestamps_lock:
         _start_timestamps.pop(model, None)
-    
+
     return success, pid
 
 
@@ -166,6 +205,41 @@ def _kill_all_llama_processes() -> int:
                     pass
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
+    return killed
+
+
+def _force_kill_all_llama() -> int:
+    """Force kill every llama-server process, in both Linux and Windows namespaces.
+
+    Used as a last resort when a port is still occupied after a targeted kill.
+
+    Returns:
+        Number of Linux processes killed.
+    """
+    killed = 0
+
+    # Windows processes (only meaningful when running under WSL)
+    if WSL:
+        cmd_path = "/mnt/c/Windows/System32/cmd.exe"
+        if os.path.exists(cmd_path):
+            for image in ("llama-server.exe", "llama-server"):
+                try:
+                    result = subprocess.run(
+                        [cmd_path, "/c", f"taskkill /F /IM {image} 2>&1"],
+                        capture_output=True, text=True, timeout=15,
+                    )
+                    log.info(f"Force kill all {image}: rc={result.returncode}, out={result.stdout.strip()}")
+                except Exception as e:
+                    log.warning(f"Force kill all {image} failed: {e}")
+
+    # Linux processes
+    for pid in pids_of_llama():
+        try:
+            _kill_tree(pid, "", "linux")
+            killed += 1
+        except Exception as e:
+            log.warning(f"Force kill of Linux pid {pid} failed: {e}")
+
     return killed
 
 
@@ -227,6 +301,9 @@ def api_start():
             "no_mmap": model_dict.no_mmap,
             "parallel": model_dict.parallel,
             "ubatch_size": model_dict.ubatch_size,
+            # Platform/Backend selection for llama.cpp binary
+            "llama_cpp_platform": getattr(model_dict, 'llama_cpp_platform', 'auto'),
+            "llama_cpp_backend": getattr(model_dict, 'llama_cpp_backend', 'auto'),
             # Agent/Tool parameters
             "jinja": getattr(model_dict, 'jinja', True),
             "reasoning_preserve": getattr(model_dict, 'reasoning_preserve', True),
@@ -300,20 +377,22 @@ def api_start():
         }
 
         # Check if already running
-        log.info(f"Checking if port {port} is active for model {model}")
+        # Use the model's own platform selection (not the global config) to
+        # resolve PIDs in the correct process namespace.
+        model_platform = meta.get("llama_cpp_platform", "auto") or "auto"
+        is_wsl_windows_model = WSL and model_platform == "windows"
+
         active = check_port_active(port)
-        log.info(f"check_port_active({port}) returned: {active}")
         if active:
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            if is_wsl_windows_model:
                 pid = _wsl_pids.get(model)
                 if pid:
                     return jsonify({"status": "running", "pid": pid, "port": port})
             else:
-                pid = find_pid_by_port(port)
+                pid = find_pid_by_port(port, model_platform)
                 if pid:
                     return jsonify({"status": "running", "pid": pid, "port": port})
             # Port active but no PID found? Treat as running.
-            log.warning(f"Port {port} active but no PID found, treating as running")
             return jsonify({"status": "running", "pid": None, "port": port})
 
         # Mark startup timestamp
@@ -325,14 +404,17 @@ def api_start():
         env = os.environ.copy()
         
         # WSL + Windows binary workaround: use wrapper batch file to ensure
-        # environment variables are properly set in Windows process context
-        llama_server = config.LLAMA_SERVER
-        # Fallback: if LLAMA_SERVER not configured, use known Windows path
+        # environment variables are properly set in Windows process context.
+        # build_cmd() already resolved the binary from the model's platform/backend,
+        # so prefer cmd[0] and only fall back to the global config.
+        llama_server = Path(cmd[0]) if cmd else None
+        if llama_server is None:
+            llama_server = config.LLAMA_SERVER
         if llama_server is None:
             llama_server = Path("/mnt/c/llama.cpp-sycl/bin/llama-server.exe")
-            log.warning(f"LLAMA_SERVER not configured, using fallback: {llama_server}")
+            log.warning(f"No binary determined by build_cmd; using fallback: {llama_server}")
         
-        log.info(f"Debug: WSL={WSL}, LLAMA_SERVER={llama_server}, LLAMA_SERVER_TYPE={config.LLAMA_SERVER_TYPE}")
+        log.info(f"Debug: WSL={WSL}, llama_server={llama_server}, platform={model_platform}")
         if WSL and str(llama_server).endswith('.exe'):
             wrapper_path = BASE_DIR / "llama-server-wrapper.ps1"
             if wrapper_path.exists():
@@ -383,7 +465,7 @@ def api_start():
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0,
             )
             pid = proc.pid
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            if is_wsl_windows_model:
                 with _wsl_pids_lock:
                     _wsl_pids[model] = pid
             
@@ -413,53 +495,52 @@ def api_start():
         # Wait briefly for the process to start
         time.sleep(5)
 
-        # Check if process is still running and model is ready to serve requests
-        # We check port activity AND health endpoint for all platforms to ensure
-        # the server is actually listening and ready
+        # Check if process is still running and model is ready to serve requests.
+        # We check port activity AND the health endpoint for all platforms to
+        # ensure the server is actually listening and ready.
+        #
+        # The budget is deliberately generous: loading a 16-30 GB GGUF from a
+        # cold page cache (e.g. right after another backend evicted it) can take
+        # minutes, and the old 40-second cap reported "Server exited
+        # immediately" for a process that was still loading perfectly fine.
         from processes import _check_model_ready
         is_running = False
-        for _ in range(80):  # 40 seconds max wait for large models
-            if proc and proc.poll() is None:
-                # Process is running, now check if model is ready (port + health endpoint)
-                if check_port_active(port) and _check_model_ready(port, model):
-                    is_running = True
-                    break
+        process_died = False
+        readiness_deadline = time.monotonic() + MODEL_READY_TIMEOUT_SECONDS
+        last_progress_log = 0.0
+        while time.monotonic() < readiness_deadline:
+            if proc and proc.poll() is not None:
+                # The process really did exit - stop waiting and report it.
+                process_died = True
+                log.warning(
+                    f"Process for {model} exited during startup with code {proc.returncode}"
+                )
+                break
+
+            # Process is alive, now check if the model is ready (port + health)
+            if check_port_active(port) and _check_model_ready(port, model):
+                is_running = True
+                break
+
+            # Heartbeat so a long load doesn't look like a hang
+            if time.monotonic() - last_progress_log >= 15.0:
+                last_progress_log = time.monotonic()
+                elapsed = MODEL_READY_TIMEOUT_SECONDS - (readiness_deadline - time.monotonic())
+                log.info(
+                    f"Still waiting for {model} to become ready "
+                    f"({elapsed:.0f}s / {MODEL_READY_TIMEOUT_SECONDS:.0f}s)"
+                )
             time.sleep(0.5)
 
-        
+        if not is_running and not process_died:
+            log.warning(
+                f"Model {model} did not become ready within "
+                f"{MODEL_READY_TIMEOUT_SECONDS:.0f}s (still loading or failed to bind)"
+            )
 
+        # If model is running, verify n_ctx matches expected ctx_size before proceeding
+        # This ensures the proxy gets the correct window size
         if is_running:
-            start_success = True
-            with _recent_stops_lock:
-                _recent_stops.pop(model, None)
-            # Clear start timestamp since model is confirmed running
-            with _start_timestamps_lock:
-                _start_timestamps.pop(model, None)
-            # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
-            # but we need the actual Windows process PID for killing.
-            # Look up the Windows PID from the port and update the stored PID.
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
-                windows_pid = find_pid_by_port(port)
-                if windows_pid:
-                    log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")
-                    with _wsl_pids_lock:
-                        _wsl_pids[model] = windows_pid
-                    pid = windows_pid
-
-            # Run warmup if enabled
-            if meta.get("warmup_enabled", False):
-                warmup_message = meta.get("warmup_message", "Hello")
-                warmup_max_tokens = meta.get("warmup_max_tokens", 10)
-                log.info(f"Running warmup for {model} on port {port}")
-                add_log_entry(f"🔥 Warmup: {model} on port {port}", "yellow")
-                warmup_success = warmup_model(port, warmup_message, warmup_max_tokens)
-                if warmup_success:
-                    add_log_entry(f"✓ Warmup successful: {model}", "green")
-                else:
-                    add_log_entry(f"⚠ Warmup failed: {model}", "orange")
-
-            # Verify n_ctx matches expected ctx_size before starting mnemonic-proxy
-            # This ensures the proxy gets the correct window size
             expected_ctx_size = meta.get("ctx_size", DEFAULTS["ctx_size"])
             log.info(f"Verifying n_ctx matches expected ctx_size={expected_ctx_size} for {model}")
             add_log_entry(f"🔍 Verifying context size: expected={expected_ctx_size}", "cyan")
@@ -476,15 +557,13 @@ def api_start():
                     import requests
                     # Try multiple hosts (WSL+Windows mode)
                     hosts_to_try = []
-                    if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                    if is_wsl_windows_model:
                         wsl_host = get_server_host()
                         if wsl_host and wsl_host != "127.0.0.1":
                             hosts_to_try.append(wsl_host)
                         hosts_to_try.append("127.0.0.1")
                     else:
                         hosts_to_try.append(get_server_host())
-                    
-                    log.info(f"n_ctx verification attempt {attempt+1}/60: trying hosts {hosts_to_try} for {model}")
                     
                     for host in hosts_to_try:
                         try:
@@ -493,7 +572,6 @@ def api_start():
                                 props = resp.json()
                                 # n_ctx is nested in default_generation_settings in llama-server /props response
                                 actual_n_ctx = props.get("default_generation_settings", {}).get("n_ctx")
-                                log.info(f"  Host {host}: status=200, n_ctx={actual_n_ctx}")
                                 if actual_n_ctx is not None:
                                     # Allow small tolerance for llama-server rounding (e.g., 65000 -> 65024)
                                     tolerance = max(256, int(expected_ctx_size * 0.01))
@@ -503,12 +581,10 @@ def api_start():
                                         add_log_entry(f"✓ Context size verified: n_ctx={actual_n_ctx}", "green")
                                         break
                                     else:
-                                        log.info(f"  n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} ±{tolerance} (attempt {attempt+1}/60)")
-                                # Don't break here - try other hosts if n_ctx doesn't match
-                            else:
-                                log.info(f"  Host {host}: status={resp.status_code}")
+                                        log.debug(f"n_ctx mismatch: got {actual_n_ctx}, expected {expected_ctx_size} ±{tolerance} (attempt {attempt+1}/60)")
+                                break  # Got response, don't try other hosts
                         except Exception as e:
-                            log.info(f"  Host {host}: error={type(e).__name__}: {e}")
+                            log.debug(f"Failed to check /props on {host}:{port}: {e}")
                             continue
                     
                     if ctx_verified:
@@ -516,7 +592,7 @@ def api_start():
                         
                     time.sleep(0.5)
                 except Exception as e:
-                    log.warning(f"Error during n_ctx verification: {e}")
+                    log.debug(f"Error during n_ctx verification: {e}")
                     time.sleep(0.5)
             
             if not ctx_verified:
@@ -530,7 +606,7 @@ def api_start():
             try:
                 import requests
                 hosts_to_try = []
-                if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+                if is_wsl_windows_model:
                     wsl_host = get_server_host()
                     if wsl_host and wsl_host != "127.0.0.1":
                         hosts_to_try.append(wsl_host)
@@ -553,6 +629,47 @@ def api_start():
             except Exception as e:
                 log.debug(f"Error fetching actual n_ctx: {e}")
 
+        if is_running:
+            start_success = True
+            with _recent_stops_lock:
+                _recent_stops.pop(model, None)
+            # Clear start timestamp since model is confirmed running
+            with _start_timestamps_lock:
+                _start_timestamps.pop(model, None)
+            # On WSL with Windows binary, the stored PID is a Linux subprocess PID,
+            # but we need the actual Windows process PID for killing.
+            # Look up the Windows PID from the port and update the stored PID.
+            # Retry briefly: the listener may take a moment to appear in netstat.
+            if is_wsl_windows_model:
+                windows_pid = None
+                for _ in range(20):
+                    windows_pid = find_pid_by_port(port, model_platform)
+                    if windows_pid:
+                        break
+                    time.sleep(0.25)
+                if windows_pid:
+                    log.info(f"Updating WSL PID for {model}: Linux PID={pid} -> Windows PID={windows_pid}")
+                    with _wsl_pids_lock:
+                        _wsl_pids[model] = windows_pid
+                    pid = windows_pid
+                else:
+                    log.warning(
+                        f"Could not resolve Windows PID for {model} on port {port}; "
+                        f"keeping wrapper PID {pid} (stop will re-resolve it)"
+                    )
+
+            # Run warmup if enabled
+            if meta.get("warmup_enabled", False):
+                warmup_message = meta.get("warmup_message", "Hello")
+                warmup_max_tokens = meta.get("warmup_max_tokens", 10)
+                log.info(f"Running warmup for {model} on port {port}")
+                add_log_entry(f"🔥 Warmup: {model} on port {port}", "yellow")
+                warmup_success = warmup_model(port, warmup_message, warmup_max_tokens)
+                if warmup_success:
+                    add_log_entry(f"✓ Warmup successful: {model}", "green")
+                else:
+                    add_log_entry(f"⚠ Warmup failed: {model}", "orange")
+
             # Start mnemonic-proxy if enabled for this model
             # Model has individual mnemonic_proxy_* fields, construct config dict
             mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
@@ -561,65 +678,9 @@ def api_start():
                 data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
                 slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
                 tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
+                config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
                 mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
                 mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
-                
-                # Get mnemonic_proxy nested config and merge with config_override
-                mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
-                nested_config_override = mnemonic_proxy_config.get('config_override', {}) or {}
-                config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
-                
-                # Merge all mnemonic_proxy.config_override settings into config_override (config_override takes precedence)
-                # Full list of mnemonic-proxy Config fields (from ctxproxy.core.Config)
-                proxy_settings = [
-                    # Window / context
-                    'window', 'window_margin', 'window_estimate_slack',
-                    # Image / vision
-                    'image_tokens',
-                    # Masking
-                    'mask_trigger', 'mask_target',
-                    'min_batch_tokens',
-                    'keep_recent_tokens', 'min_age_turns',
-                    'mask_reasoning', 'mask_tool_args',
-                    'mask_anchor', 'anchor_min_tokens',
-                    # Segments / slots
-                    'segments_enabled', 'tail_max', 'notes_max_tokens',
-                    'slot_save', 'seal_experimental',
-                    'response_floor',
-                    # Auto config
-                    'auto_config', 'state_kb_per_token',
-                    # Recall
-                    'inject_recall', 'max_recall_rounds', 'recall_max_tokens',
-                    'recall_tool_name', 'tools_tool_name',
-                    'prompt_language',
-                    'rich_receipts',
-                    'recall_struct', 'recall_flex', 'recall_multi',
-                    'auto_recall', 'auto_recall_hint',
-                    'recall_leaf_select',
-                    'answer_thinking_after_recall', 'answer_thinking_budget',
-                    'truncation_guard',
-                    # Tools
-                    'tools_paging', 'tools_core',
-                    # Receipts
-                    'typed_receipts', 'receipt_guard',
-                    # Pins
-                    'pins_max_tokens',
-                    # Autosave
-                    'autosave', 'autosave_idle_s', 'autosave_keep', 'autosave_max_gb', 'autosave_min_free_gb',
-                    # Autorestore
-                    'autorestore', 'autorestore_min_gain',
-                    # KV Archive
-                    'kv_archive', 'kv_archive_idle_s', 'kv_archive_min_age_s',
-                    # Engine
-                    'engine', 'slot_id', 'engine_tokenize',
-                    # Router
-                    'router_model', 'router_load_timeout_s', 'router_keepalive_s',
-                    # Live dump
-                    'live_dump',
-                ]
-                for setting in proxy_settings:
-                    if setting in nested_config_override and setting not in config_override:
-                        config_override[setting] = nested_config_override[setting]
                 
                 log.info(f"Starting mnemonic-proxy for {model} on port {proxy_port}")
                 add_log_entry(f"🔗 mnemonic-proxy: {model} on port {proxy_port}", "blue")
@@ -640,28 +701,39 @@ def api_start():
                 if proxy_started:
                     add_log_entry(f"✓ mnemonic-proxy started: {model} on port {proxy_port}", "green")
                     log.info(f"mnemonic-proxy started successfully for {model} on port {proxy_port}")
-                    
-                    # Auto-start MCP server if enabled
-                    if mcp_enabled:
-                        log.info(f"Auto-starting mnemonic-mcp for {model} on port {mcp_port}")
-                        add_log_entry(f"🔗 mnemonic-mcp auto-start: {model} on port {mcp_port}", "blue")
-                        mcp_started = proxy_manager.start_mcp()
-                        if mcp_started:
-                            add_log_entry(f"✓ mnemonic-mcp started: {model} on port {mcp_port}", "green")
-                            log.info(f"mnemonic-mcp started successfully for {model} on port {mcp_port}")
-                        else:
-                            add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
-                            log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
                 else:
-                    add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
-                    log.warning(f"mnemonic-proxy failed to start for {model} on port {proxy_port}")
+                    add_log_entry(
+                        f"⚠ mnemonic-proxy failed to start: {model} (see {proxy_manager.log_path})",
+                        "orange",
+                    )
+                    log.warning(
+                        f"mnemonic-proxy failed to start for {model} on port {proxy_port} "
+                        f"(log: {proxy_manager.log_path})"
+                    )
 
             log.info(f"Start successful: model={model}, pid={pid}, port={port}, is_running={is_running}")
             log_event("start", model, port, pid, "running")
             return jsonify({"status": "running", "pid": pid, "port": port})
         else:
             log_event("start", model, port, pid, "exited_early")
-            return jsonify({"error": "Server exited immediately", "status": "exited"}), 500
+            if process_died:
+                detail = f"server process exited during startup (code {proc.returncode if proc else 'unknown'})"
+            else:
+                # Port occupied by something we could not kill means the model
+                # was started against an in-use port (classic "couldn't bind").
+                blocker = _port_has_listener(port)
+                if blocker:
+                    detail = (
+                        f"port {port} is already in use - stop the model that is "
+                        f"still bound to it, then start again"
+                    )
+                else:
+                    detail = (
+                        f"model did not become ready within "
+                        f"{MODEL_READY_TIMEOUT_SECONDS:.0f}s"
+                    )
+            add_log_entry(f"✗ Start failed: {model} - {detail}", "red")
+            return jsonify({"error": detail, "status": "exited"}), 500
     except Exception as e:
         log.exception("Failed to start server for %s", model)
         return jsonify({"error": f"Failed to start server: {str(e)}"}), 500
@@ -703,9 +775,10 @@ def api_stop():
 
     success, pid = _stop_model(model, port)
     
-    # Stop mnemonic-proxy (and MCP server if running) if running for this model
-    remove_proxy_manager(model)
-    add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
+    # Stop mnemonic-proxy if running for this model
+    if getattr(model_dict, 'mnemonic_proxy_enabled', False):
+        remove_proxy_manager(model)
+        add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
     
     return jsonify({"status": "stopped", "pid": pid, "success": success})
 
@@ -778,77 +851,25 @@ def api_proxy_start(model):
     # Get llama-server port
     llama_port = int(model_dict.port)
     
+    # Resolve the model's platform so WSL+Windows models use the right host set
+    model_platform = getattr(model_dict, 'llama_cpp_platform', 'auto') or "auto"
+    is_wsl_windows_model = WSL and model_platform == "windows"
+    
     # Get proxy config from model
     proxy_port = getattr(model_dict, 'mnemonic_proxy_port', 8096)
     data_dir = getattr(model_dict, 'mnemonic_proxy_data_dir', '')
     slot_dir = getattr(model_dict, 'mnemonic_proxy_slot_dir', '')
     tokenizer_path = getattr(model_dict, 'mnemonic_proxy_tokenizer_path', '')
+    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {})
     mcp_enabled = getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False)
     mcp_port = getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133)
-    
-    # Get mnemonic_proxy nested config and merge with config_override
-    mnemonic_proxy_config = getattr(model_dict, 'mnemonic_proxy', {}) or {}
-    nested_config_override = mnemonic_proxy_config.get('config_override', {}) or {}
-    config_override = getattr(model_dict, 'mnemonic_proxy_config_override', {}) or {}
-    
-    # Merge all mnemonic_proxy.config_override settings into config_override (config_override takes precedence)
-    # Full list of mnemonic-proxy Config fields (from ctxproxy.core.Config)
-    proxy_settings = [
-        # Window / context
-        'window', 'window_margin', 'window_estimate_slack',
-        # Image / vision
-        'image_tokens',
-        # Masking
-        'mask_trigger', 'mask_target',
-        'min_batch_tokens',
-        'keep_recent_tokens', 'min_age_turns',
-        'mask_reasoning', 'mask_tool_args',
-        'mask_anchor', 'anchor_min_tokens',
-        # Segments / slots
-        'segments_enabled', 'tail_max', 'notes_max_tokens',
-        'slot_save', 'seal_experimental',
-        'response_floor',
-        # Auto config
-        'auto_config', 'state_kb_per_token',
-        # Recall
-        'inject_recall', 'max_recall_rounds', 'recall_max_tokens',
-        'recall_tool_name', 'tools_tool_name',
-        'prompt_language',
-        'rich_receipts',
-        'recall_struct', 'recall_flex', 'recall_multi',
-        'auto_recall', 'auto_recall_hint',
-        'recall_leaf_select',
-        'answer_thinking_after_recall', 'answer_thinking_budget',
-        'truncation_guard',
-        # Tools
-        'tools_paging', 'tools_core',
-        # Receipts
-        'typed_receipts', 'receipt_guard',
-        # Pins
-        'pins_max_tokens',
-        # Autosave
-        'autosave', 'autosave_idle_s', 'autosave_keep', 'autosave_max_gb', 'autosave_min_free_gb',
-        # Autorestore
-        'autorestore', 'autorestore_min_gain',
-        # KV Archive
-        'kv_archive', 'kv_archive_idle_s', 'kv_archive_min_age_s',
-        # Engine
-        'engine', 'slot_id', 'engine_tokenize',
-        # Router
-        'router_model', 'router_load_timeout_s', 'router_keepalive_s',
-        # Live dump
-        'live_dump',
-    ]
-    for setting in proxy_settings:
-        if setting in nested_config_override and setting not in config_override:
-            config_override[setting] = nested_config_override[setting]
     
     # Fetch actual n_ctx from llama-server for proxy config
     actual_n_ctx = 32768  # default fallback
     try:
         import requests
         hosts_to_try = []
-        if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+        if is_wsl_windows_model:
             wsl_host = get_server_host()
             if wsl_host and wsl_host != "127.0.0.1":
                 hosts_to_try.append(wsl_host)
@@ -888,22 +909,17 @@ def api_proxy_start(model):
     success = proxy_manager.start()
     if success:
         add_log_entry(f"🔗 mnemonic-proxy started: {model} on port {proxy_port}", "green")
-        
-        # Auto-start MCP server if enabled
-        if mcp_enabled:
-            log.info(f"Auto-starting mnemonic-mcp for {model} on port {mcp_port}")
-            add_log_entry(f"🔗 mnemonic-mcp auto-start: {model} on port {mcp_port}", "blue")
-            mcp_started = proxy_manager.start_mcp()
-            if mcp_started:
-                add_log_entry(f"✓ mnemonic-mcp started: {model} on port {mcp_port}", "green")
-                log.info(f"mnemonic-mcp started successfully for {model} on port {mcp_port}")
-            else:
-                add_log_entry(f"⚠ mnemonic-mcp failed to start: {model}", "orange")
-                log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
-        
+        return jsonify({"status": "started", "model": model, "proxy_port": proxy_port})
     else:
-        add_log_entry(f"⚠ mnemonic-proxy failed to start: {model}", "orange")
-        return jsonify({"error": "Failed to start mnemonic-proxy", "model": model}), 500
+        add_log_entry(
+            f"⚠ mnemonic-proxy failed to start: {model} (see {proxy_manager.log_path})",
+            "orange",
+        )
+        return jsonify({
+            "error": "Failed to start mnemonic-proxy",
+            "model": model,
+            "log": str(proxy_manager.log_path),
+        }), 500
 
 
 @lifecycle_bp.route("/api/proxy/stop/<model>", methods=["POST"])
@@ -1029,9 +1045,9 @@ def api_proxy_strata_context(model):
         import os
         from pathlib import Path
         
-        # Helper: parse journal for live metrics (from proxy's journal endpoint)
-        def parse_journal_for_conversation(port, conv_id):
-            """Parse journal from proxy's /v1/strata/journal endpoint for the latest request event and recall counts for a conversation."""
+        # Helper: parse journal for live metrics
+        def parse_journal_for_conversation(journal_path, conv_id):
+            """Parse journal.jsonl for the latest request event and recall counts for a conversation."""
             live = {
                 "active_tokens": None,
                 "active_tokens_est": None,
@@ -1041,36 +1057,34 @@ def api_proxy_strata_context(model):
                 "mode": None,
                 "recalls": 0,
             }
-            
-            try:
-                resp = requests.get(
-                    f"http://127.0.0.1:{port}/v1/strata/journal",
-                    timeout=10,
-                    headers={"Accept": "application/json"}
-                )
-                if resp.status_code != 200:
-                    return live
-                journal_data = resp.json()
-                events = journal_data.get("events", [])
-            except Exception:
+            if not os.path.exists(journal_path):
                 return live
             
             try:
-                for event in events:
-                    if event.get("conv") != conv_id:
-                        continue
-                    
-                    ev_type = event.get("event")
-                    if ev_type == "request":
-                        # Latest request event has the live metrics
-                        live["active_tokens"] = event.get("prompt_tokens")
-                        live["active_tokens_est"] = event.get("est_tokens")
-                        live["virtual_tokens"] = event.get("virtual_tokens")
-                        live["cached_tokens"] = event.get("reused")
-                        live["segment"] = event.get("seg")
-                        live["mode"] = event.get("mode")
-                    elif ev_type in ("recall", "recall_use"):
-                        live["recalls"] += 1
+                with open(journal_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        
+                        if event.get("conv") != conv_id:
+                            continue
+                        
+                        ev_type = event.get("event")
+                        if ev_type == "request":
+                            # Latest request event has the live metrics
+                            live["active_tokens"] = event.get("prompt_tokens")
+                            live["active_tokens_est"] = event.get("est_tokens")
+                            live["virtual_tokens"] = event.get("virtual_tokens")
+                            live["cached_tokens"] = event.get("reused")
+                            live["segment"] = event.get("seg")
+                            live["mode"] = event.get("mode")
+                        elif ev_type in ("recall", "recall_use"):
+                            live["recalls"] += 1
             except Exception:
                 pass
             return live
@@ -1103,12 +1117,12 @@ def api_proxy_strata_context(model):
                 pass
             return None
         
-        # journal_path removed - use proxy's journal endpoint instead
+        journal_path = data_dir / "journal.jsonl"
         
         # If conversation_id provided, use it directly
         if conversation_id:
             store_data = get_store_stats(proxy_port, conversation_id)
-            live_data = parse_journal_for_conversation(proxy_port, conversation_id)
+            live_data = parse_journal_for_conversation(journal_path, conversation_id)
             
             strata_context = {
                 "conversation_id": conversation_id,
@@ -1168,7 +1182,7 @@ def api_proxy_strata_context(model):
                 
                 if conv_id:
                     store_data = get_store_stats(proxy_port, conv_id)
-                    live_data = parse_journal_for_conversation(proxy_port, conv_id)
+                    live_data = parse_journal_for_conversation(journal_path, conv_id)
                     
                     strata_context = {
                         "conversation_id": conv_id,
@@ -1214,38 +1228,6 @@ def api_proxy_strata_context(model):
         })
     except Exception as e:
         return jsonify({"error": f"Failed to fetch Strata context: {str(e)}", "model": model}), 502
-
-
-@lifecycle_bp.route("/api/proxy/strata/conversations/<model>", methods=["GET"])
-def api_proxy_strata_conversations(model):
-    """Get list of conversations from mnemonic-proxy for a model."""
-    model = model.strip()
-    if not model:
-        return jsonify({"error": "Missing model name"}), 400
-    
-    proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    proxy_port = proxy_manager.proxy_port
-    
-    try:
-        import requests
-        
-        # List conversations via proxy API
-        resp = requests.get(
-            f"http://127.0.0.1:{proxy_port}/v1/strata/conversations",
-            timeout=10,
-            headers={"Accept": "application/json"}
-        )
-        
-        if resp.status_code != 200:
-            return jsonify({"error": "Failed to fetch conversations from proxy", "model": model}), 502
-        
-        return jsonify(resp.json())
-        
-    except Exception as e:
-        return jsonify({"error": f"Failed to fetch conversations: {str(e)}", "model": model}), 502
 
 
 @lifecycle_bp.route("/api/proxy/list", methods=["GET"])
@@ -1313,14 +1295,3 @@ def api_proxy_mcp_status(model):
         return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
     
     return jsonify(proxy_manager.get_mcp_status())
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Mnemonic Proxy Base Slot API Endpoints
-# ──────────────────────────────────────────────────────────────────────────────
-
-    if success:
-        add_log_entry(f"🗑 Base slot cleared for {model}", "blue")
-        return jsonify({"status": "cleared", "model": model})
-    else:
-        return jsonify({"error": "Failed to clear base slot", "model": model}), 500

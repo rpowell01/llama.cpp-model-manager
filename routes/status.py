@@ -161,7 +161,12 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             status = "stopped"
         else:
             # First check stored PID for WSL (most reliable)
-            if WSL and config.LLAMA_SERVER and str(config.LLAMA_SERVER).endswith('.exe'):
+            # Use model's platform/backend settings instead of global config
+            llama_cpp_platform = meta.get("llama_cpp_platform", "auto")
+            llama_cpp_backend = meta.get("llama_cpp_backend", "auto")
+            is_wsl_windows_binary = WSL and llama_cpp_platform == "windows"
+            
+            if is_wsl_windows_binary:
                 with _wsl_pids_lock:
                     stored_pid = _wsl_pids.get(model)
                 if stored_pid:
@@ -171,7 +176,7 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             active = _check_model_ready(port, model)
             if active:
                 if not pid:
-                    pid = find_pid_by_port(port)
+                    pid = find_pid_by_port(port, llama_cpp_platform)
                 status = "running"
             # Check if model is starting
             with _start_timestamps_lock:

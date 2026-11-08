@@ -148,6 +148,9 @@ class Model:
     reasoning_effort: str = "default"
     reasoning_budget: int = -1
     reasoning_budget_message: str = ""
+    # llama.cpp platform and backend selection
+    llama_cpp_platform: str = "auto"  # "auto", "windows", "linux"
+    llama_cpp_backend: str = "auto"   # "auto", "vulkan", "sycl", "openvino", "cpu"
     # Mnemonic Proxy configuration
     mnemonic_proxy_enabled: bool = False
     mnemonic_proxy_port: int = 8096
@@ -258,6 +261,9 @@ class Model:
             reasoning_effort=data.get("reasoning_effort", "default"),
             reasoning_budget=data.get("reasoning_budget", -1),
             reasoning_budget_message=data.get("reasoning_budget_message", ""),
+            # llama.cpp platform and backend selection
+            llama_cpp_platform=data.get("llama_cpp_platform", "auto"),
+            llama_cpp_backend=data.get("llama_cpp_backend", "auto"),
             # Mnemonic Proxy configuration
             mnemonic_proxy_enabled=data.get("mnemonic_proxy", {}).get("enabled", False),
             mnemonic_proxy_port=data.get("mnemonic_proxy", {}).get("port", 8096),

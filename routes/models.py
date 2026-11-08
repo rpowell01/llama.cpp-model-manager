@@ -1,4 +1,7 @@
 """Model CRUD operations."""
+import threading
+from typing import Any
+
 import requests
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
@@ -8,6 +11,7 @@ from config import DEFAULTS, normalize_path_for_binary
 from metrics import fetch_metrics_snapshot
 from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
 from processes import _check_model_ready
+from state import add_log_entry
 
 log = getLogger("llamaweb")
 
@@ -273,11 +277,11 @@ def api_update_model_meta():
     "reasoning_effort": str,
     "reasoning_budget": int,
     "reasoning_budget_message": str,
-    # Mnemonic Proxy fields (nested object)
-    "mnemonic_proxy": dict,
     # llama.cpp platform and backend selection
     "llama_cpp_platform": str,
     "llama_cpp_backend": str,
+    # Mnemonic Proxy fields (nested object)
+    "mnemonic_proxy": dict,
     }
     # Validate rating fields before any mutation: an invalid rating must be
     # rejected without leaving a bad value behind in the cached model meta.
@@ -726,7 +730,6 @@ def api_get_metrics():
         "spec_acceptance_rate_pct": round(acceptance_rate, 1),
         "spec_avg_draft_len": round(avg_draft_len, 1),
         "spec_est_speedup": round(speedup, 2),
-        # Configuration
         "threads": meta.get("threads"),
         "threads_batch": meta.get("threads_batch"),
         "gpu_layers": meta.get("gpu_layers"),
@@ -829,22 +832,132 @@ def api_get_platform_backend_config():
 @models_bp.route("/api/platform-backend-config", methods=["POST"])
 def api_set_platform_backend_config():
     """Update platform/backend directory mappings."""
-    from config import set_all_platform_backend_dirs, PLATFORM_BACKEND_COMBINATIONS
-    
+    from config import (
+        set_all_platform_backend_dirs,
+        get_all_platform_backend_dirs,
+        PLATFORM_BACKEND_COMBINATIONS,
+    )
+
     data = request.get_json(force=True) or {}
-    
+
     # Validate that only known keys are provided
     invalid_keys = [k for k in data.keys() if k not in PLATFORM_BACKEND_COMBINATIONS]
     if invalid_keys:
         return jsonify({"error": f"Invalid platform/backend combinations: {invalid_keys}"}), 400
-    
+
     # Validate that values are strings
     for key, value in data.items():
         if not isinstance(value, str):
             return jsonify({"error": f"Value for {key} must be a string"}), 400
-    
+
     set_all_platform_backend_dirs(data)
     return jsonify({
         "status": "platform backend config updated",
         "config": get_all_platform_backend_dirs()
     })
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# llama.cpp backend updater API
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Runtime state for the background backend-update job. Guarded by a lock because
+# the update runs in a worker thread while /api/llama-update-status is polled.
+_llama_update_lock = threading.Lock()
+_llama_update_state: dict[str, Any] = {
+    "running": False,
+    "progress": 0,
+    "message": "",
+    "result": None,
+}
+
+
+def _llama_update_set(**kwargs) -> None:
+    """Thread-safe update of the backend-update status dict."""
+    with _llama_update_lock:
+        _llama_update_state.update(kwargs)
+
+
+def _llama_update_progress(message: str, percent: int) -> None:
+    """Progress callback handed to llama_updater.update_backends()."""
+    _llama_update_set(progress=max(0, min(100, int(percent))), message=message)
+    add_log_entry(f"⬇ llama.cpp update: {message}", "cyan")
+
+
+def _run_llama_update(tag: str | None) -> None:
+    """Worker body: run the update, then record the outcome."""
+    try:
+        import llama_updater
+
+        result = llama_updater.update_backends(
+            tag=tag,
+            progress_callback=_llama_update_progress,
+        )
+        _llama_update_set(running=False, progress=100, result=result)
+        if result.get("success"):
+            add_log_entry(
+                f"✓ llama.cpp backends updated to {result.get('tag')} "
+                f"({len(result.get('updated_combinations', []))} combinations)",
+                "green",
+            )
+            # Refresh the cached config so build_cmd() picks up the new dirs
+            try:
+                import config as _config
+                _config._platform_backend_config = None
+            except Exception:
+                pass
+        else:
+            for err in result.get("errors", []):
+                add_log_entry(f"✗ llama.cpp update error: {err}", "red")
+    except Exception as e:
+        log.exception("llama.cpp backend update failed")
+        _llama_update_set(running=False, result={"success": False, "errors": [str(e)]})
+        add_log_entry(f"✗ llama.cpp update failed: {e}", "red")
+
+
+@models_bp.route("/api/llama-update-status", methods=["GET"])
+def api_llama_update_status():
+    """Get the status of the running/completed backend update."""
+    with _llama_update_lock:
+        state = dict(_llama_update_state)
+    return jsonify({
+        "running": state["running"],
+        "progress": state["progress"],
+        "message": state["message"],
+        "result": state["result"],
+    })
+
+
+@models_bp.route("/api/llama-latest-release", methods=["GET"])
+def api_llama_latest_release():
+    """Get the latest llama.cpp nightly release tag from GitHub."""
+    try:
+        from llama_updater import _get_latest_nightly_tag
+        tag = _get_latest_nightly_tag()
+        if not tag:
+            return jsonify({"error": "Failed to fetch latest release from GitHub"}), 502
+        return jsonify({"tag": tag})
+    except Exception as e:
+        log.exception("Failed to fetch latest llama.cpp release")
+        return jsonify({"error": str(e)}), 500
+
+
+@models_bp.route("/api/llama-update-backends", methods=["POST"])
+def api_llama_update_backends():
+    """Start a background update of all llama.cpp backend binaries."""
+    with _llama_update_lock:
+        if _llama_update_state["running"]:
+            return jsonify({"error": "An update is already in progress"}), 409
+
+    data = request.get_json(force=True) or {}
+    tag = data.get("release_tag") or None
+    if tag is not None:
+        tag = str(tag).strip() or None
+
+    _llama_update_set(running=True, progress=0, message="Starting update…", result=None)
+    add_log_entry("⬇ Starting llama.cpp backend update…", "cyan")
+
+    thread = threading.Thread(target=_run_llama_update, args=(tag,), daemon=True)
+    thread.start()
+
+    return jsonify({"status": "update started", "release_tag": tag})
