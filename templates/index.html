@@ -301,6 +301,13 @@
         </p>
         <form id="platform-backend-config-form">
           <div id="platform-backend-config-fields"></div>
+
+          <!-- Global default selection -->
+          <fieldset id="platform-backend-global-default" style="margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface);">
+            <legend style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Global default (used when platform or backend is "auto")</legend>
+            <div id="platform-backend-global-default-options" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;"></div>
+          </fieldset>
+
           <div id="platform-backend-config-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem;"></div>
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
             <button type="button" id="platform-backend-config-refresh" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Refresh</button>
@@ -339,7 +346,7 @@
 <script src="{{ url_for('static', filename='js/hf-integration.js') }}?v=20261105a"></script>
 <script src="{{ url_for('static', filename='js/add-model.js') }}?v=20261105a"></script>
     <script src="{{ url_for('static', filename='js/kilo-config.js') }}?v=20261105a"></script>
-<script src="{{ url_for('static', filename='js/init.js') }}?v=20261108a"></script>
+<script src="{{ url_for('static', filename='js/init.js') }}?v=20261108b"></script>
 
 <!-- Performance Graph Modal Script -->
 <script>
@@ -983,6 +990,30 @@ function populatePlatformBackendConfig(config) {
   // Initialize browse buttons for the new fields
   initBrowseButtons(platformBackendConfigFields);
 
+  // Populate global default radio buttons
+  const globalDefaultContainer = document.getElementById('platform-backend-global-default-options');
+  if (globalDefaultContainer) {
+    let radioHtml = '';
+    // None option
+    radioHtml += `
+      <label style="display: flex; align-items: center; gap: 0.25rem; font-weight: 500; color: var(--text); cursor: pointer;">
+        <input type="radio" name="global_default" value="" ${config.global_default === '' || config.global_default === undefined ? 'checked' : ''} style="accent-color: var(--blue);">
+        <span>None (auto-detect)</span>
+      </label>
+    `;
+    PLATFORM_BACKEND_COMBINATIONS.forEach((combo) => {
+      const [platform, backend] = combo.split('-');
+      const displayName = `${platform.charAt(0).toUpperCase() + platform.slice(1)} / ${backend.toUpperCase()}`;
+      radioHtml += `
+        <label style="display: flex; align-items: center; gap: 0.25rem; font-weight: 500; color: var(--text); cursor: pointer;">
+          <input type="radio" name="global_default" value="${combo}" ${config.global_default === combo ? 'checked' : ''} style="accent-color: var(--blue);">
+          <span>${displayName}</span>
+        </label>
+      `;
+    });
+    globalDefaultContainer.innerHTML = radioHtml;
+  }
+
   setPlatformBackendConfigStatus('Loaded platform/backend configuration.', 'success');
   setTimeout(() => setPlatformBackendConfigStatus(''), 2000);
 }
@@ -1006,6 +1037,11 @@ async function savePlatformBackendConfig(event) {
     const combo = input.dataset.combo;
     payload[combo] = input.value.trim();
   });
+  // Include global default selection
+  const selectedGlobal = document.querySelector('input[name="global_default"]:checked');
+  if (selectedGlobal) {
+    payload.global_default = selectedGlobal.value;
+  }
   try {
     const resp = await fetch('/api/platform-backend-config', {
       method: 'POST',

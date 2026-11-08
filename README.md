@@ -1,331 +1,194 @@
-# llama.cpp Web Frontend
+# Llama.cpp Model Manager
 
-A web-based interface for managing and interacting with llama.cpp models.
+## Overview
 
-## Features
+The Llama.cpp Model Manager is a comprehensive web-based interface for managing and optimizing llama.cpp model deployments. This project provides an intuitive web dashboard for monitoring, configuring, and analyzing the performance of llama.cpp models, with a focus on empirical optimization and real-time performance monitoring.
 
-- Model lifecycle management (load/unload)
-- Chat interface with loaded models
-- Remote mode support for distributed llama.cpp servers
-- Model downloads and management
-- System status monitoring
-- **Empirical Optimization** — Automatic benchmark-based parameter tuning
+## Key Features
 
-## Requirements
-
-- Python 3.11+
-- Flask 3.0+
-- llama.cpp server binary (for local mode)
-
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-## Running with Docker
-
-The application can be run using Docker for easy deployment and isolation.
-
-### Local Mode (Default)
-
-Local mode runs the llama.cpp server as a local process managed by the web application:
-
-```bash
-# Build the image
-docker build -t llamaweb .
-
-# Run the container
-docker run -p 5000:5000 -v ./models:/app/models llamaweb
-```
-
-Or using docker-compose:
-
-```bash
-# Run with local model management
-docker-compose up -d
-```
-
-### Remote Mode
-
-Remote mode connects to an external llama.cpp server via REST API:
-
-```bash
-# Build with remote mode enabled
-docker build -t llamaweb --build-arg REMOTE_MODE=true --build-arg LLAMA_CPP_SERVER_URL=http://localhost:8080 .
-
-# Run the container
-# Note: Replace host.docker.internal with your host's IP if on Linux
-docker run -p 5000:5000 \
-  -e REMOTE_MODE=true \
-  -e LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080 \
-  -v ./models:/app/models \
-  llamaweb
-```
-
-Or using docker-compose with an external server:
-
-```bash
-# Create a .env file
-echo "REMOTE_MODE=true" > .env
-# Use host.docker.internal for macOS/Windows, or host IP for Linux
-echo "LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080" >> .env
-
-# Run
-docker-compose up -d
-```
-
-### Running with Remote llama.cpp Server
-
-You can run the llama.cpp server alongside the web frontend using docker-compose:
-
-```yaml
-# docker-compose.remote.yml
-version: '3.8'
-services:
-  llamacpp-server:
-    image: ghcr.io/ggerganov/llama.cpp:server
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./models:/models
-    command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080
-    networks:
-      - llamanet
-
-  web:
-    build:
-      context: .
-      build-args:
-        REMOTE_MODE: "true"
-        LLAMA_CPP_SERVER_URL: "http://llamacpp-server:8080"
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./models:/app/models
-    depends_on:
-      - llamacpp-server
-    networks:
-      - llamanet
-
-networks:
-  llamanet:
-    driver: bridge
-```
-
-Run with:
-```bash
-docker-compose -f docker-compose.remote.yml up -d
-```
-
-For standalone docker run (host networking), use `host.docker.internal` on macOS/Windows or your host IP on Linux:
-```bash
-docker run -p 5000:5000 \
-  -e REMOTE_MODE=true \
-  -e LLAMA_CPP_SERVER_URL=http://host.docker.internal:8080 \
-  llamaweb
-```
-
-## Configuration
-
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `REMOTE_MODE` | `false` | Set to `true` to use remote llama.cpp server |
-| `LLAMA_CPP_SERVER_URL` | `http://localhost:8080` | URL of the remote llama.cpp server |
-| `PORT` | `5000` | Port for the web frontend (local mode only) |
-| `HOST` | `0.0.0.0` | Host for the web frontend |
-| `BENCHMARK_MAX_DURATION` | `60` | Maximum time (seconds) for empirical benchmark optimization |
-| `BENCHMARK_CACHE_DIR` | `~/.cache/llama-web/benchmarks` | Directory to store benchmark cache files |
-| `BENCHMARK_ENABLED` | `true` | Enable/disable empirical benchmark optimization |
-
-## Empirical Optimization
-
-The web frontend includes an **Empirical Optimization** feature that automatically finds the best llama.cpp server parameters for your specific hardware and model combination by running actual benchmarks.
-
-### Heuristic vs Empirical Modes
-
-| Aspect | Heuristic Mode (`/api/optimize-settings`) | Empirical Mode (`/api/benchmark-optimize`) |
-|--------|------------------------------------------|-------------------------------------------|
-| **Method** | Rule-based formulas based on hardware specs | Runs actual `llama-bench` benchmarks |
-| **Speed** | Instant (~ms) | Slower (10-300 seconds) |
-| **Accuracy** | Good general estimates | Hardware-specific optimal settings |
-| **Use Case** | Quick setup, CI/CD, first run | Production tuning, maximum performance |
-| **Requirements** | None | `llama-bench` binary, model file |
-
-**Heuristic Mode** (original): Uses `compute_optimal_settings()` which applies general rules based on detected hardware (CPU cores, RAM, GPU VRAM). Fast but may not find the true optimum for your specific hardware/model combination.
-
-**Empirical Mode** (new): Runs a sweep of `llama-bench` benchmarks across multiple parameter combinations (GPU layers, batch sizes, thread counts, cache types, etc.) and selects the configuration that maximizes your chosen target metric (throughput, latency, or balanced). Results are cached for 30 days keyed by model file + hardware fingerprint.
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/optimize-settings` | POST | Heuristic optimization (instant) |
-| `/api/benchmark-optimize` | POST | Empirical optimization (runs benchmarks) |
-
-### Example Benchmark Optimization Request
-
-```bash
-curl -X POST http://localhost:5000/api/benchmark-optimize \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "my-model.gguf",
-    "max_duration_sec": 60,
-    "target": "balanced"
-  }'
-```
-
-### Example Benchmark Optimization Response
-
-```json
-{
-  "optimal_settings": {
-    "gpu_layers": 50,
-    "batch_size": 2048,
-    "ubatch_size": 512,
-    "threads": 16,
-    "threads_batch": 16,
-    "cache_type_k": "q8_0",
-    "cache_type_v": "q8_0",
-    "flash_attn": "auto",
-    "ctx_size": 8192,
-    "numa": true,
-    "numa_value": "distribute",
-    "spec_type": "ngram-simple",
-    "spec_draft_n_max": 3,
-    "spec_ngram_size_n": 12,
-    "spec_ngram_size_m": 48
-  },
-  "benchmark_results": [
-    {
-      "config": {"n_gpu_layers": 50, "batch_size": 2048, "threads": 16, ...},
-      "metrics": {"pp_avg": 1250.5, "tg_avg": 45.2, "latency_p50": 22.1, ...},
-      "success": true
-    },
-    ...
-  ],
-  "hardware_info": {...},
-  "cached": false,
-  "duration_sec": 45.3,
-  "optimization_target": "balanced",
-  "model": "my-model.gguf"
-}
-```
-
-### Benchmark Cache
-
-Benchmark results are cached to avoid re-running benchmarks for the same model/hardware combination:
-
-- **Location**: `~/.cache/llama-web/benchmarks/` (or `BENCHMARK_CACHE_DIR`)
-- **Key**: MD5 hash of model file (path, size, mtime) + hardware fingerprint
-- **TTL**: 30 days
-- **Invalidation**: Automatic on hardware changes
-
-To clear the cache:
-```bash
-rm -rf ~/.cache/llama-web/benchmarks/
-```
-
-Or set `BENCHMARK_CACHE_DIR` to a different location and delete that directory.
-
-### Configuration Options
-
-Control benchmark behavior via environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BENCHMARK_MAX_DURATION` | `60` | Max seconds to spend benchmarking (10-3600) |
-| `BENCHMARK_CACHE_DIR` | `~/.cache/llama-web/benchmarks` | Cache directory path |
-| `BENCHMARK_ENABLED` | `true` | Set to `false` to disable empirical optimization |
-
-### Requirements for Empirical Optimization
-
-1. **llama-bench binary** — Must be in the same directory as `llama-server` (or `LLAMA_SERVER_DIR`)
-2. **Model file** — Local file path accessible to the benchmark process
-3. **Time** — Allow 10-3600 seconds depending on `BENCHMARK_MAX_DURATION`
-4. **Disk space** — Temporary files created during benchmarking (cleaned up automatically)
-
-### Troubleshooting
-
-**Benchmark binary not found:**
-- Ensure `llama-bench` is built/installed alongside `llama-server`
-- Set `LLAMA_SERVER_DIR` to the directory containing both binaries
-
-**Benchmarks timeout:**
-- Increase `BENCHMARK_MAX_DURATION` (max 3600 seconds)
-- Reduce model context size or batch sizes in the configuration
-
-**Cache not working:**
-- Check write permissions on `BENCHMARK_CACHE_DIR`
-- Verify hardware detection is consistent (`/api/hardware-info`)
+- **Web-based Dashboard**: Intuitive interface for model management and monitoring
+- **Empirical Performance Analysis**: Automatic collection and analysis of model metrics
+- **Optimal Configuration Recommendations**: Data-driven suggestions for model settings
+- **Real-time Monitoring**: Live performance graphs and metrics
+- **Model Configuration Management**: Easy management of model configurations via JSON files
+- **Multi-Model Support**: Simultaneous management of multiple model instances
 
 ## Architecture
 
-### Mode Selection
+The project consists of several core components:
 
-The application operates in one of two modes:
+- **Frontend**: Web interface built with HTML, CSS, and JavaScript
+- **Backend**: Model management and analysis logic
+- **Data Storage**: Model configuration files (models.json) and performance metrics
+- **Performance Analysis Engine**: System for collecting and analyzing model metrics
 
-1. **Local Mode** (`REMOTE_MODE=false`): The web frontend manages llama.cpp server processes directly. Models are loaded/unloaded by spawning local processes.
+The architecture follows a clean separation of concerns, with the web interface handling user interaction, the backend managing model operations, and the performance analysis engine providing data-driven insights.
 
-2. **Remote Mode** (`REMOTE_MODE=true`): The web frontend acts as a client, delegating all model operations to a remote llama.cpp server via REST API.
+## Getting Started
 
-### Remote Mode Flow
+### Prerequisites
 
-```
-┌─────────────────┐     ┌──────────────────┐
-│  Web Frontend   │────▶│  llama.cpp Server │
-│  (Port 5000)    │     │  (Port 8080)     │
-└─────────────────┘     └──────────────────┘
-         │                       │
-         ▼                       ▼
-    /api/start ───────────────▶ /api/models/load
-    /api/stop  ──────────────▶ /api/models/unload
-    /api/chat  ──────────────▶ /api/chat
-```
+- Node.js (v16 or higher)
+- npm (Node Package Manager)
+- Python 3.8+ (for some model operations)
+- llama.cpp with required dependencies
 
-## API Endpoints
+### Installation
 
-| Endpoint | Method | Mode | Description |
-|----------|--------|------|-------------|
-| `/api/status` | GET | Both | Get system status and mode |
-| `/api/start` | POST | Both | Load/start a model |
-| `/api/stop` | POST | Both | Stop/unload a model |
-| `/api/chat` | POST | Both | Send chat message |
-| `/api/next-port` | GET | Local | Get available port (local only) |
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/llama.cpp-model-manager.git
+   cd llama.cpp-model-manager
+   ```
 
-## Troubleshooting
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-### Remote Mode Issues
+3. Configure the model manager:
+   - Copy `models.example.json` to `models.json`
+   - Update the model paths and settings in `models.json`
+   - Set the preferred binary option in `.llama-web-config.json`
 
-**503 Service Unavailable**: The web frontend cannot reach the remote llama.cpp server.
-- Verify `LLAMA_CPP_SERVER_URL` is correct
-- Ensure the remote server is running and accessible
-- Check network connectivity between containers
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-**400 Bad Request**: Model not found on remote server.
-- Verify the model name matches exactly
-- Check the remote server has the model loaded
+5. Access the web interface at `http://localhost:3000`
 
-### Local Mode Issues
+## Configuration
 
-**Port already in use**: Another process is using the selected port.
-- Use `/api/next-port` to find an available port
-- Or set a specific port via environment variable
+### Model Configuration (models.json)
 
-**Model not found**: The specified model file doesn't exist.
-- Ensure models are in the `./models` directory
-- Verify file permissions
+The `models.json` file contains all model configurations. Each model entry includes:
+
+- `model_path`: Path to the model file
+- `name`: Human-readable model name
+- `spec_type`: Speculative decoding type (`draft-simple`, `draft-mtp`, etc.)
+- `gpu_layers`: Number of layers to offload to GPU
+- `threads`: Number of CPU threads to use
+- `cache_type_k/v`: KV cache type (e.g., `fp16`, `q4_0`)
+- `ctx_size`: Context window size
+- `batch_size`: Batch size for inference
+- `ubatch_size`: Draft batch size
+- `numa`: NUMA policy setting
+- `flash_attn`: Flash attention setting
+
+### Configuration Tips
+
+- Use `draft-simple` for better acceptance rates with smaller models
+- Set `gpu_layers` to `99` for maximum GPU acceleration
+- Use `fp16` KV cache for optimal performance
+- Adjust `ubatch_size` based on acceptance rate and speed requirements
+- Enable `numa` with `isolate` policy for single-process latency
+
+## Performance Analysis
+
+The Llama.cpp Model Manager includes a powerful performance analysis system that automatically collects and analyzes model metrics. The system:
+
+- Monitors generation speed (ms/token)
+- Tracks draft acceptance rates (%)
+- Calculates estimated speedup (x)
+- Measures throughput (tokens/sec)
+
+The analysis is based on empirical data collected from model instances and is used to provide recommendations for optimal configuration settings.
+
+### Performance Report Summary
+
+Based on recent performance analysis:
+
+- **Top-performing model**: `qwen3.5-9B-glm5.1-distill-v1-q4-k-m`
+  - Fastest generation: **561.7 ms/token** (2.2x faster than runner-up)
+  - Best draft acceptance: **37.5%** (5.5% higher than runner-up)
+  - Highest estimated speedup: **29.3x** (8.7x higher than runner-up)
+
+- **Key findings**:
+  - `draft-simple` configuration generally provides better speed/acceptance balance than `draft-mtp`
+  - `fp16` KV cache typically offers optimal performance
+  - Optimal `ubatch_size` varies by model and should be tested experimentally
+
+## Usage
+
+### Managing Models
+
+1. Start the web interface
+2. Add new models via the configuration file or web interface
+3. Select a model to view its details
+4. Start, stop, or configure the model
+5. Monitor real-time performance metrics
+
+### Analyzing Performance
+
+1. Enable performance monitoring for a model
+2. Collect metrics over time
+3. Review the performance report
+4. Implement recommended configuration changes
+5. Re-test and validate improvements
+
+### Optimizing Model Settings
+
+1. Use the performance analysis to identify bottlenecks
+2. Experiment with different configuration settings
+3. Test changes on a subset of models
+4. Apply successful configurations to all models
+5. Document and share optimal settings
 
 ## Development
 
-```bash
-# Run tests
-python -m pytest tests/
+### Project Structure
 
-# Run the development server
-python main.py --host 0.0.0.0 --port 5000
 ```
+llama.cpp-model-manager/
+├── public/               # Static files
+├── src/                  # Source code
+│   ├── components/       # UI components
+│   ├── pages/            # Web pages
+│   ├── services/         # API and data services
+│   └── utils/            # Utility functions
+├── styles/               # CSS files
+├── models.example.json   # Example model configuration
+├── .llama-web-config.json # Web interface configuration
+├── README.md             # This file
+├── AGENTS.md             # Agent configuration
+└── PERFORMANCE_REPORT.md # Performance analysis report
+```
+
+### Contributing
+
+We welcome contributions! To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a pull request
+
+Please ensure your code follows the project's style guidelines and includes appropriate tests.
+
+### Testing
+
+Run the test suite:
+```bash
+npm test
+```
+
+### Linting
+
+The project uses ESLint for code quality. Run:
+```bash
+npm run lint
+```
+
+## Support
+
+For help with the Llama.cpp Model Manager, please:
+- Check the [documentation](#)
+- Review the [performance analysis report](PERFORMANCE_REPORT.md)
+- Consult the [model configuration examples](models.example.json)
+- Open an issue on GitHub if you encounter problems
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
