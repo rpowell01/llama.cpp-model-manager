@@ -840,8 +840,9 @@ def api_set_platform_backend_config():
 
     data = request.get_json(force=True) or {}
 
-    # Validate that only known keys are provided
-    invalid_keys = [k for k in data.keys() if k not in PLATFORM_BACKEND_COMBINATIONS]
+    # Validate that only known keys are provided (combinations + global_default)
+    allowed_keys = PLATFORM_BACKEND_COMBINATIONS + ["global_default"]
+    invalid_keys = [k for k in data.keys() if k not in allowed_keys]
     if invalid_keys:
         return jsonify({"error": f"Invalid platform/backend combinations: {invalid_keys}"}), 400
 
