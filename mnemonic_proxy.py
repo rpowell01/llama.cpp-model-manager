@@ -16,18 +16,13 @@ Requirements:
 
 from __future__ import annotations
 
-# Import zstd shim first to provide compression.zstd for kvarchive on Python < 3.14
-try:
-    import compression_zstd_shim  # noqa: F401
-except ImportError:
-    pass  # Shim not available, kvarchive will use metadata_only mode
-
 import json
 import logging
 import os
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -46,6 +41,74 @@ from config import (
 from models import InvalidModeError, get_models
 
 log = logging.getLogger("llamaweb.mnemonic_proxy")
+
+# ── Startup tuning ──────────────────────────────────────────────────────────
+# The proxy's own /health endpoint makes a synchronous request to the upstream
+# llama-server (it reports the engine's health too). A freshly started model
+# (warmup, /props + /tokenize probes, slot restore, 30B MoE under load) can take
+# a while to answer, so a single short-timeout health check right after spawn
+# produces false "failed to start" errors. Poll patiently instead.
+PROXY_START_TIMEOUT = float(os.getenv("MNEMONIC_PROXY_START_TIMEOUT", "30"))
+PROXY_START_POLL_INTERVAL = float(os.getenv("MNEMONIC_PROXY_START_POLL_INTERVAL", "0.5"))
+# Steady-state checks (status endpoints) fail fast; startup polling is more
+# patient because the proxy's /health forwards to a possibly busy engine.
+PROXY_HEALTH_TIMEOUT = float(os.getenv("MNEMONIC_PROXY_HEALTH_TIMEOUT", "2.0"))
+PROXY_START_HEALTH_TIMEOUT = float(os.getenv("MNEMONIC_PROXY_START_HEALTH_TIMEOUT", "5.0"))
+MCP_START_TIMEOUT = float(os.getenv("MNEMONIC_MCP_START_TIMEOUT", "15"))
+
+# Config keys that are always derived from the live model configuration and must
+# never be clobbered by a stale config_override (e.g. copy-pasted between models).
+_DERIVED_CONFIG_KEYS = ("upstream", "slot_dir")
+
+
+def _needs_zstd_shim() -> bool:
+    """
+    True if this interpreter lacks the stdlib `compression.zstd` module.
+
+    ctxproxy's kv_archive (cold archive of saved-state files) requires it and
+    refuses to start when it is missing.
+    """
+    if sys.version_info >= (3, 14):
+        return False
+    try:
+        import compression.zstd  # noqa: F401
+        return False
+    except ImportError:
+        return True
+
+
+def _zstd_shim_usable() -> bool:
+    """
+    True if compression_zstd_shim can provide compression.zstd here.
+
+    The shim wraps the `zstandard` PyPI package with the stdlib API, but it has
+    to be imported *inside the mnemonic-proxy process* (before
+    ctxproxy.kvarchive) - importing it in the web app has no effect on the
+    child process.
+    """
+    if not _needs_zstd_shim():
+        return True
+    if not (BASE_DIR / "compression_zstd_shim.py").exists():
+        return False
+    try:
+        import zstandard  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _script_interpreter(binary: Path) -> str:
+    """Interpreter that runs a console script (its shebang, else sys.executable)."""
+    try:
+        with open(binary, "r", encoding="utf-8", errors="replace") as f:
+            first_line = f.readline()
+        if first_line.startswith("#!"):
+            interpreter = first_line[2:].strip().split()
+            if interpreter:
+                return interpreter[0]
+    except OSError:
+        pass
+    return sys.executable
 
 
 def _validate_local_mode() -> None:
@@ -117,15 +180,7 @@ class MnemonicProxyManager:
         self.config_override = config_override or {
             "mask_anchor": True,
             "autosave": True,
-            "window_estimate_slack": 0.15,
-            # Cold archive (kv_archive) - requires Python >= 3.14 or zstandard package
-            # "kv_archive": True,
-            # "kv_archive_idle_s": 600,
-            # "kv_archive_min_age_s": 1800,
-            # "kv_archive_level": 3,
-            # "kv_archive_threads": 4,
-            # "kv_archive_poll_s": 60,
-            # "kv_archive_min_bytes": 67108864,  # 64 MB
+            "window_estimate_slack": 0.15
         }
         self.mcp_enabled = mcp_enabled
         self.mcp_port = mcp_port
@@ -135,15 +190,24 @@ class MnemonicProxyManager:
         self._process: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
         self._start_time: Optional[float] = None
-        
+        self._starting = False
+        self._log_handle = None  # open file object for proxy stdout/stderr
+        self._last_health: Optional[str] = None
+
         # MCP server tracking
         self._mcp_pid: Optional[int] = None
         self._mcp_process: Optional[subprocess.Popen] = None
         self._mcp_lock = threading.Lock()
         self._mcp_start_time: Optional[float] = None
-        
+        self._mcp_log_handle = None
+
         # Ensure data directory exists
         self._ensure_data_dir()
+
+    @property
+    def log_path(self) -> Path:
+        """Path of the proxy's captured stdout/stderr log file."""
+        return self._resolve_data_dir() / "proxy.log"
     
     def _ensure_data_dir(self) -> None:
         """Ensure the data directory exists."""
@@ -195,11 +259,20 @@ class MnemonicProxyManager:
         # Resolve data directory
         data_dir = self._resolve_data_dir()
         
-        # Write fresh config file so proxy uses the verified n_ctx / window size
-        self._write_config_file()
-        config_path = data_dir / "config.json"
+        # Write fresh config file so proxy uses the verified n_ctx / window size.
+        # _apply_runtime_requirements drops features this interpreter cannot
+        # support (e.g. kv_archive without compression.zstd).
+        config = self._apply_runtime_requirements(self.generate_config())
+        config_path = self._write_config_file(config)
         
-        cmd = [str(binary)]
+        # Launcher prefix: empty in the normal case (console script is exec'd
+        # directly); on Python < 3.14 with kv_archive it preloads the zstd shim
+        # in the proxy process, without which the proxy exits immediately.
+        cmd = self._launcher_prefix(binary, config)
+        if not cmd:
+            # With the preloader the script path is embedded in the snippet
+            # (sys.argv[0]); passing it again would look like a stray argument.
+            cmd = [str(binary)]
         
         # Core proxy settings - pass data dir and config explicitly
         cmd += [
@@ -298,41 +371,58 @@ class MnemonicProxyManager:
             Configuration dictionary for mnemonic-proxy
         """
         model_config = self._get_model_config() or {}
-        
+
+        # config_override may carry stale per-model values (e.g. copy-pasted
+        # between models in models.json). Keys that are derived from the live
+        # model configuration must never be clobbered by them.
+        override = dict(self.config_override or {})
+        stale = {k: override.pop(k) for k in _DERIVED_CONFIG_KEYS if k in override}
+
         # Get slot directory from model's slot_save_path (required for saved state)
         slot_save_path = model_config.get("slot_save_path", "")
-        slot_dir = self.slot_dir or slot_save_path
-        
+        # Precedence: explicit arg > model's slot_save_path > (stale) override value
+        slot_dir = self.slot_dir or slot_save_path or stale.get("slot_dir", "")
+
         # Convert slot_dir for binary if needed (WSL path conversion)
         if slot_dir:
             slot_dir = convert_path_for_binary(Path(slot_dir))
-        
+
         # Detect engine
         engine = self._detect_engine()
-        
+
         # Auto-detect tokenizer
         tokenizer = self.tokenizer_path or self._auto_detect_tokenizer()
         if tokenizer:
             tokenizer = convert_path_for_binary(Path(tokenizer))
-        
+
         # Build minimal config - v0.3.24+ auto-discovers window from engine for llama.cpp
         # Only write what the proxy cannot discover
         config = {
             "engine": engine,
+            # upstream always follows the live llama_port
             "upstream": f"http://127.0.0.1:{self.llama_port}",
         }
-        
+
         # Add slot_dir if available (required for saved state to work)
         if slot_dir:
             config["slot_dir"] = slot_dir
-        
+
         # Add tokenizer if available (for accurate token counting)
         if tokenizer:
             config["tokenizer"] = tokenizer
-        
+
+        # Warn about ignored stale overrides so models.json can be cleaned up
+        for key, value in stale.items():
+            derived = config.get(key)
+            if value != derived:
+                log.warning(
+                    f"Ignoring stale config_override[{key}]={value!r} for "
+                    f"{self.model_name}; using {derived!r} derived from the model config"
+                )
+
         # Merge config_override (allows overriding any setting including window)
-        if self.config_override:
-            config.update(self.config_override)
+        if override:
+            config.update(override)
         
         # MCP server config
         if self.mcp_enabled:
@@ -341,14 +431,74 @@ class MnemonicProxyManager:
         log.info(f"Generated mnemonic-proxy config for {self.model_name}: {config}")
         return config
     
-    def _write_config_file(self) -> Path:
+    def _apply_runtime_requirements(self, config: dict) -> dict:
         """
-        Write the generated config to a JSON file in the data directory.
-        
+        Make the generated config runnable on this interpreter.
+
+        kv_archive needs the stdlib compression.zstd module (Python >= 3.14);
+        without it mnemonic-proxy exits immediately. On older Pythons the shim
+        provides the module (see _launcher_prefix); if that is unavailable too,
+        kv_archive is switched off with a warning - the rest of the proxy
+        (masking, verbatim archive, recall, saved state) keeps working.
+
+        Args:
+            config: Config as produced by generate_config()
+
+        Returns:
+            The config to write to disk (possibly with kv_archive disabled)
+        """
+        if not config.get("kv_archive"):
+            return config
+
+        if _zstd_shim_usable():
+            return config
+
+        config = dict(config)
+        config["kv_archive"] = False
+        log.warning(
+            f"kv_archive disabled for {self.model_name}: compression.zstd needs "
+            f"Python >= 3.14 (running {sys.version_info.major}.{sys.version_info.minor}) "
+            f"and the compression_zstd_shim/zstandard fallback is unavailable. "
+            f"Install the 'zstandard' package or set kv_archive=false in models.json."
+        )
+        return config
+
+    def _launcher_prefix(self, binary: Path, config: dict) -> list[str]:
+        """
+        Command prefix used to start the mnemonic-proxy binary.
+
+        Empty in the normal case (the console script is exec'd directly). When
+        kv_archive is enabled on an interpreter without compression.zstd, the
+        shim must be imported before ctxproxy.kvarchive inside the proxy
+        process, so the binary is launched through a small Python preloader.
+        """
+        if not (config.get("kv_archive") and _needs_zstd_shim()):
+            return []
+
+        preload = (
+            f"import sys; sys.path.insert(0, {str(BASE_DIR)!r}); "
+            f"import compression_zstd_shim; "
+            f"sys.argv[0] = {str(binary)!r}; "
+            f"from ctxproxy.server import main; sys.exit(main())"
+        )
+        log.info(
+            f"Preloading compression_zstd_shim for {self.model_name} "
+            f"(kv_archive on Python {sys.version_info.major}.{sys.version_info.minor})"
+        )
+        return [_script_interpreter(binary), "-c", preload]
+
+    def _write_config_file(self, config: Optional[dict] = None) -> Path:
+        """
+        Write the mnemonic-proxy config to a JSON file in the data directory.
+
+        Args:
+            config: Config to write; generated when omitted
+
         Returns:
             Path to the written config file
         """
-        config = self.generate_config()
+        if config is None:
+            config = self.generate_config()
         config_path = self._resolve_data_dir() / "config.json"
         
         with open(config_path, "w", encoding="utf-8") as f:
@@ -357,10 +507,21 @@ class MnemonicProxyManager:
         log.debug(f"Wrote mnemonic-proxy config to {config_path}")
         return config_path
     
-    def start(self) -> bool:
+    def start(self, timeout: float = PROXY_START_TIMEOUT) -> bool:
         """
         Start the mnemonic-proxy process.
-        
+
+        The proxy's /health endpoint reports the *upstream engine's* health as
+        well, so a freshly started (or busy) llama-server can keep it non-200
+        for a while. We therefore poll patiently instead of doing a single
+        short check: the process is considered started once /health answers 200.
+
+        Proxy stdout/stderr are captured to <data_dir>/proxy.log so startup
+        failures can actually be diagnosed.
+
+        Args:
+            timeout: Maximum seconds to wait for the proxy to become healthy.
+
         Returns:
             True if started successfully, False otherwise
         """
@@ -368,47 +529,96 @@ class MnemonicProxyManager:
             if self.is_running():
                 log.warning(f"mnemonic-proxy for {self.model_name} already running on port {self.proxy_port}")
                 return True
-            
+
+            if self._starting:
+                log.warning(f"mnemonic-proxy for {self.model_name} is already starting")
+                return False
+
             try:
                 cmd = self.build_cmd()
-                
+
                 # Prepare environment
                 env = os.environ.copy()
                 # Add Intel oneAPI env if needed (same as processes.py)
                 from processes import _get_intel_env
                 env.update(_get_intel_env())
-                
+
                 # Resolve data directory and ensure it exists
                 data_dir = self._resolve_data_dir()
                 data_dir.mkdir(parents=True, exist_ok=True)
-                
+
+                # Capture stdout/stderr - DEVNULL here is why startup failures
+                # used to be undiagnosable.
+                self._log_handle = open(self.log_path, "a", encoding="utf-8")
+                self._log_handle.write(
+                    f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start: {' '.join(cmd)}\n"
+                )
+                self._log_handle.flush()
+
                 # Start process (build_cmd already writes config and passes --data/--config)
                 self._process = subprocess.Popen(
                     cmd,
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                    stdout=self._log_handle,
+                    stderr=subprocess.STDOUT,
                     start_new_session=True,  # Create new process group for clean kill
                 )
-                
+
                 self._pid = self._process.pid
                 self._start_time = time.time()
-                
-                log.info(f"Started mnemonic-proxy for {self.model_name} (pid={self._pid}) on port {self.proxy_port}")
-                
-                # Wait a moment and verify it's up (proxy may need 2-3 seconds to fully start)
-                time.sleep(3.0)
-                if self.is_running():
-                    return True
-                else:
-                    log.error(f"mnemonic-proxy for {self.model_name} failed to start")
-                    self._cleanup()
-                    return False
-                    
+                self._starting = True
+
+                log.info(
+                    f"Started mnemonic-proxy for {self.model_name} (pid={self._pid}) "
+                    f"on port {self.proxy_port} (log: {self.log_path})"
+                )
+
             except Exception as e:
                 log.error(f"Failed to start mnemonic-proxy for {self.model_name}: {e}")
                 self._cleanup()
                 return False
+
+        # Poll for readiness OUTSIDE the lock so stop() is never blocked by a
+        # slow startup.
+        deadline = time.time() + max(timeout, 0.0)
+        try:
+            while True:
+                # Process died during startup?
+                if self._process is not None and self._process.poll() is not None:
+                    log.error(
+                        f"mnemonic-proxy for {self.model_name} exited during startup "
+                        f"(code {self._process.returncode})"
+                    )
+                    self._log_tail()
+                    self._kill_process(self._pid)
+                    self._cleanup()
+                    return False
+
+                if self._health_state(timeout=PROXY_START_HEALTH_TIMEOUT) == "ok":
+                    log.info(
+                        f"mnemonic-proxy for {self.model_name} healthy on port "
+                        f"{self.proxy_port} after {time.time() - self._start_time:.1f}s"
+                    )
+                    return True
+
+                if time.time() >= deadline:
+                    break
+                time.sleep(PROXY_START_POLL_INTERVAL)
+
+            # Timed out. Never leave the process orphaned holding the port.
+            log.error(
+                f"mnemonic-proxy for {self.model_name} failed to become healthy on port "
+                f"{self.proxy_port} within {timeout:.0f}s (last health: {self._last_health})"
+            )
+            self._log_tail()
+            if self._pid:
+                self._kill_process(self._pid)
+            self._cleanup()
+            return False
+        finally:
+            with self._lock:
+                self._starting = False
     
     def stop(self) -> bool:
         """
@@ -430,13 +640,10 @@ class MnemonicProxyManager:
             self._cleanup()
             
             # Also stop MCP server if running
-            mcp_stopped = False
             if self.mcp_enabled and self._mcp_pid:
-                mcp_stopped = self.stop_mcp()
-                if mcp_stopped:
-                    log.info(f"Stopped mnemonic-mcp for {self.model_name}")
+                self.stop_mcp()
             
-            log.info(f"Stopped mnemonic-proxy for {self.model_name} (pid={pid}): success={success}, mcp_stopped={mcp_stopped}")
+            log.info(f"Stopped mnemonic-proxy for {self.model_name} (pid={pid}): success={success}")
             return success
     
     def _kill_process(self, pid: int) -> bool:
@@ -500,21 +707,21 @@ class MnemonicProxyManager:
         self._pid = None
         self._process = None
         self._start_time = None
-    
-    def is_running(self) -> bool:
-        """
-        Check if the mnemonic-proxy is running and responsive.
-        
-        Returns:
-            True if running and healthy, False otherwise
-        """
+        self._last_health = None
+        # Release the log file handle (the child already exited)
+        if self._log_handle:
+            try:
+                self._log_handle.close()
+            except Exception:
+                pass
+            self._log_handle = None
+
+    def _process_alive(self) -> bool:
+        """True if the tracked proxy process still exists."""
         if not self._pid:
             return False
-        
-        # Check if process exists
         try:
             if WINDOWS or (WSL and False):
-                # On Windows, use tasklist
                 cmd_path = "/mnt/c/Windows/System32/cmd.exe" if WSL else "cmd.exe"
                 if os.path.exists(cmd_path):
                     result = subprocess.run(
@@ -523,27 +730,85 @@ class MnemonicProxyManager:
                         text=True,
                         timeout=5,
                     )
-                    if str(self._pid) not in result.stdout:
-                        return False
-            else:
-                # Unix: send signal 0 to check existence
-                os.kill(self._pid, 0)
+                    return str(self._pid) in result.stdout
+                return False
+            os.kill(self._pid, 0)
+            return True
         except (OSError, ProcessLookupError):
             return False
-        
-        # Check health endpoint
-        return self._check_health()
-    
-    def _check_health(self) -> bool:
-        """Check mnemonic-proxy health via its health endpoint."""
+
+    def _health_state(self, timeout: float = PROXY_HEALTH_TIMEOUT) -> str:
+        """
+        Query the proxy's /health endpoint and classify the result.
+
+        Returns:
+            "ok"        - /health answered 200 (proxy + engine healthy)
+            "listening" - the proxy answered but not with 200 (engine still
+                          loading/unreachable), or the connection was accepted
+                          but the handler was too slow to answer in time
+            "down"      - nothing is listening on the proxy port (still starting
+                          up, or the process died)
+        """
+        if not self._pid:
+            self._last_health = "down"
+            return "down"
         try:
             resp = requests.get(
                 f"http://127.0.0.1:{self.proxy_port}/health",
-                timeout=2.0
+                timeout=timeout,
             )
-            return resp.status_code == 200
+            if resp.status_code == 200:
+                state = "ok"
+            else:
+                # 503 = engine still loading, other codes = engine error:
+                # the proxy itself is up and serving.
+                state = "listening"
+            self._last_health = state
+            return state
+        except requests.exceptions.Timeout:
+            # TCP connected but no answer within the timeout: the proxy is
+            # listening, its handler is busy (typically proxying /health to a
+            # slow upstream engine).
+            self._last_health = "listening"
+            return "listening"
+        except requests.exceptions.ConnectionError:
+            self._last_health = "down"
+            return "down"
         except Exception:
+            self._last_health = "down"
+            return "down"
+
+    def _log_tail(self, lines: int = 30) -> list[str]:
+        """Read the tail of the proxy log file (for diagnostics)."""
+        try:
+            with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
+                tail = f.read().splitlines()[-lines:]
+        except OSError:
+            return []
+        for line in tail:
+            log.error(f"mnemonic-proxy[{self.model_name}] log: {line}")
+        return tail
+    
+    def is_running(self) -> bool:
+        """
+        Check if the mnemonic-proxy is running and responsive.
+
+        Returns:
+            True if running and healthy, False otherwise
+        """
+        if not self._pid:
             return False
+
+        # Check if process exists
+        if not self._process_alive():
+            return False
+
+        # Check health endpoint (proxy + upstream engine)
+        return self._health_state() == "ok"
+
+    def _check_health(self) -> bool:
+        """Check mnemonic-proxy health via its health endpoint."""
+        return self._health_state() == "ok"
     
     def get_status(self) -> dict[str, Any]:
         """
@@ -571,36 +836,40 @@ class MnemonicProxyManager:
         status["mcp"] = self.get_mcp_status()
         
         if running:
-            # Try to get proxy stats
+            # Try to get recent proxy events (v0.3.24 has no /stats endpoint;
+            # /v1/strata/journal returns the recent event list)
             try:
                 resp = requests.get(
-                    f"http://127.0.0.1:{self.proxy_port}/stats",
+                    f"http://127.0.0.1:{self.proxy_port}/v1/strata/journal",
                     timeout=2.0
                 )
                 if resp.status_code == 200:
-                    status["stats"] = resp.json()
+                    events = resp.json().get("events", [])
+                    status["recent_events"] = len(events)
+                    status["last_event"] = events[-1] if events else None
             except Exception:
                 pass
-        
+
         return status
-    
+
     def get_logs(self, lines: int = 100) -> list[str]:
         """
         Get recent log lines from the mnemonic-proxy process.
-        
+
+        Proxy stdout/stderr are captured to <data_dir>/proxy.log by start(),
+        so this reads the tail of that file.
+
         Args:
             lines: Number of lines to retrieve
-            
+
         Returns:
             List of log lines
         """
-        if not self._process:
+        try:
+            with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read().splitlines()[-lines:]
+        except OSError:
             return []
-        
-        # Note: In production, you'd want to use a proper log capture mechanism
-        # This is a simplified version - the process stdout/stderr pipes would need
-        # to be read in a background thread for real-time log streaming
-        return ["Log streaming not yet implemented - check process stdout/stderr"]
     
     # ==================== MCP Server Management ====================
     
@@ -693,33 +962,62 @@ class MnemonicProxyManager:
                 from processes import _get_intel_env
                 env.update(_get_intel_env())
                 
+                # Capture output to the data dir for diagnostics
+                mcp_log_path = self._resolve_data_dir() / "mnemonic-mcp.log"
+                self._mcp_log_handle = open(mcp_log_path, "a", encoding="utf-8")
+                self._mcp_log_handle.write(
+                    f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start: {' '.join(cmd)}\n"
+                )
+                self._mcp_log_handle.flush()
+                
                 # Start process
                 self._mcp_process = subprocess.Popen(
                     cmd,
                     env=env,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                    stdout=self._mcp_log_handle,
+                    stderr=subprocess.STDOUT,
                     start_new_session=True,
                 )
                 
                 self._mcp_pid = self._mcp_process.pid
                 self._mcp_start_time = time.time()
                 
-                log.info(f"Started mnemonic-mcp for {self.model_name} (pid={self._mcp_pid}) on port {self.mcp_port}")
+                log.info(
+                    f"Started mnemonic-mcp for {self.model_name} (pid={self._mcp_pid}) "
+                    f"on port {self.mcp_port} (log: {mcp_log_path})"
+                )
                 
-                # Wait a moment and verify it's up
-                time.sleep(1.0)
-                if self.is_mcp_running():
-                    return True
-                else:
-                    log.error(f"mnemonic-mcp for {self.model_name} failed to start")
-                    self._cleanup_mcp()
-                    return False
-                    
             except Exception as e:
                 log.error(f"Failed to start mnemonic-mcp for {self.model_name}: {e}")
                 self._cleanup_mcp()
                 return False
+        
+        # Poll for readiness outside the lock (same rationale as start())
+        deadline = time.time() + MCP_START_TIMEOUT
+        while True:
+            if self._mcp_process is not None and self._mcp_process.poll() is not None:
+                log.error(
+                    f"mnemonic-mcp for {self.model_name} exited during startup "
+                    f"(code {self._mcp_process.returncode})"
+                )
+                self._kill_process(self._mcp_pid)
+                self._cleanup_mcp()
+                return False
+            
+            if self.is_mcp_running():
+                log.info(f"mnemonic-mcp for {self.model_name} healthy on port {self.mcp_port}")
+                return True
+            
+            if time.time() >= deadline:
+                break
+            time.sleep(PROXY_START_POLL_INTERVAL)
+        
+        log.error(f"mnemonic-mcp for {self.model_name} failed to start on port {self.mcp_port}")
+        if self._mcp_pid:
+            self._kill_process(self._mcp_pid)
+        self._cleanup_mcp()
+        return False
     
     def stop_mcp(self) -> bool:
         """
@@ -758,6 +1056,12 @@ class MnemonicProxyManager:
         self._mcp_pid = None
         self._mcp_process = None
         self._mcp_start_time = None
+        if self._mcp_log_handle:
+            try:
+                self._mcp_log_handle.close()
+            except Exception:
+                pass
+            self._mcp_log_handle = None
     
     def is_mcp_running(self) -> bool:
         """
@@ -854,20 +1158,34 @@ def create_proxy_manager(
     mcp_enabled: bool = False,
     mcp_port: int = 8133,
 ) -> MnemonicProxyManager:
-    """Create or get a proxy manager for a model."""
+    """Create or get a proxy manager for a model.
+
+    A manager that is not running is replaced with a fresh one so that changed
+    model settings (port, data dir, config) take effect; a running manager is
+    kept as-is (its process holds the port).
+    """
     with _proxy_managers_lock:
-        if model_name not in _proxy_managers:
-            _proxy_managers[model_name] = MnemonicProxyManager(
-                model_name=model_name,
-                llama_port=llama_port,
-                proxy_port=proxy_port,
-                data_dir=data_dir,
-                slot_dir=slot_dir,
-                tokenizer_path=tokenizer_path,
-                config_override=config_override,
-                mcp_enabled=mcp_enabled,
-                mcp_port=mcp_port,
-            )
+        existing = _proxy_managers.get(model_name)
+        if existing is not None:
+            if existing._pid:
+                log.warning(
+                    f"mnemonic-proxy for {model_name} is already running "
+                    f"(pid={existing._pid}); keeping the existing manager"
+                )
+                return existing
+            # Not running: drop the stale instance so new config is applied
+            _proxy_managers.pop(model_name, None)
+        _proxy_managers[model_name] = MnemonicProxyManager(
+            model_name=model_name,
+            llama_port=llama_port,
+            proxy_port=proxy_port,
+            data_dir=data_dir,
+            slot_dir=slot_dir,
+            tokenizer_path=tokenizer_path,
+            config_override=config_override,
+            mcp_enabled=mcp_enabled,
+            mcp_port=mcp_port,
+        )
         return _proxy_managers[model_name]
 
 

@@ -11,6 +11,9 @@ __pycache__/
 /~
 /.env
 
+# Local llama.cpp platform/backend binary paths (machine-specific)
+/.llama-platform-config.json
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
