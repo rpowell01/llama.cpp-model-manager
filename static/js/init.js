@@ -20,11 +20,13 @@ function init() {
    // Tile sort order and speculative model visibility
    initTileControls();
 
+   // Button event listeners (Refresh, Shutdown, Add Model, panel close)
+   initButtonListeners();
 
    // Modal initializations
    initHfModal();
    initChatModal();
-    initKiloConfigModal();
+   initKiloConfigModal();
 
    // Restore chat input from localStorage (if needed)
    restoreChatInputs();

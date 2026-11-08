@@ -1222,6 +1222,12 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         if yarn_beta_fast and yarn_beta_fast != 32.0:
             cmd += ["--yarn-beta-fast", str(yarn_beta_fast)]
 
+    # Warmup flag (llama.cpp --warmup / --no-warmup)
+    if meta.get("warmup_enabled", DEFAULTS["warmup_enabled"]):
+        cmd += ["--warmup"]
+    else:
+        cmd += ["--no-warmup"]
+
     # Enable Prometheus metrics endpoint for performance monitoring
     cmd += ["--metrics"]
 

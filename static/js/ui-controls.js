@@ -1062,8 +1062,6 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     // Warmup settings
     addEditable("Enable Warmup", "warmup_enabled", data.warmup_enabled, "checkbox");
-    addEditable("Warmup Message", "warmup_message", data.warmup_message, "text");
-    addEditable("Warmup Max Tokens", "warmup_max_tokens", data.warmup_max_tokens, "number", 1, 1);
     
     html += `</div></div>`;
 
@@ -1449,7 +1447,6 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           "spec_draft_p_min", "spec_ngram_size_n", "spec_ngram_size_m",
           "spec_ngram_min_hits",
           "grp_attn_n",
-          "warmup_max_tokens",
           "rating_speed", "rating_coding",
           // MoE CPU offloading
           "n_cpu_moe",
