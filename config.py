@@ -112,14 +112,14 @@ DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 9931,
     "reuse_port": True,
-    "threads": _get_cpu_count(),  # Use all logical CPUs
-    "threads_batch": _get_cpu_count(),  # Use all logical CPUs for batch
+    "threads": 16,  # Override to 16 threads
+    "threads_batch": 16,  # Override to 16 batch threads
     "timeout": 3600,
     "mlock": True,  # Prevent swapping - critical for CPU performance
-    "flash_attn": "auto",  # Disable flash attention on CPU
+    "flash_attn": "on",  # Enable flash attention explicitly
     "no_mmap": False,  # Disable mmap on CPU for better performance
-    "parallel": "auto",  # Single parallel sequence for CPU
-    "ubatch_size": 1024,
+    "parallel": 1,  # Override to single parallel sequence (value 1)
+    "ubatch_size": 4096,
     # Agent/Tool parameters
     "jinja": True,  # Enable Jinja tool parsing for agent loops (Claude Code/OpenAI tool schemas)
     "reasoning_preserve": True,  # Preserve reasoning/thinking inner monologue across tool steps
@@ -128,13 +128,13 @@ DEFAULTS: dict[str, Any] = {
     "device": "",  # GPU device to use (empty = auto, "none" = disable GPU/SYCL entirely)
     "cpu_moe": False,  # Keep all Mixture of Experts (MoE) weights in CPU
     "n_cpu_moe": 0,  # Keep MoE weights of first N layers in CPU (when cpu_moe is False)
-    "cache_type_k": "q4_0",  # KV cache type: fp16, q4_0, q8_0 (q4_0 saves ~3.5x memory)
-    "cache_type_v": "q4_0",  # KV cache type for V
+    "cache_type_k": "fp16",  # KV cache type: fp16, q4_0, q8_0
+    "cache_type_v": "fp16",  # KV cache type for V
     "numa": True,  # Enable NUMA awareness
     "numa_value": "distribute",  # NUMA mode: distribute, isolate, numactl
     "cpu_affinity": "auto",  # CPU core pinning: "auto", "none", or comma-separated core IDs
-    "cpu_strict": False,  # Strict CPU mode (disable GPU ops)
-    "batch_size": 4096,  # Batch size for prompt processing
+    "cpu_strict": True,  # Strict CPU mode (disable GPU ops)
+    "batch_size": 32768,  # Override to 32768 batch size
     "ctx_size": 128000,  # Context window size
     "rope_freq_base": 10000.0,  # RoPE frequency base
     "rope_freq_scale": 1.0,  # RoPE frequency scaling
@@ -147,8 +147,8 @@ DEFAULTS: dict[str, Any] = {
     "yarn_beta_slow": 1.0,  # YaRN: high correction dim (alpha)
     "yarn_beta_fast": 32.0,  # YaRN: low correction dim (beta)
     # Speculative decoding parameters
-    "spec_type": "none",
-    "spec_draft_model": "",
+    "spec_type": "ngram-mod",
+    "spec_draft_model": "./data/<model name>",
     "spec_draft_hf_repo": "",
     "spec_draft_n_max": 8,
     "spec_draft_n_min": 3,
@@ -179,10 +179,10 @@ DEFAULTS: dict[str, Any] = {
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
     # Slot KV Cache Persistence
-    "slot_save_path": "",
+    "slot_save_path": "./data/<model name>",
     "cache_reuse": 4096,
     "keep": 0,
-    "log_verbosity": 3,
+    "log_verbosity": 4,
     "cache_ram": 8192,
     "swa_full": False,
     # Chat template
@@ -191,7 +191,7 @@ DEFAULTS: dict[str, Any] = {
     "custom_header_key": "",
     "custom_header_value": "",
     # Generation / Sampling parameters
-    "use_generation_params": True,
+    "use_generation_params": False,
     "temperature": 0.7,
     "top_k": 40,
     "top_p": 0.9,
@@ -207,7 +207,7 @@ DEFAULTS: dict[str, Any] = {
         "enabled": False,
         "port": 8096,
         "data_dir": "",
-        "slot_dir": "",
+        "slot_dir": "./data/<model name>",
         "tokenizer_path": "",
         "config_override": {
             "mask_anchor": True,
@@ -223,6 +223,30 @@ DEFAULTS: dict[str, Any] = {
             # "kv_archive_min_bytes": 67108864,  # 64 MB
         },
         "mcp_enabled": False,
+        "kv_archive": True,
+        "kv_archive_idle_s": 600,
+        "kv_archive_min_age_s": 1800,
+        "kv_archive_level": 3,
+        "kv_archive_threads": 4,
+        "kv_archive_poll_s": 60,
+        "kv_archive_min_bytes": 67108864,
+        "autosave": True,
+        "autosave_idle_s": 60,
+        "autosave_min_tokens": 4096,
+        "auto_recall": True,
+        "autorestore": True,
+        "autorestore_min_gain": 8192,
+        "autorestore_idle_s": 600,
+        "mask_anchor": True,
+        "mask_reasoning": True,
+        "mask_trigger": 14000,
+        "mask_tool_args": True,
+        "mask_target": 8000,
+        "response_floor": 16384,
+        "seal_experimental": True,
+        "slot_save": True,
+        "tools_paging": True,
+        "upstream": "http://127.0.0.1:9931",
         "mcp_port": 8133,
     },
     # llama.cpp platform and backend selection
