@@ -1,9 +1,11 @@
 """Status and health check endpoints."""
 import time
 import requests
+import logging
 from pathlib import Path
 from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 from config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
@@ -22,6 +24,8 @@ from downloads import download_status, download_lock
 from metrics import _fetch_metrics_from_model
 from utils import estimate_gguf_size
 from mnemonic_proxy import list_proxy_managers, get_proxy_manager
+
+log = logging.getLogger("llamaweb")
 
 # Global model registry instance for status checks
 _status_registry = None
@@ -61,6 +65,21 @@ status_bp = Blueprint("status", __name__)
 # Register before_request handlers
 status_bp.before_request(inject_registry_to_context)
 status_bp.before_request(validate_remote_connectivity)
+
+# Thread pool for parallel model status checks
+_status_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="model-status-")
+
+# File existence cache with TTL
+_file_exists_cache = {}
+_FILE_EXISTS_TTL = 10  # seconds
+
+# Mnemonic proxy health cache with TTL
+_proxy_health_cache = {}
+_PROXY_HEALTH_TTL = 5  # seconds
+
+# Port listener cache with TTL (to avoid repeated netstat calls for same port)
+_port_listener_cache = {}
+_PORT_LISTENER_TTL = 5  # seconds
 
 
 def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) -> dict:
@@ -131,6 +150,81 @@ def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) ->
     }
 
 
+def _get_cached_file_exists(model_path: Path) -> tuple[bool, float | None]:
+    """Get cached file existence and size, or compute and cache."""
+    global _file_exists_cache
+    if model_path is None:
+        return False, None
+    
+    path_str = str(model_path)
+    now = time.time()
+    
+    if path_str in _file_exists_cache:
+        cached = _file_exists_cache[path_str]
+        if now - cached["timestamp"] < _FILE_EXISTS_TTL:
+            return cached["exists"], cached["size_gb"]
+    
+    # Compute fresh
+    exists = model_path.is_file()
+    size_gb = None
+    if exists:
+        try:
+            size_bytes = model_path.stat().st_size
+            size_gb = round(size_bytes / (1024 ** 3), 2)
+        except OSError:
+            pass
+    
+    _file_exists_cache[path_str] = {"exists": exists, "size_gb": size_gb, "timestamp": now}
+    return exists, size_gb
+
+
+def _get_cached_proxy_health(model: str, proxy_port: int) -> dict:
+    """Get cached proxy health status, or compute and cache."""
+    global _proxy_health_cache
+    cache_key = f"{model}:{proxy_port}"
+    now = time.time()
+    
+    if cache_key in _proxy_health_cache:
+        cached = _proxy_health_cache[cache_key]
+        if now - cached["timestamp"] < _PROXY_HEALTH_TTL:
+            return cached["status"]
+    
+    # Compute fresh
+    status = {"running": False, "message": "mnemonic-proxy not running"}
+    try:
+        import requests
+        resp = requests.get(f"http://127.0.0.1:{proxy_port}/health", timeout=2.0)
+        if resp.status_code == 200:
+            health = resp.json()
+            status["running"] = health.get("status") == "ok"
+            if not status["running"]:
+                status["message"] = "mnemonic-proxy not running"
+    except Exception:
+        pass
+    
+    _proxy_health_cache[cache_key] = {"status": status, "timestamp": now}
+    return status
+
+
+def _get_cached_port_listener(port: int, platform: str) -> bool:
+    """Get cached port listener status, or compute and cache."""
+    global _port_listener_cache
+    cache_key = f"{port}:{platform}"
+    now = time.time()
+    
+    if cache_key in _port_listener_cache:
+        cached = _port_listener_cache[cache_key]
+        if now - cached["timestamp"] < _PORT_LISTENER_TTL:
+            return cached["has_listener"]
+    
+    # Compute fresh - import here to avoid circular imports
+    from processes import _port_has_listener
+    has_listener = _port_has_listener(port, platform)
+    
+    _port_listener_cache[cache_key] = {"has_listener": has_listener, "timestamp": now}
+    return has_listener
+
+
 def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = None) -> dict:
     """Compute comprehensive model status."""
     if registry is None:
@@ -145,7 +239,10 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
     model_path_str = meta.get("model_path", "")
     # Handle both relative (to BASE_DIR) and absolute paths using helper (respects MODEL_DIR env var)
     model_path = resolve_model_path(model_path_str) if model_path_str else None
-    exists = model_path.is_file() if model_path else False
+    
+    # Use cached file existence check
+    exists, cached_size_gb = _get_cached_file_exists(model_path)
+    
     status = "stopped"
     pid = None
 
@@ -172,12 +269,17 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 if stored_pid:
                     pid = stored_pid
                     status = "running"
-            # For all modes, check if port is active
-            active = _check_model_ready(port, model)
-            if active:
-                if not pid:
-                    pid = find_pid_by_port(port, llama_cpp_platform)
-                status = "running"
+            
+            # Use cached port listener check first (avoids repeated netstat calls)
+            port_has_listener = _get_cached_port_listener(port, llama_cpp_platform)
+            
+            if port_has_listener:
+                # Port has a listener - check if the specific model is ready
+                active = _check_model_ready(port, model)
+                if active:
+                    if not pid:
+                        pid = find_pid_by_port(port, llama_cpp_platform)
+                    status = "running"
             # Check if model is starting
             with _start_timestamps_lock:
                 if model in _start_timestamps:
@@ -188,18 +290,14 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                     else:
                         status = "starting"
 
-    # File size if exists
+    # File size if exists - use cached size if available
     size_gb = meta.get("file_size_gb")
-    if exists and size_gb is None and model_path:
-        try:
-            size_bytes = model_path.stat().st_size
-            size_gb = round(size_bytes / (1024 ** 3), 2)
-        except OSError:
-            pass
+    if exists and size_gb is None:
+        size_gb = cached_size_gb
 
     # Partial download detection
     partial_download = 0
-    if model_path and model_path.exists():
+    if exists and model_path:
         try:
             actual_size = model_path.stat().st_size
             expected_size = meta.get("expected_size", 0)
@@ -253,22 +351,14 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             proxy_status["running"] = False
             proxy_status["message"] = "mnemonic-proxy not running"
     else:
-        # No proxy manager (e.g., after Flask restart) - check health endpoint
+        # No proxy manager (e.g., after Flask restart) - check health endpoint (cached)
         mnemonic_proxy_enabled = base_proxy_config.get("enabled", False)
         if mnemonic_proxy_enabled:
             proxy_port = base_proxy_config.get("port", 8096)
-            try:
-                import requests
-                resp = requests.get(f"http://127.0.0.1:{proxy_port}/health", timeout=2.0)
-                if resp.status_code == 200:
-                    health = resp.json()
-                    proxy_status["running"] = health.get("status") == "ok"
-                    if not proxy_status["running"]:
-                        proxy_status["message"] = "mnemonic-proxy not running"
-            except Exception:
-                # Proxy not reachable
-                proxy_status["running"] = False
-                proxy_status["message"] = "mnemonic-proxy not running"
+            cached_health = _get_cached_proxy_health(model, proxy_port)
+            proxy_status["running"] = cached_health.get("running", False)
+            if not proxy_status["running"]:
+                proxy_status["message"] = cached_health.get("message", "mnemonic-proxy not running")
 
     # Build result dict, excluding mnemonic_proxy from meta spread so our proxy status isn't overwritten
     extra_meta = {k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists", "mnemonic_proxy"]}
@@ -289,6 +379,35 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         "mnemonic_proxy": proxy_status,
         **extra_meta,
     }
+
+
+def _get_model_statuses_parallel(models: dict, registry: ModelRegistry) -> list:
+    """Get statuses for all models in parallel."""
+    futures = {}
+    for name, meta in models.items():
+        future = _status_executor.submit(_status_for_model, name, meta, registry)
+        futures[future] = name
+    
+    results = []
+    for future in as_completed(futures):
+        try:
+            result = future.result(timeout=10)  # 10 second timeout per model
+            results.append(result)
+        except Exception as e:
+            model_name = futures[future]
+            log = __import__('logging').getLogger("llamaweb")
+            log.warning(f"Failed to get status for model {model_name}: {e}")
+            # Return minimal status on error
+            results.append({
+                "model": model_name,
+                "port": models[model_name].get("port", 0),
+                "status": "error",
+                "error": str(e),
+            })
+    
+    # Sort results by model name for consistent ordering
+    results.sort(key=lambda x: x.get("model", "").lower())
+    return results
 
 
 @status_bp.route("/")
@@ -332,9 +451,9 @@ def index():
             })
     else:
         models = get_models()
-        statuses = [_status_for_model(name, meta) for name, meta in models.items()]
+        statuses = _get_model_statuses_parallel(models, registry)
     
-    # Get hardware info for display
+    # Get hardware info for display (cached)
     hardware_info = get_hardware_info()
     
     return render_template('index.html', 
@@ -395,7 +514,7 @@ def api_status():
             })
     else:
         models = get_models()
-        results = [_status_for_model(name, meta) for name, meta in models.items()]
+        results = _get_model_statuses_parallel(models, registry)
     
     # Add mode and remote health info to response
     from config import PREFER_LINUX_BINARY

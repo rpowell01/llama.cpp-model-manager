@@ -7,6 +7,8 @@ import platform
 import subprocess
 import re
 from logging import getLogger
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Optional gpu_detector import (for Intel GPU detection on Linux)
 try:
@@ -27,6 +29,21 @@ get_models = get_models_local
 
 system_bp = Blueprint("system", __name__)
 log = getLogger("llamaweb")
+
+# Thread pool for parallel operations
+_status_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="status-")
+
+# Hardware info cache with TTL
+_hardware_info_cache = {"data": None, "timestamp": 0}
+_HARDWARE_INFO_TTL = 60  # seconds
+
+# File existence cache with TTL
+_file_exists_cache = {}
+_FILE_EXISTS_TTL = 10  # seconds
+
+# Mnemonic proxy health cache with TTL
+_proxy_health_cache = {}
+_PROXY_HEALTH_TTL = 5  # seconds
 
 
 @system_bp.route("/static/js/state.js")
@@ -272,8 +289,8 @@ def _detect_windows_cpu_memory() -> dict:
     return gpus
 
 
-def get_hardware_info():
-    """Detect system hardware capabilities."""
+def _get_hardware_info_uncached():
+    """Detect system hardware capabilities (uncached version)."""
     info = {
         "platform": platform.system(),
         "platform_version": platform.version(),
@@ -462,6 +479,22 @@ def get_hardware_info():
     total_vram_gb = sum((g.get("memory_mb") or 0) for g in info["gpu_info"]) / 1024
     info["total_gpu_vram_gb"] = round(total_vram_gb, 1) if total_vram_gb > 0 else 0
     
+    return info
+
+
+def get_hardware_info():
+    """Detect system hardware capabilities (with caching)."""
+    global _hardware_info_cache
+    now = time.time()
+    
+    # Return cached data if still valid
+    if _hardware_info_cache["data"] is not None and (now - _hardware_info_cache["timestamp"]) < _HARDWARE_INFO_TTL:
+        return _hardware_info_cache["data"]
+    
+    # Cache expired or empty - fetch fresh data
+    info = _get_hardware_info_uncached()
+    _hardware_info_cache["data"] = info
+    _hardware_info_cache["timestamp"] = now
     return info
 
 
