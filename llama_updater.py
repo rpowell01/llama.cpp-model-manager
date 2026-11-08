@@ -7,7 +7,7 @@ Fetches the latest nightly build tag from GitHub and installs binaries
 for all platform/backend combinations.
 
 Supported platforms: windows, linux
-Supported backends: vulkan, sycl, openvino, cpu
+Supported backends: vulkan, sycl, openvino
 
 The module:
 1. Fetches the latest nightly build tag from GitHub API

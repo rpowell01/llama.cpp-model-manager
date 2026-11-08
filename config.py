@@ -227,7 +227,7 @@ DEFAULTS: dict[str, Any] = {
     },
     # llama.cpp platform and backend selection
     "llama_cpp_platform": "auto",  # "auto", "windows", "linux"
-    "llama_cpp_backend": "auto",   # "auto", "vulkan", "sycl", "openvino", "cpu"
+    "llama_cpp_backend": "auto",   # "auto", "vulkan", "sycl", "openvino"
 }
 
 # Flask server port (set by main.py at runtime)
@@ -823,7 +823,7 @@ else:
 #
 # Global configuration for llama-server directory paths per platform/backend
 # combination. This allows per-model selection of platform (windows/linux) and
-# backend (vulkan/sycl/openvino/cpu) with each combination mapping to a
+# backend (vulkan/sycl/openvino) with each combination mapping to a
 # specific llama-server directory.
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -896,7 +896,7 @@ def get_platform_backend_dir(platform: str, backend: str) -> str:
     
     Args:
         platform: "windows" or "linux"
-        backend: "vulkan", "sycl", "openvino", or "cpu"
+        backend: "vulkan", "sycl", or "openvino"
         
     Returns:
         Directory path string, or empty string if not configured
@@ -912,7 +912,7 @@ def set_platform_backend_dir(platform: str, backend: str, directory: str) -> Non
     
     Args:
         platform: "windows" or "linux"
-        backend: "vulkan", "sycl", "openvino", or "cpu"
+        backend: "vulkan", "sycl", or "openvino"
         directory: Directory path (empty string to clear)
     """
     config = _load_platform_backend_config()
@@ -955,7 +955,7 @@ def get_platform_backend_dir(platform: str, backend: str) -> str:
     
     Args:
         platform: "windows" or "linux"
-        backend: "vulkan", "sycl", "openvino", or "cpu"
+        backend: "vulkan", "sycl", or "openvino"
         
     Returns:
         Directory path string, or empty string if not configured

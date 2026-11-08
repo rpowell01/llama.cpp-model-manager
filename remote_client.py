@@ -150,7 +150,7 @@ class Model:
     reasoning_budget_message: str = ""
     # llama.cpp platform and backend selection
     llama_cpp_platform: str = "auto"  # "auto", "windows", "linux"
-    llama_cpp_backend: str = "auto"   # "auto", "vulkan", "sycl", "openvino", "cpu"
+    llama_cpp_backend: str = "auto"   # "auto", "vulkan", "sycl", "openvino"
     # Mnemonic Proxy configuration
     mnemonic_proxy_enabled: bool = False
     mnemonic_proxy_port: int = 8096

@@ -754,13 +754,13 @@ async function renderPanelProperties(data, modelName) {
     // llama.cpp Backend dropdown
     const backendVal = data.llama_cpp_backend || "auto";
     let backendSelect = `<select class="meta-input" data-field="llama_cpp_backend">`;
-    ["auto", "vulkan", "sycl", "openvino", "cpu"].forEach((val) => {
+    ["auto", "vulkan", "sycl", "openvino"].forEach((val) => {
       const displayVal = val === "auto" ? "Auto-detect" : val.toUpperCase();
       backendSelect += `<option value="${val}" ${backendVal === val ? "selected" : ""}>${displayVal}</option>`;
     });
     backendSelect += `</select>`;
     html += `<div class="panel-item">
-      <span class="label" title="Select llama.cpp backend (vulkan/sycl/openvino/cpu) for this model">Backend</span>
+      <span class="label" title="Select llama.cpp backend (vulkan/sycl/openvino) for this model">Backend</span>
       <span class="value">${backendSelect}</span>
     </div>`;
 

@@ -264,7 +264,7 @@ def add_model_entry(
     mnemonic_proxy_mcp_port: int = 8133,
     # llama.cpp platform and backend selection
     llama_cpp_platform: str = "auto",  # "auto", "windows", "linux"
-    llama_cpp_backend: str = "auto",   # "auto", "vulkan", "sycl", "openvino", "cpu"
+    llama_cpp_backend: str = "auto",   # "auto", "vulkan", "sycl", "openvino"
 ) -> bool:
     """Add a new model entry to models.json and reserve directory."""
     try:
