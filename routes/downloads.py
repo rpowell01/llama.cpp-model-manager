@@ -4,7 +4,7 @@ import re
 from logging import getLogger
 import time
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
 from flask import Blueprint, jsonify, request, Response
 import requests
@@ -23,6 +23,18 @@ def _normalize_model_name(name: str) -> str:
     return name.strip().lower().replace(" ", "-")
 
 
+def _find_model_key(models: dict[str, dict[str, Any]], model: str) -> str | None:
+    """Find the exact registry key for a display-form or normalized model name."""
+    if model in models:
+        return model
+
+    normalized_model = _normalize_model_name(model)
+    for key in models:
+        if _normalize_model_name(key) == normalized_model:
+            return key
+    return None
+
+
 @downloads_bp.route("/api/download", methods=["POST"])
 def api_download():
     data = request.get_json(force=True) or {}
@@ -39,11 +51,14 @@ def api_download():
 
     models = get_models()
 
-    # Normalize model name to match how it was stored during add-model
-    normalized_model = _normalize_model_name(model)
+    # Resolve the exact registry key. Add Model normalizes the display name when
+    # it stores the entry, while the browser may still submit the display form.
+    canonical_model = _find_model_key(models, model)
+    if canonical_model is None:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
 
-    if force and normalized_model in models:
-        meta = models[normalized_model]
+    if force:
+        meta = models[canonical_model]
         existing_filename = meta.get("filename", "")
         url_filename = url.split("/")[-1] if "/" in url else ""
 
@@ -109,20 +124,17 @@ def api_download():
             start_download(new_model_name, url, expected_size, force=True)
             return jsonify({"status": "download started", "model": new_model_name, "is_variant": True})
 
-    if normalized_model not in models:
-        return jsonify({"error": f"Unknown model '{model}'"}), 404
-
-    meta = models[normalized_model]
+    meta = models[canonical_model]
     # Handle both relative and absolute model paths using helper (respects MODEL_DIR env var)
     model_path_str = meta.get("model_path", "")
     target = resolve_model_path(model_path_str)
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if force and target.exists():
-        log.info(f"Force redownload requested for {model}: deleting existing file")
+        log.info(f"Force redownload requested for {canonical_model}: deleting existing file")
         target.unlink()
-        start_download(model, url, expected_size, force=True)
-        return jsonify({"status": "download started", "model": model, "force": True})
+        start_download(canonical_model, url, expected_size, force=True)
+        return jsonify({"status": "download started", "model": canonical_model, "force": True})
 
     actual_size = 0
     if resume and target.exists():
@@ -131,11 +143,11 @@ def api_download():
         if expected_size and actual_size < expected_size * 0.9:
             pass
         else:
-            return jsonify({"status": "complete", "model": model, "size": actual_size})
+            return jsonify({"status": "complete", "model": canonical_model, "size": actual_size})
 
     # Start the download - the worker will handle resuming from existing file position
-    start_download(model, url, expected_size, force=force)
-    return jsonify({"status": "download started", "model": model, "resumed": resume})
+    start_download(canonical_model, url, expected_size, force=force)
+    return jsonify({"status": "download started", "model": canonical_model, "resumed": resume})
 
 
 @downloads_bp.route("/api/download-search", methods=["POST"])

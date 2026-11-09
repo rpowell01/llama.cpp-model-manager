@@ -682,6 +682,53 @@ class TestAddModel:
         assert 'error' in response.get_json()
 
 
+class TestDownloadRoutes:
+    """Tests for model download endpoints."""
+
+    @pytest.fixture
+    def app(self):
+        from flask import Flask
+        from routes.downloads import downloads_bp
+        app = Flask(__name__)
+        app.register_blueprint(downloads_bp)
+        app.config['TESTING'] = True
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return app.test_client()
+
+    @patch('routes.downloads.start_download')
+    @patch('routes.downloads.get_models')
+    def test_download_uses_canonical_model_key(
+        self, mock_get_models, mock_start_download, client, tmp_path
+    ):
+        """A display-form model name must start the worker under its stored key."""
+        mock_get_models.return_value = {
+            'qwen3-8b-q4-k-m': {
+                'model_path': str(tmp_path / 'qwen3.gguf'),
+                'filename': 'qwen3.gguf',
+            }
+        }
+        url = 'https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/qwen3.gguf'
+
+        response = client.post(
+            '/api/download',
+            json={
+                'model': 'Qwen3 8B Q4 K M',
+                'url': url,
+                'expected_size': 123,
+            },
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert response.get_json()['model'] == 'qwen3-8b-q4-k-m'
+        mock_start_download.assert_called_once_with(
+            'qwen3-8b-q4-k-m', url, 123, force=False
+        )
+
+
 class TestSystemRoutes:
     """Tests for system routes (optimize-settings, benchmark-optimize)."""
     

@@ -167,10 +167,12 @@ document.addEventListener('DOMContentLoaded', function () {
           alert('Error: ' + result.error);
         } else {
           logHtml(`<b>Add:</b> ${data.name} → ${result.status}`, 'green');
-          // Auto-download the model after successful addition if checkbox is checked
+          // Auto-download the model after successful addition if checkbox is checked.
+          // Use the normalized name returned by the API so the download worker uses
+          // the same registry key as the newly created tile.
           if (data.auto_download) {
             const downloadUrl = `https://huggingface.co/${data.repo}/resolve/main/${data.filename}`;
-            _triggerDownload(data.name, downloadUrl, data.expected_size, false);
+            _triggerDownload(result.name, downloadUrl, data.expected_size, false);
           }
           ModalManager.close('add-model-modal');
           e.target.reset();
