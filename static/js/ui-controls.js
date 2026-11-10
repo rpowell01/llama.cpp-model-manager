@@ -1086,7 +1086,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     // Config Override (JSON)
     const configOverride = mp.config_override || {};
     html += `<div class="panel-item">
-      <span class="label">Config Override (JSON)</span>
+      <span class="label">Config Override (JSON)
+        <button type="button" class="btn btn-small refresh-config-override" title="Refresh from default config file" style="margin-left: 8px; padding: 2px 8px; font-size: 0.75rem;">Refresh</button>
+      </span>
       <span class="value">
         <textarea class="meta-input" data-field="mnemonic_proxy.config_override" rows="4" style="width: 100%; font-family: monospace; font-size: 0.85rem;">${he(JSON.stringify(configOverride, null, 2))}</textarea>
       </span>
@@ -1670,6 +1672,38 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           }
         }
       });
+    });
+  }
+
+  // Refresh config override button handler
+  const refreshConfigOverrideBtn = content.querySelector(".refresh-config-override");
+  if (refreshConfigOverrideBtn) {
+    refreshConfigOverrideBtn.addEventListener("click", async () => {
+      const btn = refreshConfigOverrideBtn;
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Loading…";
+      try {
+        const resp = await fetch("/api/mnemonic-default-config-override");
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const defaultConfig = await resp.json();
+        const textarea = content.querySelector('.meta-input[data-field="mnemonic_proxy.config_override"]');
+        if (textarea) {
+          textarea.value = JSON.stringify(defaultConfig, null, 2);
+        }
+        btn.textContent = "Refreshed!";
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }, 1500);
+      } catch (err) {
+        console.error("Failed to load default config override:", err);
+        alert("Failed to load default config override: " + err.message);
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
     });
   }
 

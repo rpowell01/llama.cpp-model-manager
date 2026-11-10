@@ -760,6 +760,13 @@ def api_get_metrics():
     })
 
 
+@models_bp.route("/api/mnemonic-default-config-override", methods=["GET"])
+def api_get_mnemonic_default_config_override():
+    """Get the default mnemonic proxy config override from the JSON file."""
+    from config import load_mnemonic_default_config_override
+    return jsonify(load_mnemonic_default_config_override())
+
+
 @models_bp.route("/api/export-config", methods=["GET"])
 def api_get_export_config():
     """Get the current metrics export configuration."""
