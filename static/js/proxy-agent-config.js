@@ -236,13 +236,36 @@ editor_model: {model_id}
         configFile: '~/.kilo/kilo.jsonc',
         jsonc: `{
   // Mnemonic Proxy configuration for Kilo Code
-  "provider": {
-    "mnemonic": {
-      "type": "openai",
-      "baseUrl": "{proxy_url}",
+  "mnemonic": {
+    "name": "mnemonic-proxy",
+    "npm": "@ai-sdk/openai-compatible",
+    "options": {
+      "baseURL": "{proxy_url}/v1",
       "apiKey": "dummy-key",
-      "models": {
-        "{model_id}": {}
+      "rateLimitSeconds": 0.1,
+      "maxRetries": 3
+    },
+    "models": {
+      "{model_id}": {
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "limit": {
+          "context": 131072,
+          "input": 111411,
+          "output": 19661
+        },
+        "supported_parameters": [
+          "include_reasoning",
+          "max_tokens",
+          "reasoning",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "default_parameters": {}
       }
     }
   },
@@ -256,13 +279,36 @@ editor_model: {model_id}
         reminder: 'Place config at ~/.kilo/kilo.jsonc (JSONC format supports comments). Note: Kilo Code expects baseUrl WITHOUT /v1 suffix (it appends /v1 automatically). Uses "provider" (singular) not "providers".',
         example: `{
   // Mnemonic Proxy configuration for Kilo Code
-  "provider": {
-    "mnemonic": {
-      "type": "openai",
-      "baseUrl": "{proxy_url}",
+  "mnemonic": {
+    "name": "mnemonic-proxy",
+    "npm": "@ai-sdk/openai-compatible",
+    "options": {
+      "baseURL": "{proxy_url}/v1",
       "apiKey": "dummy-key",
-      "models": {
-        "{model_id}": {}
+      "rateLimitSeconds": 0.1,
+      "maxRetries": 3
+    },
+    "models": {
+      "{model_id}": {
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "limit": {
+          "context": "{context}",
+          "input": "{input_limit}",
+          "output": "{output_limit}"
+        },
+        "supported_parameters": [
+          "include_reasoning",
+          "max_tokens",
+          "reasoning",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "default_parameters": {}
       }
     }
   },

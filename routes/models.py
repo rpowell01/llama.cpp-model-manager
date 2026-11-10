@@ -95,8 +95,11 @@ def api_add_model():
         # Slot KV Cache Persistence
         slot_save_path=str(data.get("slot_save_path", DEFAULTS["slot_save_path"])),
         cache_reuse=int(data.get("cache_reuse", DEFAULTS["cache_reuse"])),
+        keep=int(data.get("keep", DEFAULTS["keep"])),
         swa_full=bool(data.get("swa_full", DEFAULTS["swa_full"])),
+        log_verbosity=int(data.get("log_verbosity", DEFAULTS["log_verbosity"])),
         # Generation / Sampling parameters
+        use_generation_params=bool(data.get("use_generation_params", DEFAULTS["use_generation_params"])),
         temperature=float(data.get("temperature", DEFAULTS["temperature"])),
         top_k=int(data.get("top_k", DEFAULTS["top_k"])),
         top_p=float(data.get("top_p", DEFAULTS["top_p"])),

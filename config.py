@@ -169,7 +169,7 @@ DEFAULTS: dict[str, Any] = {
     "cpu_affinity": "auto",  # CPU core pinning: "auto", "none", or comma-separated core IDs
     "cpu_strict": True,  # Strict CPU mode (disable GPU ops)
     "batch_size": 32768,  # Override to 32768 batch size
-    "ctx_size": 128000,  # Context window size
+    "ctx_size": 131072,  # Context window size
     "rope_freq_base": 10000.0,  # RoPE frequency base
     "rope_freq_scale": 1.0,  # RoPE frequency scaling
     # YaRN RoPE scaling
@@ -182,7 +182,7 @@ DEFAULTS: dict[str, Any] = {
     "yarn_beta_fast": 32.0,  # YaRN: low correction dim (beta)
     # Speculative decoding parameters
     "spec_type": "ngram-mod",
-    "spec_draft_model": "./data/<model name>",
+    "spec_draft_model": "",
     "spec_draft_hf_repo": "",
     "spec_draft_n_max": 8,
     "spec_draft_n_min": 3,
@@ -214,8 +214,8 @@ DEFAULTS: dict[str, Any] = {
     "warmup_max_tokens": 10,
     # Slot KV Cache Persistence
     "slot_save_path": "./data/<model name>",
-    "cache_reuse": 4096,
-    "keep": 0,
+    "cache_reuse": 32768,
+    "keep": 32768,
     "log_verbosity": 4,
     "cache_ram": 8192,
     "swa_full": False,

@@ -189,7 +189,7 @@ def add_model_entry(
     cpu_affinity: str = "auto",
     cpu_strict: bool = False,
     batch_size: int = 512,
-    ctx_size: int = 4096,
+    ctx_size: int = 131072,
     rope_freq_base: float = 10000.0,
     rope_freq_scale: float = 1.0,
     rope_scaling_type: str = "none",
@@ -228,9 +228,10 @@ def add_model_entry(
     warmup_max_tokens: int = 10,
     # Slot KV Cache Persistence
     slot_save_path: str = "",
-    cache_reuse: int = 4096,
-    keep: int = 0,
+    cache_reuse: int = 32768,
+    keep: int = 32768,
     swa_full: bool = False,
+    log_verbosity: int = 4,
     # Network
     reuse_port: bool = True,
     # Chat template
@@ -239,6 +240,7 @@ def add_model_entry(
     custom_header_key: str = "",
     custom_header_value: str = "",
     # Generation / Sampling parameters
+    use_generation_params: bool = False,
     temperature: float = 0.7,
     top_k: int = 40,
     top_p: float = 0.9,
@@ -349,10 +351,11 @@ def add_model_entry(
             "warmup_message": warmup_message,
             "warmup_max_tokens": warmup_max_tokens,
             # Slot KV Cache Persistence
-            "slot_save_path": slot_save_path,
+            "slot_save_path": slot_save_path.replace("<model name>", name) if slot_save_path else DEFAULTS["slot_save_path"].replace("<model name>", name),
             "cache_reuse": cache_reuse,
             "keep": keep,
             "swa_full": swa_full,
+            "log_verbosity": log_verbosity,
             # Network
             "reuse_port": reuse_port,
             # Chat template
@@ -361,6 +364,7 @@ def add_model_entry(
             "custom_header_key": custom_header_key,
             "custom_header_value": custom_header_value,
             # Generation / Sampling parameters
+            "use_generation_params": use_generation_params,
             "temperature": temperature,
             "top_k": top_k,
             "top_p": top_p,
@@ -384,7 +388,7 @@ def add_model_entry(
                 "enabled": mnemonic_proxy_enabled,
                 "port": mnemonic_proxy_port,
                 "data_dir": mnemonic_proxy_data_dir,
-                "slot_dir": mnemonic_proxy_slot_dir,
+                "slot_dir": mnemonic_proxy_slot_dir.replace("<model name>", name) if mnemonic_proxy_slot_dir else DEFAULTS["mnemonic_proxy"]["slot_dir"].replace("<model name>", name),
                 "tokenizer_path": mnemonic_proxy_tokenizer_path,
                 "config_override": mnemonic_proxy_config_override or DEFAULTS["mnemonic_proxy"]["config_override"],
                 "mcp_enabled": mnemonic_proxy_mcp_enabled,

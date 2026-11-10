@@ -710,6 +710,13 @@ async function renderPanelProperties(data, modelName) {
     };
 
     addItem("Model Name", modelName);
+    // Reset to Default Parameters button (placed after Model Name)
+    html += `<div class="panel-item">
+      <span class="label"></span>
+      <span class="value" style="display:flex; justify-content:flex-start;">
+        <button type="button" id="resetPropsToDefaultsBtn" class="btn-goto" style="padding: 0.35rem 0.9rem; font-size: 0.8rem;">Set to Default Parameters</button>
+      </span>
+    </div>`;
     addEditable("Port", "port", data.port, "number", 1, 0);
     // Reuse Port checkbox
     const reusePortVal = data.reuse_port !== undefined ? data.reuse_port : true;
@@ -1374,6 +1381,184 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     useGenParamsCheckbox.addEventListener('change', toggleGenParams);
     // Initial state
     toggleGenParams();
+  }
+
+  // Reset to Default Parameters button handler
+  const resetBtn = content.querySelector('#resetPropsToDefaultsBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => await resetPropertiesToDefaults(content, modelName));
+  }
+
+  /**
+   * Reset all properties panel fields to their default values
+   * @param {HTMLElement} content - The panel content container
+   * @param {string} modelName - The model name (used for slot paths)
+   */
+  async function resetPropertiesToDefaults(content, modelName) {
+    // Default values from config.py DEFAULTS
+    const defaults = {
+      // Basic Configuration
+      'port': 9931,
+      'reuse_port': true,
+      'log_verbosity': 4,
+      'llama_cpp_platform': 'auto',
+      'llama_cpp_backend': 'auto',
+      
+      // Performance & Threading
+      'threads': 16,
+      'threads_batch': 16,
+      'timeout': 3600,
+      'parallel': '1',
+      'ubatch_size': 4096,
+      'batch_size': 32768,
+      
+      // Memory Management
+      'mlock': true,
+      'no_mmap': false,
+      'numa': true,
+      'numa_value': 'distribute',
+      'cpu_affinity': 'auto',
+      'cpu_strict': true,
+      
+      // GPU & Acceleration
+      'gpu_layers': 99,
+      'cpu_moe': false,
+      'n_cpu_moe': 0,
+      'flash_attn': 'on',
+      
+      // KV Cache
+      'cache_type_k': 'f16',
+      'cache_type_v': 'f16',
+      
+      // Context & RoPE/YaRN
+      'ctx_size': 131072,
+      'rope_freq_base': 10000.0,
+      'rope_freq_scale': 1.0,
+      'rope_scaling_type': 'none',
+      'rope_scale': 1.0,
+      'yarn_orig_ctx': 0,
+      'yarn_ext_factor': -1.0,
+      'yarn_attn_factor': 1.0,
+      'yarn_beta_slow': 1.0,
+      'yarn_beta_fast': 32.0,
+      
+      // Speculative Decoding
+      'spec_type': 'ngram-mod',
+      'spec_draft_model': '',
+      'spec_draft_hf_repo': '',
+      'spec_draft_n_max': 8,
+      'spec_draft_n_min': 3,
+      'spec_draft_p_split': 0.10,
+      'spec_draft_p_min': 0.00,
+      'spec_draft_ngl': 'auto',
+      'spec_draft_temp': 0.0,
+      'spec_draft_top_p': 1.0,
+      'spec_draft_min_p': 0.0,
+      'spec_draft_typical': 1.0,
+      'spec_ngram_size_n': 12,
+      'spec_ngram_size_m': 48,
+      'spec_ngram_min_hits': 1,
+      'spec_ngram_mod_n_match': 24,
+      'spec_ngram_mod_n_min': 48,
+      'spec_ngram_mod_n_max': 64,
+      'spec_draft_type_k': 'f16',
+      'spec_draft_type_v': 'f16',
+      
+      // Warmup
+      'warmup_enabled': false,
+      'warmup_message': '// TODO: add two numbers def add(a, b):',
+      'warmup_max_tokens': 10,
+      
+      // Slot KV Cache Persistence
+      'slot_save_path': `./data/${modelName}`,
+      'cache_reuse': 32768,
+      'keep': 32768,
+      'swa_full': false,
+      
+      // Chat template
+      'chat_template_file': '',
+      
+      // Generation / Sampling parameters
+      'use_generation_params': false,
+      'temperature': 0.7,
+      'top_k': 40,
+      'top_p': 0.9,
+      'min_p': 0.05,
+      'repeat_penalty': 1.1,
+      'presence_penalty': 0.0,
+      'reasoning': 'auto',
+      'reasoning_effort': 'default',
+      'reasoning_budget': -1,
+      'reasoning_budget_message': '',
+      
+      // Intel/AMD GPU Options
+      'sycl': false,
+      'grp_attn': false,
+      'grp_attn_n': 8,
+      
+      // Mnemonic Proxy
+      'mnemonic_proxy.enabled': false,
+      'mnemonic_proxy.port': 8096,
+      'mnemonic_proxy.data_dir': `./data/${modelName}`,
+      'mnemonic_proxy.slot_dir': `./data/${modelName}`,
+      'mnemonic_proxy.tokenizer_path': '',
+      // mnemonic_proxy.config_override will be fetched from API
+      'mnemonic_proxy.mcp_enabled': false,
+      'mnemonic_proxy.mcp_port': 8133,
+    };
+    
+    // Fetch mnemonic default config override from API
+    let mnemonicConfigOverride = {"mask_anchor": true, "autosave": true, "window_estimate_slack": 0.15};
+    try {
+      const resp = await fetch('/api/mnemonic-default-config-override');
+      if (resp.ok) {
+        mnemonicConfigOverride = await resp.json();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch mnemonic default config, using fallback:', e);
+    }
+    
+    // Set each field to its default value
+    Object.entries(defaults).forEach(([field, value]) => {
+      const input = content.querySelector(`.meta-input[data-field="${field}"]`);
+      if (input) {
+        if (input.type === 'checkbox') {
+          input.checked = value;
+        } else if (input.multiple) {
+          // Handle multi-select (spec_type)
+          const values = Array.isArray(value) ? value : String(value).split(',').map(v => v.trim());
+          Array.from(input.options).forEach(opt => {
+            opt.selected = values.includes(opt.value);
+          });
+        } else if (input.tagName === 'SELECT') {
+          input.value = value;
+        } else if (input.tagName === 'TEXTAREA') {
+          input.value = JSON.stringify(value, null, 2);
+        } else {
+          input.value = value;
+        }
+      }
+    });
+    
+    // Set mnemonic proxy config override from fetched API
+    const mnemonicConfigTextarea = content.querySelector('.meta-input[data-field="mnemonic_proxy.config_override"]');
+    if (mnemonicConfigTextarea) {
+      mnemonicConfigTextarea.value = JSON.stringify(mnemonicConfigOverride, null, 2);
+    }
+    
+    // Trigger change event for Use Generation Parameters to update visibility
+    const useGenParamsCheckbox = content.querySelector('.meta-input[data-field="use_generation_params"]');
+    if (useGenParamsCheckbox) {
+      useGenParamsCheckbox.dispatchEvent(new Event('change'));
+    }
+    
+    // Trigger change event for CPU MoE to update N CPU MoE visibility
+    const cpuMoeCheckbox = content.querySelector('.meta-input[data-field="cpu_moe"]');
+    if (cpuMoeCheckbox) {
+      cpuMoeCheckbox.dispatchEvent(new Event('change'));
+    }
+    
+    logHtml('<b>Properties reset to default parameters</b>', 'green');
   }
 
   // Initialize CPU MoE checkbox toggle (shows/hides N CPU MoE field)
