@@ -179,11 +179,7 @@ class MnemonicProxyManager:
         self.data_dir = data_dir or f"./data/{model_name}"
         self.slot_dir = slot_dir
         self.tokenizer_path = tokenizer_path
-        self.config_override = config_override or {
-            "mask_anchor": True,
-            "autosave": True,
-            "window_estimate_slack": 0.15
-        }
+        self.config_override = config_override or DEFAULTS["mnemonic_proxy"]["config_override"]
         self.mcp_enabled = mcp_enabled
         self.mcp_port = mcp_port
         

@@ -386,11 +386,7 @@ def add_model_entry(
                 "data_dir": mnemonic_proxy_data_dir,
                 "slot_dir": mnemonic_proxy_slot_dir,
                 "tokenizer_path": mnemonic_proxy_tokenizer_path,
-                "config_override": mnemonic_proxy_config_override or {
-                    "mask_anchor": True,
-                    "autosave": True,
-                    "window_estimate_slack": 0.15
-                },
+                "config_override": mnemonic_proxy_config_override or DEFAULTS["mnemonic_proxy"]["config_override"],
                 "mcp_enabled": mnemonic_proxy_mcp_enabled,
                 "mcp_port": mnemonic_proxy_mcp_port,
             },
@@ -673,11 +669,7 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                     "data_dir": "",
                     "slot_dir": "",
                     "tokenizer_path": "",
-                    "config_override": {
-                        "mask_anchor": True,
-                        "autosave": True,
-                        "window_estimate_slack": 0.15
-                    },
+                    "config_override": DEFAULTS["mnemonic_proxy"]["config_override"],
                     "mcp_enabled": False,
                     "mcp_port": 8133,
                 },

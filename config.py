@@ -75,6 +75,40 @@ def _is_windows_absolute_path(path_str: str) -> bool:
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mnemonic Proxy Config Override Defaults (loaded from JSON file)
+# ──────────────────────────────────────────────────────────────────────────────
+MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE = BASE_DIR / "mnemonic_default_config_override.json"
+
+
+def load_mnemonic_default_config_override() -> dict[str, Any]:
+    """Load the default mnemonic proxy config override from the JSON file.
+    
+    Returns:
+        Dictionary with config override defaults. Falls back to hard-coded
+        minimal defaults if the file is missing or invalid.
+    """
+    fallback = {
+        "mask_anchor": True,
+        "autosave": True,
+        "window_estimate_slack": 0.15
+    }
+    
+    try:
+        if MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE.exists():
+            import json
+            with open(MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        log.warning("Failed to load mnemonic default config override from %s: %s",
+                    MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE, e)
+    
+    return fallback
+
+# Load the default config override at module import time
+MNEMONIC_DEFAULT_CONFIG_OVERRIDE = load_mnemonic_default_config_override()
+
 ENV_FILE = BASE_DIR / ".env"
 
 # Load environment variables from .env file if available
@@ -209,45 +243,9 @@ DEFAULTS: dict[str, Any] = {
         "data_dir": "",
         "slot_dir": "./data/<model name>",
         "tokenizer_path": "",
-        "config_override": {
-            "mask_anchor": True,
-            "autosave": True,
-            "window_estimate_slack": 0.15,
-            # Cold archive (kv_archive) - requires Python >= 3.14 or zstandard package
-            # "kv_archive": True,
-            # "kv_archive_idle_s": 600,
-            # "kv_archive_min_age_s": 1800,
-            # "kv_archive_level": 3,
-            # "kv_archive_threads": 4,
-            # "kv_archive_poll_s": 60,
-            # "kv_archive_min_bytes": 67108864,  # 64 MB
-        },
         "mcp_enabled": False,
-        "kv_archive": True,
-        "kv_archive_idle_s": 600,
-        "kv_archive_min_age_s": 1800,
-        "kv_archive_level": 3,
-        "kv_archive_threads": 4,
-        "kv_archive_poll_s": 60,
-        "kv_archive_min_bytes": 67108864,
-        "autosave": True,
-        "autosave_idle_s": 60,
-        "autosave_min_tokens": 4096,
-        "auto_recall": True,
-        "autorestore": True,
-        "autorestore_min_gain": 8192,
-        "autorestore_idle_s": 600,
-        "mask_anchor": True,
-        "mask_reasoning": True,
-        "mask_trigger": 14000,
-        "mask_tool_args": True,
-        "mask_target": 8000,
-        "response_floor": 16384,
-        "seal_experimental": True,
-        "slot_save": True,
-        "tools_paging": True,
-        "upstream": "http://127.0.0.1:9931",
         "mcp_port": 8133,
+        "config_override": MNEMONIC_DEFAULT_CONFIG_OVERRIDE,
     },
     # llama.cpp platform and backend selection
     "llama_cpp_platform": "auto",  # "auto", "windows", "linux"
