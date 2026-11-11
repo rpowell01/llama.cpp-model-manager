@@ -1335,10 +1335,19 @@ async function generateAgentConfig() {
   agentConfigGenerate.textContent = 'Generating...';
   
   try {
+    // Find model data to get context size for kilo config
+    let modelContext = null;
+    if (window.currentModelRows) {
+      const modelData = window.currentModelRows.find(r => r.model === modelId);
+      if (modelData && modelData.ctx_size) {
+        modelContext = modelData.ctx_size;
+      }
+    }
+    
     // Use the ProxyAgentConfig module
     if (window.ProxyAgentConfig && window.ProxyAgentConfig.generateConfig) {
-      currentConfig = window.ProxyAgentConfig.generateConfig(agentType, proxyUrl, modelId);
-      allConfigs = window.ProxyAgentConfig.generateAllConfigs(proxyUrl, modelId);
+      currentConfig = window.ProxyAgentConfig.generateConfig(agentType, proxyUrl, modelId, modelContext);
+      allConfigs = window.ProxyAgentConfig.generateAllConfigs(proxyUrl, modelId, modelContext);
     } else {
       // Fallback if module not loaded
       throw new Error('ProxyAgentConfig module not loaded');

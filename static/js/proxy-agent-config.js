@@ -253,9 +253,9 @@ editor_model: {model_id}
         "structured_output": true,
         "temperature": true,
         "limit": {
-          "context": 131072,
-          "input": 111411,
-          "output": 19661
+          "context": "{context}",
+          "input": "{input_limit}",
+          "output": "{output_limit}"
         },
         "supported_parameters": [
           "include_reasoning",
@@ -327,9 +327,10 @@ editor_model: {model_id}
  * @param {string} agentType - Agent type (e.g., 'claude-code', 'codex', 'pi', etc.)
  * @param {string} proxyUrl - Base URL of mnemonic-proxy (e.g., 'http://localhost:8096')
  * @param {string} modelId - Model identifier
+ * @param {number} [context] - Model context size (optional, used for kilo config limits)
  * @returns {Object} Configuration object with formatted config and metadata
  */
-function generateConfig(agentType, proxyUrl, modelId) {
+function generateConfig(agentType, proxyUrl, modelId, context) {
     const agent = AGENT_CONFIGS[agentType];
     if (!agent) {
         throw new Error(`Unknown agent type: ${agentType}`);
@@ -337,6 +338,21 @@ function generateConfig(agentType, proxyUrl, modelId) {
     
     // Normalize proxy URL (ensure no trailing slash)
     const normalizedUrl = proxyUrl.replace(/\/$/, '');
+    
+    // Calculate limits for kilo if context is provided
+    let contextLimit = 131072;
+    let inputLimit = 111411;
+    let outputLimit = 19661;
+    
+    if (context && agentType === 'kilo') {
+        contextLimit = context;
+        // Ensure output doesn't exceed context (leave at least 1 for input)
+        outputLimit = Math.min(Math.max(Math.round(context * 0.15), 16384), contextLimit - 1);
+        // input + output cannot exceed context
+        // input should be at least 49152 (or 85% of context), but capped at context - output
+        const minInput = Math.max(Math.round(context * 0.85), 49152);
+        inputLimit = Math.max(1, Math.min(minInput, contextLimit - outputLimit));
+    }
     
     let config = '';
     let format = 'text';
@@ -362,6 +378,17 @@ function generateConfig(agentType, proxyUrl, modelId) {
         format = 'yaml';
     }
     
+    // Replace context limit placeholders for kilo
+    config = replaceAll(config, '{context}', contextLimit.toString());
+    config = replaceAll(config, '{input_limit}', inputLimit.toString());
+    config = replaceAll(config, '{output_limit}', outputLimit.toString());
+    
+    // Also replace in example
+    let example = replaceAll(replaceAll(agent.example, '{proxy_url}', normalizedUrl), '{model_id}', modelId);
+    example = replaceAll(example, '{context}', contextLimit.toString());
+    example = replaceAll(example, '{input_limit}', inputLimit.toString());
+    example = replaceAll(example, '{output_limit}', outputLimit.toString());
+    
     return {
         agentType,
         agentName: agent.name,
@@ -370,7 +397,7 @@ function generateConfig(agentType, proxyUrl, modelId) {
         format,
         config,
         reminder: agent.reminder,
-        example: replaceAll(replaceAll(agent.example, '{proxy_url}', normalizedUrl), '{model_id}', modelId)
+        example
     };
 }
 
@@ -391,12 +418,13 @@ function getSupportedAgents() {
  * Generate all agent configurations at once
  * @param {string} proxyUrl - Base URL of mnemonic-proxy
  * @param {string} modelId - Model identifier
+ * @param {number} [context] - Model context size (optional, used for kilo config limits)
  * @returns {Object} Map of agentType to config object
  */
-function generateAllConfigs(proxyUrl, modelId) {
+function generateAllConfigs(proxyUrl, modelId, context) {
     const configs = {};
     for (const agentType of Object.keys(AGENT_CONFIGS)) {
-        configs[agentType] = generateConfig(agentType, proxyUrl, modelId);
+        configs[agentType] = generateConfig(agentType, proxyUrl, modelId, context);
     }
     return configs;
 }
