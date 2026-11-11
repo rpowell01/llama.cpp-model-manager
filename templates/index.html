@@ -1338,9 +1338,15 @@ async function generateAgentConfig() {
     // Find model data to get context size for kilo config
     let modelContext = null;
     if (window.currentModelRows) {
-      const modelData = window.currentModelRows.find(r => r.model === modelId);
+      // Use normalized comparison to match model name (consistent with model-manager.js)
+      const normalizedModelId = modelId.trim().toLowerCase();
+      const modelData = window.currentModelRows.find(r => r.model.trim().toLowerCase() === normalizedModelId);
       if (modelData && modelData.ctx_size) {
         modelContext = modelData.ctx_size;
+        console.log('Found model context:', modelContext, 'for model:', modelData.model);
+      } else {
+        console.warn('Model not found in currentModelRows or missing ctx_size:', modelId);
+        console.log('Available models:', window.currentModelRows.map(r => ({model: r.model, ctx_size: r.ctx_size})));
       }
     }
     
