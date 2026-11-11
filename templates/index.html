@@ -1340,13 +1340,14 @@ async function generateAgentConfig() {
     if (window.currentModelRows) {
       // Use normalized comparison to match model name (consistent with model-manager.js)
       const normalizedModelId = modelId.trim().toLowerCase();
+      console.log('Looking for model:', modelId, 'normalized:', normalizedModelId);
+      console.log('Available models:', window.currentModelRows.map(r => ({model: r.model, normalized: r.model.trim().toLowerCase(), ctx_size: r.ctx_size})));
       const modelData = window.currentModelRows.find(r => r.model.trim().toLowerCase() === normalizedModelId);
       if (modelData && modelData.ctx_size) {
         modelContext = modelData.ctx_size;
         console.log('Found model context:', modelContext, 'for model:', modelData.model);
       } else {
         console.warn('Model not found in currentModelRows or missing ctx_size:', modelId);
-        console.log('Available models:', window.currentModelRows.map(r => ({model: r.model, ctx_size: r.ctx_size})));
       }
     }
     
