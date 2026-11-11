@@ -253,9 +253,9 @@ editor_model: {model_id}
         "structured_output": true,
         "temperature": true,
         "limit": {
-          "context": "{context}",
-          "input": "{input_limit}",
-          "output": "{output_limit}"
+          "context": {context},
+          "input": {input_limit},
+          "output": {output_limit}
         },
         "supported_parameters": [
           "include_reasoning",
@@ -296,9 +296,9 @@ editor_model: {model_id}
         "structured_output": true,
         "temperature": true,
         "limit": {
-          "context": "{context}",
-          "input": "{input_limit}",
-          "output": "{output_limit}"
+          "context": {context},
+          "input": {input_limit},
+          "output": {output_limit}
         },
         "supported_parameters": [
           "include_reasoning",
@@ -378,16 +378,16 @@ function generateConfig(agentType, proxyUrl, modelId, context) {
         format = 'yaml';
     }
     
-    // Replace context limit placeholders for kilo
-    config = replaceAll(config, '{context}', contextLimit.toString());
-    config = replaceAll(config, '{input_limit}', inputLimit.toString());
-    config = replaceAll(config, '{output_limit}', outputLimit.toString());
+    // Replace context limit placeholders for kilo (unquoted in template for numeric values)
+    config = replaceAll(config, '{context}', contextLimit);
+    config = replaceAll(config, '{input_limit}', inputLimit);
+    config = replaceAll(config, '{output_limit}', outputLimit);
     
     // Also replace in example
     let example = replaceAll(replaceAll(agent.example, '{proxy_url}', normalizedUrl), '{model_id}', modelId);
-    example = replaceAll(example, '{context}', contextLimit.toString());
-    example = replaceAll(example, '{input_limit}', inputLimit.toString());
-    example = replaceAll(example, '{output_limit}', outputLimit.toString());
+    example = replaceAll(example, '{context}', contextLimit);
+    example = replaceAll(example, '{input_limit}', inputLimit);
+    example = replaceAll(example, '{output_limit}', outputLimit);
     
     return {
         agentType,
