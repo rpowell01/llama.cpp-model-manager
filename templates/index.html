@@ -1423,21 +1423,6 @@ openPlatformBackendConfigModal = async function () {
 
 /**
  * Agent Configuration Modal
-    if (data.running) {
-      setPlatformBackendUpdateProgress(data.progress || 0);
-      setPlatformBackendUpdateStatus(data.message || 'Updating…');
-      if (platformBackendUpdateBtn) {
-        platformBackendUpdateBtn.disabled = true;
-        platformBackendUpdateBtn.textContent = 'Updating…';
-      }
-      stopPlatformBackendUpdatePolling();
-      platformBackendUpdatePoll = setInterval(pollPlatformBackendUpdateStatus, 1000);
-    }
-  } catch (e) { /* ignore */ }
-};
-
-/**
- * Agent Configuration Modal
  * Generates config snippets for various AI agents to connect to mnemonic-proxy
  */
 const agentConfigModalHtml = `
