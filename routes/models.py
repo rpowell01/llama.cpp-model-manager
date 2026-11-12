@@ -972,3 +972,102 @@ def api_llama_update_backends():
     thread.start()
 
     return jsonify({"status": "update started", "release_tag": tag})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# mnemonic-proxy updater API
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Runtime state for the background mnemonic-proxy update job.
+_mnemonic_update_lock = threading.Lock()
+_mnemonic_update_state: dict[str, Any] = {
+    "running": False,
+    "progress": 0,
+    "message": "",
+    "result": None,
+}
+
+
+def _mnemonic_update_set(**kwargs) -> None:
+    """Thread-safe update of the mnemonic-proxy update status dict."""
+    with _mnemonic_update_lock:
+        _mnemonic_update_state.update(kwargs)
+
+
+def _mnemonic_update_progress(message: str, percent: int) -> None:
+    """Progress callback handed to mnemonic_proxy_updater.update_mnemonic_proxy()."""
+    _mnemonic_update_set(progress=max(0, min(100, int(percent))), message=message)
+    add_log_entry(f"⬇ mnemonic-proxy update: {message}", "cyan")
+
+
+def _run_mnemonic_update(target_version: str | None) -> None:
+    """Worker body: run the mnemonic-proxy update, then record the outcome."""
+    try:
+        import mnemonic_proxy_updater
+
+        result = mnemonic_proxy_updater.update_mnemonic_proxy(
+            progress_callback=_mnemonic_update_progress,
+            target_version=target_version,
+        )
+        _mnemonic_update_set(running=False, progress=100, result=result)
+        if result.get("success"):
+            add_log_entry(
+                f"✓ mnemonic-proxy updated to {result.get('tag', result.get('version'))} "
+                f"(was {result.get('previous_version', 'unknown')})",
+                "green",
+            )
+        else:
+            for err in result.get("errors", []):
+                add_log_entry(f"✗ mnemonic-proxy update error: {err}", "red")
+    except Exception as e:
+        log.exception("mnemonic-proxy update failed")
+        _mnemonic_update_set(running=False, result={"success": False, "errors": [str(e)]})
+        add_log_entry(f"✗ mnemonic-proxy update failed: {e}", "red")
+
+
+@models_bp.route("/api/mnemonic-update-status", methods=["GET"])
+def api_mnemonic_update_status():
+    """Get the status of the running/completed mnemonic-proxy update."""
+    with _mnemonic_update_lock:
+        state = dict(_mnemonic_update_state)
+    return jsonify({
+        "running": state["running"],
+        "progress": state["progress"],
+        "message": state["message"],
+        "result": state["result"],
+    })
+
+
+@models_bp.route("/api/mnemonic-latest-release", methods=["GET"])
+def api_mnemonic_latest_release():
+    """Get the latest mnemonic-proxy release tag from GitHub/PyPI."""
+    try:
+        from mnemonic_proxy_updater import _get_latest_github_release, _get_latest_pypi_version
+        tag = _get_latest_github_release() or _get_latest_pypi_version()
+        if not tag:
+            return jsonify({"error": "Failed to fetch latest release from GitHub or PyPI"}), 502
+        return jsonify({"tag": tag})
+    except Exception as e:
+        log.exception("Failed to fetch latest mnemonic-proxy release")
+        return jsonify({"error": str(e)}), 500
+
+
+@models_bp.route("/api/mnemonic-update", methods=["POST"])
+def api_mnemonic_update():
+    """Start a background update of mnemonic-proxy."""
+    with _mnemonic_update_lock:
+        if _mnemonic_update_state["running"]:
+            return jsonify({"error": "An update is already in progress"}), 409
+
+    data = request.get_json(force=True) or {}
+    tag = data.get("release_tag") or None
+    if tag is not None:
+        tag = str(tag).strip() or None
+
+    _mnemonic_update_set(running=True, progress=0, message="Starting update…", result=None)
+    add_log_entry("⬇ Starting mnemonic-proxy update…", "cyan")
+
+    thread = threading.Thread(target=_run_mnemonic_update, args=(tag,), daemon=True)
+    thread.start()
+
+    return jsonify({"status": "update started", "release_tag": tag})

@@ -333,6 +333,25 @@
             <span id="platform-backend-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
           </div>
         </div>
+
+        <!-- Mnemonic Proxy Updater -->
+        <div id="mnemonic-proxy-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
+          <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Mnemonic Proxy</h4>
+          <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
+            Update the mnemonic-proxy Python package to the latest version from PyPI/GitHub.
+          </p>
+          <div id="mnemonic-proxy-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
+          <div id="mnemonic-proxy-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
+            <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
+              <div id="mnemonic-proxy-update-progress-bar" style="background: var(--purple, #a855f7); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <button type="button" id="mnemonic-proxy-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--purple, #a855f7); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Mnemonic Proxy</button>
+            <button type="button" id="mnemonic-proxy-check-btn" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Check Version</button>
+            <span id="mnemonic-proxy-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1199,6 +1218,211 @@ openPlatformBackendConfigModal = async function () {
   try {
     const resp = await fetch('/api/llama-update-status', { method: 'GET' });
     const data = await resp.json();
+    if (data.running) {
+      setPlatformBackendUpdateProgress(data.progress || 0);
+      setPlatformBackendUpdateStatus(data.message || 'Updating…');
+      if (platformBackendUpdateBtn) {
+        platformBackendUpdateBtn.disabled = true;
+        platformBackendUpdateBtn.textContent = 'Updating…';
+      }
+      stopPlatformBackendUpdatePolling();
+      platformBackendUpdatePoll = setInterval(pollPlatformBackendUpdateStatus, 1000);
+    }
+  } catch (e) { /* ignore */ }
+};
+
+// ──────────────────────────────────────────────────────────────
+// Mnemonic Proxy updater (pip upgrade)
+// ──────────────────────────────────────────────────────────────
+
+const mnemonicProxyUpdateBtn = document.getElementById('mnemonic-proxy-update-btn');
+const mnemonicProxyCheckBtn = document.getElementById('mnemonic-proxy-check-btn');
+const mnemonicProxyUpdateStatus = document.getElementById('mnemonic-proxy-update-status');
+const mnemonicProxyUpdateProgressWrap = document.getElementById('mnemonic-proxy-update-progress-wrap');
+const mnemonicProxyUpdateProgressBar = document.getElementById('mnemonic-proxy-update-progress-bar');
+const mnemonicProxyUpdateTag = document.getElementById('mnemonic-proxy-update-tag');
+let mnemonicProxyUpdatePoll = null;
+
+function setMnemonicProxyUpdateStatus(message, type = 'info') {
+  if (!mnemonicProxyUpdateStatus) return;
+  mnemonicProxyUpdateStatus.textContent = message;
+  mnemonicProxyUpdateStatus.style.color =
+    type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--text2)';
+}
+
+function setMnemonicProxyUpdateProgress(percent) {
+  if (!mnemonicProxyUpdateProgressBar) return;
+  mnemonicProxyUpdateProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  if (mnemonicProxyUpdateProgressWrap) {
+    mnemonicProxyUpdateProgressWrap.style.display = percent > 0 && percent < 100 ? 'block' : 'none';
+  }
+}
+
+async function fetchLatestMnemonicRelease() {
+  const resp = await fetch('/api/mnemonic-latest-release', { method: 'GET' });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data.tag;
+}
+
+function stopMnemonicProxyUpdatePolling() {
+  if (mnemonicProxyUpdatePoll) {
+    clearInterval(mnemonicProxyUpdatePoll);
+    mnemonicProxyUpdatePoll = null;
+  }
+}
+
+async function pollMnemonicProxyUpdateStatus() {
+  try {
+    const resp = await fetch('/api/mnemonic-update-status', { method: 'GET' });
+    const data = await resp.json();
+    if (data.running) {
+      setMnemonicProxyUpdateProgress(data.progress || 0);
+      setMnemonicProxyUpdateStatus(data.message || 'Updating…');
+      return;
+    }
+
+    // Finished
+    stopMnemonicProxyUpdatePolling();
+    setMnemonicProxyUpdateProgress(100);
+    if (mnemonicProxyUpdateBtn) {
+      mnemonicProxyUpdateBtn.disabled = false;
+      mnemonicProxyUpdateBtn.textContent = '⬇ Update Mnemonic Proxy';
+    }
+    if (mnemonicProxyCheckBtn) {
+      mnemonicProxyCheckBtn.disabled = false;
+    }
+
+    const result = data.result || {};
+    if (result.success) {
+      const prev = result.previous_version ? ` (was ${result.previous_version})` : '';
+      setMnemonicProxyUpdateStatus(
+        `Updated to ${result.tag || result.version || 'latest'}${prev}`, 'success'
+      );
+    } else {
+      const errors = (result.errors || []).join('; ');
+      setMnemonicProxyUpdateStatus(`Update failed: ${errors || 'unknown error'}`, 'error');
+    }
+  } catch (e) {
+    stopMnemonicProxyUpdatePolling();
+    setMnemonicProxyUpdateStatus('Failed to check update status: ' + e.message, 'error');
+    if (mnemonicProxyUpdateBtn) {
+      mnemonicProxyUpdateBtn.disabled = false;
+      mnemonicProxyUpdateBtn.textContent = '⬇ Update Mnemonic Proxy';
+    }
+    if (mnemonicProxyCheckBtn) {
+      mnemonicProxyCheckBtn.disabled = false;
+    }
+  }
+}
+
+async function startMnemonicProxyUpdate() {
+  if (mnemonicProxyUpdateBtn) {
+    mnemonicProxyUpdateBtn.disabled = true;
+    mnemonicProxyUpdateBtn.textContent = 'Updating…';
+  }
+  if (mnemonicProxyCheckBtn) {
+    mnemonicProxyCheckBtn.disabled = true;
+  }
+  setMnemonicProxyUpdateProgress(0);
+  setMnemonicProxyUpdateStatus('Starting update…');
+
+  try {
+    // Show which version will be used (latest is resolved server-side)
+    try {
+      const tag = await fetchLatestMnemonicRelease();
+      if (mnemonicProxyUpdateTag) mnemonicProxyUpdateTag.textContent = `latest: ${tag}`;
+    } catch (e) {
+      if (mnemonicProxyUpdateTag) mnemonicProxyUpdateTag.textContent = '';
+    }
+
+    const resp = await fetch('/api/mnemonic-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+
+    setMnemonicProxyUpdateStatus('Upgrading package via pip…');
+    stopMnemonicProxyUpdatePolling();
+    mnemonicProxyUpdatePoll = setInterval(pollMnemonicProxyUpdateStatus, 1000);
+  } catch (e) {
+    setMnemonicProxyUpdateStatus('Failed to start update: ' + e.message, 'error');
+    if (mnemonicProxyUpdateBtn) {
+      mnemonicProxyUpdateBtn.disabled = false;
+      mnemonicProxyUpdateBtn.textContent = '⬇ Update Mnemonic Proxy';
+    }
+    if (mnemonicProxyCheckBtn) {
+      mnemonicProxyCheckBtn.disabled = false;
+    }
+  }
+}
+
+async function checkMnemonicProxyVersion() {
+  if (mnemonicProxyCheckBtn) {
+    mnemonicProxyCheckBtn.disabled = true;
+    mnemonicProxyCheckBtn.textContent = 'Checking…';
+  }
+  setMnemonicProxyUpdateStatus('Fetching latest version…');
+
+  try {
+    const tag = await fetchLatestMnemonicRelease();
+    if (mnemonicProxyUpdateTag) mnemonicProxyUpdateTag.textContent = `latest: ${tag}`;
+    setMnemonicProxyUpdateStatus(`Latest version: ${tag}`, 'success');
+  } catch (e) {
+    setMnemonicProxyUpdateStatus('Failed to check version: ' + e.message, 'error');
+  } finally {
+    if (mnemonicProxyCheckBtn) {
+      mnemonicProxyCheckBtn.disabled = false;
+      mnemonicProxyCheckBtn.textContent = 'Check Version';
+    }
+  }
+}
+
+if (mnemonicProxyUpdateBtn) {
+  mnemonicProxyUpdateBtn.addEventListener('click', startMnemonicProxyUpdate);
+}
+if (mnemonicProxyCheckBtn) {
+  mnemonicProxyCheckBtn.addEventListener('click', checkMnemonicProxyVersion);
+}
+
+// Show the latest version when the modal opens, and resume polling if an
+// update is already running (e.g. the modal was closed mid-update).
+const _origOpenPlatformBackendConfigModal2 = openPlatformBackendConfigModal;
+openPlatformBackendConfigModal = async function () {
+  await _origOpenPlatformBackendConfigModal2();
+  
+  // Mnemonic proxy version check
+  if (mnemonicProxyUpdateTag && !mnemonicProxyUpdateTag.textContent) {
+    try {
+      const tag = await fetchLatestMnemonicRelease();
+      mnemonicProxyUpdateTag.textContent = `latest: ${tag}`;
+    } catch (e) { /* ignore - tag display is informational */ }
+  }
+  
+  // Resume mnemonic-proxy update polling if running
+  try {
+    const resp = await fetch('/api/mnemonic-update-status', { method: 'GET' });
+    const data = await resp.json();
+    if (data.running) {
+      setMnemonicProxyUpdateProgress(data.progress || 0);
+      setMnemonicProxyUpdateStatus(data.message || 'Updating…');
+      if (mnemonicProxyUpdateBtn) {
+        mnemonicProxyUpdateBtn.disabled = true;
+        mnemonicProxyUpdateBtn.textContent = 'Updating…';
+      }
+      if (mnemonicProxyCheckBtn) {
+        mnemonicProxyCheckBtn.disabled = true;
+      }
+      stopMnemonicProxyUpdatePolling();
+      mnemonicProxyUpdatePoll = setInterval(pollMnemonicProxyUpdateStatus, 1000);
+    }
+  } catch (e) { /* ignore */ }
+};
+
+/**
+ * Agent Configuration Modal
     if (data.running) {
       setPlatformBackendUpdateProgress(data.progress || 0);
       setPlatformBackendUpdateStatus(data.message || 'Updating…');
