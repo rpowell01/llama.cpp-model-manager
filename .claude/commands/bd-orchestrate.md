@@ -1,1 +1,1 @@
-/home/russ/projects/kilo-config/kilo/.claude-bridge/commands/bd-orchestrate.md
+/home/russ/code/config-repo/kilo/command/bd-orchestrate.md

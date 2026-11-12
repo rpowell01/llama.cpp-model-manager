@@ -1,1 +1,1 @@
-/home/russ/projects/kilo-config/kilo/.claude-bridge/commands/bd-plan.md
+/home/russ/code/config-repo/kilo/command/bd-plan.md
