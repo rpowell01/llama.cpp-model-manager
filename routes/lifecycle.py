@@ -709,6 +709,21 @@ def api_start():
                 if proxy_started:
                     add_log_entry(f"✓ mnemonic-proxy started: {model} on port {proxy_port}", "green")
                     log.info(f"mnemonic-proxy started successfully for {model} on port {proxy_port}")
+                    
+                    # Auto-start MCP server if enabled
+                    if mcp_enabled:
+                        log.info(f"Auto-starting mnemonic-mcp for {model} on port {mcp_port}")
+                        add_log_entry(f"🔗 mnemonic-mcp: {model} on port {mcp_port}", "blue")
+                        mcp_started = proxy_manager.start_mcp()
+                        if mcp_started:
+                            add_log_entry(f"✓ mnemonic-mcp started: {model} on port {mcp_port}", "green")
+                            log.info(f"mnemonic-mcp started successfully for {model} on port {mcp_port}")
+                        else:
+                            add_log_entry(
+                                f"⚠ mnemonic-mcp failed to start: {model} (see {proxy_manager._resolve_data_dir() / 'mnemonic-mcp.log'})",
+                                "orange",
+                            )
+                            log.warning(f"mnemonic-mcp failed to start for {model} on port {mcp_port}")
                 else:
                     add_log_entry(
                         f"⚠ mnemonic-proxy failed to start: {model} (see {proxy_manager.log_path})",
