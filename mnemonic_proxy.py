@@ -985,6 +985,7 @@ class MnemonicProxyManager:
         cmd += [
             "--db", str(archive_db),
             "--http", str(self.mcp_port),
+            "--host", "0.0.0.0",
         ]
         
         log.info(f"Built mnemonic-mcp command for {self.model_name}: {cmd}")
