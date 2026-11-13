@@ -481,12 +481,17 @@ async function act(model, verb) {
       data = JSON.parse(text);
     } catch (parseError) {
       logHtml(`<b>${prev} error:</b> Server returned non-JSON response`, 'red');
+      if (typeof showError === 'function') showError('Server returned invalid response', 'Start Failed');
       console.error('Failed to parse response:', text);
       return;
     }
     console.log('Parsed data:', data);
     if (data.error) {
       logHtml('<b>' + prev + ' error:</b> ' + data.error, 'red');
+      // Show prominent error for startup failures
+      if (verb === 'start' && typeof showError === 'function') {
+        showError(data.error, `Failed to Start: ${model}`);
+      }
     } else {
       logHtml(`<b>${prev}:</b> ${model} → ${data.status}${data.pid ? ' (pid ' + data.pid + ')' : ''}`, 'green');
     }
@@ -517,6 +522,7 @@ async function act(model, verb) {
   } catch (e) {
     console.error('act() error:', e);
     logHtml('<b>Error:</b> ' + e, 'red');
+    if (typeof showError === 'function') showError(String(e), 'Request Failed');
     setTimeout(() => {
       btn.disabled = false;
       btn.textContent = prev;

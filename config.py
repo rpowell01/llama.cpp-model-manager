@@ -146,6 +146,7 @@ DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 9931,
     "reuse_port": True,
+    "bind_host": "0.0.0.0",  # Bind address for llama-server (0.0.0.0 = all interfaces, 127.0.0.1 = localhost only)
     "threads": 16,  # Override to 16 threads
     "threads_batch": 16,  # Override to 16 batch threads
     "timeout": 3600,

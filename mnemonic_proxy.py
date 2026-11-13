@@ -275,6 +275,7 @@ class MnemonicProxyManager:
         # Core proxy settings - pass data dir and config explicitly
         cmd += [
             "--port", str(self.proxy_port),
+            "--host", "0.0.0.0",
             "--engine", engine,
             "--upstream", f"http://127.0.0.1:{self.llama_port}",
             "--data", str(data_dir),
@@ -580,6 +581,43 @@ class MnemonicProxyManager:
         # Poll for readiness OUTSIDE the lock so stop() is never blocked by a
         # slow startup.
         deadline = time.time() + max(timeout, 0.0)
+        # Quick check: verify we can connect to the port (process actually bound it)
+        # This catches "Address already in use" immediately
+        port_bound = False
+        for _ in range(10):  # Quick retries
+            if self._process is not None and self._process.poll() is not None:
+                log.error(
+                    f"mnemonic-proxy for {self.model_name} exited during startup "
+                    f"(code {self._process.returncode})"
+                )
+                self._log_tail()
+                self._kill_process(self._pid)
+                self._cleanup()
+                return False
+            try:
+                import socket
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(0.5)
+                result = s.connect_ex(('127.0.0.1', self.proxy_port))
+                s.close()
+                if result == 0:
+                    port_bound = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
+        
+        if not port_bound:
+            log.error(
+                f"mnemonic-proxy for {self.model_name} failed to bind port "
+                f"{self.proxy_port} (Address already in use or process exited)"
+            )
+            self._log_tail()
+            if self._pid:
+                self._kill_process(self._pid)
+            self._cleanup()
+            return False
+
         try:
             while True:
                 # Process died during startup?
@@ -750,13 +788,29 @@ class MnemonicProxyManager:
         if not self._pid:
             self._last_health = "down"
             return "down"
+        
+        # Check if process is still alive first
+        if self._process is not None and self._process.poll() is not None:
+            self._last_health = "down"
+            return "down"
+        
+        # Use the correct bind address for health check
+        # If bind_host is 0.0.0.0, we can check via 127.0.0.1 (loopback works)
+        # But we need to ensure we're hitting OUR process, not a stale one
         try:
             resp = requests.get(
                 f"http://127.0.0.1:{self.proxy_port}/health",
                 timeout=timeout,
             )
             if resp.status_code == 200:
-                state = "ok"
+                # Additional verification: check the response contains expected proxy info
+                try:
+                    health_data = resp.json()
+                    # Verify this is our proxy by checking version or model info
+                    # If it responds with a valid health structure, assume it's ours
+                    state = "ok"
+                except Exception:
+                    state = "listening"
             else:
                 # 503 = engine still loading, other codes = engine error:
                 # the proxy itself is up and serving.

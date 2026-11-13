@@ -189,6 +189,7 @@ def api_update_model_meta():
     meta = models[model_key]
     allowed_fields = {
         "port": int,
+        "bind_host": str,
         "threads": int,
         "threads_batch": int,
         "timeout": int,

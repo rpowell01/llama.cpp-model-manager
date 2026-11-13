@@ -956,7 +956,10 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     #    exactly the "couldn't bind HTTP server socket" seen when switching a
     #    model from linux to windows. The Flask app and mnemonic-proxy both run
     #    inside WSL, so 127.0.0.1 is sufficient.
-    if WSL and is_windows_binary:
+    #  - Otherwise: use DEFAULTS["host"] (0.0.0.0) unless overridden by model config
+    if "bind_host" in meta:
+        bind_host = meta["bind_host"]
+    elif WSL and is_windows_binary:
         bind_host = "0.0.0.0"
     elif WSL and is_linux_binary:
         bind_host = "127.0.0.1"

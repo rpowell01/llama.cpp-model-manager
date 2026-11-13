@@ -729,6 +729,19 @@ async function renderPanelProperties(data, modelName) {
         </label>
       </span>
     </div>`;
+    
+    // Bind Host dropdown
+    const bindHostVal = data.bind_host || "0.0.0.0";
+    let bindHostSelect = `<select class="meta-input" data-field="bind_host">`;
+    [["0.0.0.0", "0.0.0.0 (All interfaces - LAN accessible)"], ["127.0.0.1", "127.0.0.1 (Localhost only)"]].forEach(([val, label]) => {
+      bindHostSelect += `<option value="${val}" ${bindHostVal === val ? "selected" : ""}>${label}</option>`;
+    });
+    bindHostSelect += `</select>`;
+    html += `<div class="panel-item">
+      <span class="label" title="Network interface to bind llama-server to">Bind Host</span>
+      <span class="value">${bindHostSelect}</span>
+    </div>`;
+    
     // Note: Hugging Face Repo, Filename, Expected Size are typically static/model info
     // These would come from data but aren't in the standard model metadata API
     // For now, we'll show them as static info if available
@@ -1399,6 +1412,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     const defaults = {
       // Basic Configuration
       'port': 9931,
+      'bind_host': '0.0.0.0',
       'reuse_port': true,
       'log_verbosity': 4,
       'llama_cpp_platform': 'auto',

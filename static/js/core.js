@@ -165,3 +165,76 @@ function logHtml(html, color) {
 
 // Auto-initialize log stream when DOM is ready
 document.addEventListener('DOMContentLoaded', initLogStream);
+
+/**
+ * Show a prominent error notification (toast/modal) that demands attention
+ * @param {string} message - Error message
+ * @param {string} title - Optional title
+ */
+function showError(message, title = "Error") {
+  // Remove any existing error toast
+  const existing = document.getElementById('error-toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.id = 'error-toast';
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    min-width: 350px;
+    max-width: 600px;
+    background: #c62828;
+    color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    padding: 16px 20px;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    animation: slideIn 0.3s ease;
+  `;
+  
+  // Add animation keyframes if not already added
+  if (!document.getElementById('error-toast-styles')) {
+    const style = document.createElement('style');
+    style.id = 'error-toast-styles';
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  toast.innerHTML = `
+    <div style="display: flex; align-items: flex-start; gap: 12px;">
+      <span style="font-size: 24px; line-height: 1; flex-shrink: 0;">⚠</span>
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-weight: 700; font-size: 15px; margin-bottom: 4px;">${he(title)}</div>
+        <div style="word-break: break-word;">${he(message)}</div>
+      </div>
+      <button onclick="this.parentElement.parentElement.remove()" 
+              style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0 8px; line-height: 1; opacity: 0.8; flex-shrink: 0;"
+              title="Dismiss">✕</button>
+    </div>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  // Auto-dismiss after 15 seconds
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.style.animation = 'slideOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 15000);
+}
+
+window.showError = showError;
