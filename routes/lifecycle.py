@@ -800,8 +800,15 @@ def api_stop():
     
     # Stop mnemonic-proxy if running for this model
     if getattr(model_dict, 'mnemonic_proxy_enabled', False):
-        remove_proxy_manager(model)
-        add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
+        proxy_manager = get_proxy_manager(model)
+        if proxy_manager:
+            # Stop MCP server first (if running)
+            if getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False):
+                proxy_manager.stop_mcp()
+                add_log_entry(f"🔗 mnemonic-mcp stopped: {model}", "blue")
+            # Stop proxy
+            remove_proxy_manager(model)
+            add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
     
     return jsonify({"status": "stopped", "pid": pid, "success": success})
 
