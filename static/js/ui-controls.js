@@ -717,18 +717,6 @@ async function renderPanelProperties(data, modelName) {
         <button type="button" id="resetPropsToDefaultsBtn" class="btn-goto" style="padding: 0.35rem 0.9rem; font-size: 0.8rem;">Set to Default Parameters</button>
       </span>
     </div>`;
-    addEditable("Port", "port", data.port, "number", 1, 0);
-    // Reuse Port checkbox
-    const reusePortVal = data.reuse_port !== undefined ? data.reuse_port : true;
-    html += `<div class="panel-item">
-      <span class="label">Reuse Port</span>
-      <span class="value">
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-          <input type="checkbox" class="meta-input" data-field="reuse_port" ${reusePortVal ? "checked" : ""}>
-          <span>Allow multiple sockets to bind to the same port (SO_REUSEPORT)</span>
-        </label>
-      </span>
-    </div>`;
     
     // Bind Host dropdown
     const bindHostVal = data.bind_host || "0.0.0.0";
@@ -740,6 +728,19 @@ async function renderPanelProperties(data, modelName) {
     html += `<div class="panel-item">
       <span class="label" title="Network interface to bind llama-server to">Bind Host</span>
       <span class="value">${bindHostSelect}</span>
+    </div>`;
+    
+    addEditable("Port", "port", data.port, "number", 1, 0);
+    // Reuse Port checkbox
+    const reusePortVal = data.reuse_port !== undefined ? data.reuse_port : true;
+    html += `<div class="panel-item">
+      <span class="label">Reuse Port</span>
+      <span class="value">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" class="meta-input" data-field="reuse_port" ${reusePortVal ? "checked" : ""}>
+          <span>Allow multiple sockets to bind to the same port (SO_REUSEPORT)</span>
+        </label>
+      </span>
     </div>`;
     
     // Note: Hugging Face Repo, Filename, Expected Size are typically static/model info

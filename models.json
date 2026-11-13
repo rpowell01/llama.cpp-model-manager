@@ -469,8 +469,8 @@
     "custom_header_key": "",
     "custom_header_value": "",
     "comment": "fast and competent coder.  Do Not use yarn / rope parameter.  Also works better without spec decoder which add another 5GB of memory usage and pushes machine to max",
-    "rating_speed": 5,
-    "rating_coding": 5,
+    "rating_speed": 4,
+    "rating_coding": 4,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -539,7 +539,8 @@
     },
     "log_verbosity": 4,
     "llama_cpp_platform": "auto",
-    "llama_cpp_backend": "auto"
+    "llama_cpp_backend": "auto",
+    "bind_host": "0.0.0.0"
   },
   "koa-ai-v2-code-9b.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/koa-ai-v2-code-9b.i1-q4-k-m/Koa-AI-v2-code-9B.i1-Q4_K_M.gguf",
@@ -606,7 +607,7 @@
     "custom_header_value": "",
     "comment": "fast and competent coder.  completed coding challenge in about 10 min. ",
     "rating_speed": 5,
-    "rating_coding": 5,
+    "rating_coding": 4,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -630,15 +631,16 @@
       "slot_dir": "",
       "tokenizer_path": "",
       "config_override": {
-        "mask_anchor": true,
         "autosave": true,
+        "mask_anchor": true,
         "window_estimate_slack": 0.15
       },
       "mcp_enabled": false,
-      "mcp_port": 8133
+      "mcp_port": null
     },
     "llama_cpp_platform": "auto",
-    "llama_cpp_backend": "auto"
+    "llama_cpp_backend": "auto",
+    "bind_host": "0.0.0.0"
   },
   "openai-20b-neo-code-dimat-mxfp4-moe4": {
     "model_path": "/mnt/c/llama.cpp-models/openai-20b-neo-code-dimat-mxfp4-moe4/OpenAI-20B-NEO-CODE-DIMAT-MXFP4_MOE4.gguf",
@@ -717,7 +719,7 @@
     "reasoning_budget_message": "",
     "comment": "just a tad bit slower than the non-coder gpt-oss-20b model, but not by much",
     "rating_speed": 5,
-    "rating_coding": 5,
+    "rating_coding": 4,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -736,15 +738,16 @@
       "slot_dir": "",
       "tokenizer_path": "",
       "config_override": {
-        "mask_anchor": true,
         "autosave": true,
+        "mask_anchor": true,
         "window_estimate_slack": 0.15
       },
       "mcp_enabled": false,
-      "mcp_port": 8133
+      "mcp_port": null
     },
     "llama_cpp_platform": "auto",
-    "llama_cpp_backend": "auto"
+    "llama_cpp_backend": "auto",
+    "bind_host": "0.0.0.0"
   },
   "qwen3-30b-a3b-instruct-2507-q4-k-s": {
     "model_path": "/mnt/c/llama.cpp-models/qwen3-30b-a3b-instruct-2507-q4-k-s/Qwen3-30B-A3B-Instruct-2507-Q4_K_S.gguf",
@@ -1170,7 +1173,7 @@
     "reasoning_budget_message": "",
     "comment": "",
     "rating_speed": 5,
-    "rating_coding": 5,
+    "rating_coding": 4,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -1224,7 +1227,8 @@
       "mcp_port": null
     },
     "llama_cpp_platform": "auto",
-    "llama_cpp_backend": "auto"
+    "llama_cpp_backend": "auto",
+    "bind_host": "0.0.0.0"
   },
   "groot-19b-a3b-261023-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/groot-19b-a3b-261023-q4-k-m/Groot-19B-A3B-261023-Q4_K_M.gguf",
@@ -1400,7 +1404,7 @@
     "reasoning_budget_message": "",
     "comment": "",
     "rating_speed": 5,
-    "rating_coding": 5,
+    "rating_coding": 4,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -1446,7 +1450,7 @@
         "window_estimate_slack": 0.15
       },
       "mcp_enabled": false,
-      "mcp_port": 8133
+      "mcp_port": null
     },
     "llama_cpp_platform": "windows",
     "llama_cpp_backend": "sycl",
@@ -1454,7 +1458,8 @@
     "log_verbosity": 4,
     "use_generation_params": false,
     "file_exists": true,
-    "file_size_gb": 14.72
+    "file_size_gb": 14.72,
+    "bind_host": "0.0.0.0"
   },
   "qwen3-coder-30b-a3b-instruct-1m-iq4-xs": {
     "model_path": "/mnt/c/llama.cpp-models/qwen3-coder-30b-a3b-instruct-1m-iq4-xs/Qwen3-Coder-30B-A3B-Instruct-1M-IQ4_XS.gguf",
@@ -1891,7 +1896,7 @@
     "cpu_affinity": "auto",
     "cpu_strict": true,
     "batch_size": 32768,
-    "ctx_size": 65536,
+    "ctx_size": 131072,
     "rope_freq_base": 10000.0,
     "rope_freq_scale": 1.0,
     "rope_scaling_type": "none",
@@ -1944,9 +1949,9 @@
     "reasoning_effort": "medium",
     "reasoning_budget": -1,
     "reasoning_budget_message": "",
-    "comment": "",
-    "rating_speed": 0,
-    "rating_coding": 0,
+    "comment": "best coding model so far!!",
+    "rating_speed": 5,
+    "rating_coding": 5,
     "sycl": false,
     "grp_attn": false,
     "grp_attn_n": 8,
@@ -1991,13 +1996,14 @@
         "upstream": "http://127.0.0.1:9931",
         "window_estimate_slack": 0.15
       },
-      "mcp_enabled": false,
+      "mcp_enabled": true,
       "mcp_port": null
     },
     "llama_cpp_platform": "windows",
     "llama_cpp_backend": "sycl",
     "speculative_decoding_model": false,
     "file_exists": true,
-    "file_size_gb": 16.88
+    "file_size_gb": 16.88,
+    "bind_host": "0.0.0.0"
   }
 }
