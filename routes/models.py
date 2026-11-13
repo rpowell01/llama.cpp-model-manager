@@ -339,6 +339,9 @@ def api_update_model_meta():
                     # For mnemonic_proxy, merge with existing dict instead of replacing
                     if field == "mnemonic_proxy" and field in meta and isinstance(meta[field], dict):
                         value = {**meta[field], **value}
+                        # Ensure mcp_port has a valid default when mcp_enabled is true
+                        if value.get("mcp_enabled") and not value.get("mcp_port"):
+                            value["mcp_port"] = DEFAULTS["mnemonic_proxy"]["mcp_port"]
                 elif typ is list:
                     # Preserve list objects
                     if not isinstance(value, list):
