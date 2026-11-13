@@ -503,55 +503,6 @@ def api_start():
                 _start_timestamps.pop(model, None)
             return jsonify({"error": "Failed to start server: could not get PID"}), 500
 
-        # Wait briefly for the process to start
-        time.sleep(5)
-
-        # Verify the port is actually bound by OUR process (not a stale one)
-        from processes import _port_has_listener, _get_model_platform
-        model_platform = meta.get("llama_cpp_platform", "auto") or "auto"
-        our_port_bound = False
-        for _ in range(20):  # Up to 4 seconds
-            if proc.poll() is not None:
-                log.error(
-                    f"Process for {model} exited during startup with code {proc.returncode}"
-                )
-                with _start_timestamps_lock:
-                    _start_timestamps.pop(model, None)
-                return jsonify({"error": f"Server process exited during startup (code {proc.returncode})"}), 500
-            
-            # Check if OUR process is the one listening on the port
-            # _port_has_listener with platform="auto" checks both namespaces
-            if _port_has_listener(port, model_platform):
-                # Additional check: verify we can actually connect and get a response
-                try:
-                    import requests
-                    host = "127.0.0.1"
-                    if WSL and model_platform == "windows":
-                        from processes import get_server_host
-                        host = get_server_host("windows")
-                    resp = requests.get(f"http://{host}:{port}/v1/models", timeout=1.0)
-                    if resp.status_code == 200:
-                        our_port_bound = True
-                        break
-                except Exception:
-                    pass
-            time.sleep(0.2)
-        
-        if not our_port_bound:
-            log.error(
-                f"Model {model} failed to bind port {port} (Address already in use or process exited)"
-            )
-            # Kill the process since it's not serving
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-            with _start_timestamps_lock:
-                _start_timestamps.pop(model, None)
-            return jsonify({"error": f"Server failed to bind port {port} (Address already in use or startup failed)"}), 500
-
         # Check if process is still running and model is ready to serve requests.
         # We check port activity AND the health endpoint for all platforms to
         # ensure the server is actually listening and ready.
