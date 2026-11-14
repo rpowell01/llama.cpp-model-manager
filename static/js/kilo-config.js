@@ -89,6 +89,13 @@ function generateKiloCodeConfig(modelData, modelName) {
           input: inputLimit,
           output: outputLimit
         },
+        // Multimodal modalities (only when mmproj file path is configured)
+        ...(modelData.mmproj && modelData.mmproj.trim() ? {
+          modalities: {
+            input: ["text", "image"],
+            output: ["text"]
+          }
+        } : {}),
         supported_parameters: supportedParameters,
         default_parameters: {}
       }
