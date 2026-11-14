@@ -881,6 +881,31 @@ def api_set_platform_backend_config():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Kilo Code agent configuration API
+# ──────────────────────────────────────────────────────────────────────────────
+
+@models_bp.route("/api/kilo-config", methods=["GET"])
+def api_get_kilo_config():
+    """Generate kilo.jsonc-compatible configuration for all models.
+
+    When a model has a non-empty ``mmproj`` path, a ``modalities`` block is
+    included after ``limit`` and before ``supported_parameters``.
+    """
+    from kilo_config import generate_kilo_config
+    return jsonify(generate_kilo_config())
+
+
+@models_bp.route("/api/kilo-config/<model_name>", methods=["GET"])
+def api_get_kilo_config_for_model(model_name: str):
+    """Generate kilo.jsonc-compatible configuration for a single model."""
+    from kilo_config import generate_kilo_config_for_model
+    entry = generate_kilo_config_for_model(model_name)
+    if entry is None:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    return jsonify(entry)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # llama.cpp backend updater API
 # ──────────────────────────────────────────────────────────────────────────────
 
