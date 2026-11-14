@@ -121,6 +121,10 @@ def api_add_model():
         mnemonic_proxy_mcp_port=int(data.get("mnemonic_proxy", {}).get("mcp_port", DEFAULTS["mnemonic_proxy"]["mcp_port"]) or DEFAULTS["mnemonic_proxy"]["mcp_port"]),
     # Chat template
     chat_template_file=str(data.get("chat_template_file", DEFAULTS["chat_template_file"])),
+    # Multimodal projector parameters
+    mmproj=str(data.get("mmproj", DEFAULTS["mmproj"])),
+    mmproj_auto=bool(data.get("mmproj_auto", DEFAULTS["mmproj_auto"])),
+    mmproj_offload=bool(data.get("mmproj_offload", DEFAULTS["mmproj_offload"])),
     # Custom HTTP Header for Kilo Code Config
     custom_header_key=str(data.get("custom_header_key", DEFAULTS.get("custom_header_key", ""))),
     custom_header_value=str(data.get("custom_header_value", DEFAULTS.get("custom_header_value", ""))),

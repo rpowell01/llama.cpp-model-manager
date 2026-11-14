@@ -236,6 +236,10 @@ def add_model_entry(
     reuse_port: bool = True,
     # Chat template
     chat_template_file: str = "",
+    # Multimodal projector parameters
+    mmproj: str = "",
+    mmproj_auto: bool = True,
+    mmproj_offload: bool = True,
     # Custom HTTP Header for Kilo Code Config
     custom_header_key: str = "",
     custom_header_value: str = "",
@@ -360,6 +364,10 @@ def add_model_entry(
             "reuse_port": reuse_port,
             # Chat template
             "chat_template_file": chat_template_file,
+            # Multimodal projector parameters
+            "mmproj": mmproj,
+            "mmproj_auto": mmproj_auto,
+            "mmproj_offload": mmproj_offload,
             # Custom HTTP Header for Kilo Code Config
             "custom_header_key": custom_header_key,
             "custom_header_value": custom_header_value,
@@ -571,6 +579,10 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "reuse_port": DEFAULTS["reuse_port"],
         # Chat template
         "chat_template_file": DEFAULTS["chat_template_file"],
+        # Multimodal projector
+        "mmproj": DEFAULTS["mmproj"],
+        "mmproj_auto": DEFAULTS["mmproj_auto"],
+        "mmproj_offload": DEFAULTS["mmproj_offload"],
         # llama.cpp platform and backend selection
         "llama_cpp_platform": DEFAULTS.get("llama_cpp_platform", "auto"),
         "llama_cpp_backend": DEFAULTS.get("llama_cpp_backend", "auto"),
@@ -677,6 +689,10 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                     "mcp_enabled": False,
                     "mcp_port": 8133,
                 },
+                # Multimodal projector defaults
+                "mmproj": DEFAULTS["mmproj"],
+                "mmproj_auto": DEFAULTS["mmproj_auto"],
+                "mmproj_offload": DEFAULTS["mmproj_offload"],
                 # llama.cpp platform and backend selection
                 "llama_cpp_platform": DEFAULTS.get("llama_cpp_platform", "auto"),
                 "llama_cpp_backend": DEFAULTS.get("llama_cpp_backend", "auto"),

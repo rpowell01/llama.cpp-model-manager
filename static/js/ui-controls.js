@@ -890,6 +890,11 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     // Chat template file with browse button
     addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
+    // Multimodal projector file
+    addEditable("Multimodal Projector File", "mmproj", data.mmproj || "", "text");
+    addEditable("Use Multimodal Projector Auto", "mmproj_auto", data.mmproj_auto !== false, "checkbox");
+    addEditable("Multimodal Projector Offload", "mmproj_offload", data.mmproj_offload !== false, "checkbox");
+    
     html += `</div></div>`;
 
   // Context & RoPE/YaRN

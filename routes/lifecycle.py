@@ -1050,7 +1050,7 @@ def parse_prometheus_metrics(text: str) -> dict:
 @lifecycle_bp.route("/api/proxy/strata-context/<model>", methods=["GET"])
 def api_proxy_strata_context(model):
     """Get current Strata context from mnemonic-proxy.
-    
+
     Query parameters:
     - conversation_id: Optional conversation ID to get context for specific conversation.
       If not provided, returns the most recent conversation's context.
@@ -1058,24 +1058,75 @@ def api_proxy_strata_context(model):
     model = model.strip()
     if not model:
         return jsonify({"error": "Missing model name"}), 400
-    
+
     proxy_manager = get_proxy_manager(model)
     if not proxy_manager:
         return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
+
     proxy_port = proxy_manager.proxy_port
-    data_dir = proxy_manager._resolve_data_dir()
-    
+
     # Get optional conversation_id from query params
-    conversation_id = request.args.get('conversation_id', '').strip()
-    
+    conversation_id = request.args.get("conversation_id", "").strip()
+
     try:
-        import requests
         import json
         import os
         from pathlib import Path
-        
-        # Helper: parse journal for live metrics
+
+        import requests
+
+        def _candidate_journal_paths(manager):
+            """Resolve candidate journal.jsonl paths for a proxy.
+
+            The Flask app and mnemonic-proxy may run with different CWDs, so a
+            relative data_dir can point to different locations. Probe the
+            manager's resolved path, the process CWD (via /proc/<pid>/cwd), and
+            common roots for the configured relative path.
+            """
+            candidates = []
+
+            def add(p):
+                try:
+                    rp = Path(p).resolve()
+                except Exception:
+                    rp = Path(p)
+                if rp not in candidates:
+                    candidates.append(rp)
+
+            try:
+                add(manager._resolve_data_dir() / "journal.jsonl")
+            except Exception:
+                pass
+
+            raw_dir = getattr(manager, "data_dir", "") or ""
+            raw_path = Path(raw_dir) if raw_dir else None
+            if raw_path and raw_path.is_absolute():
+                add(raw_path / "journal.jsonl")
+            elif raw_path:
+                add(BASE_DIR / raw_path / "journal.jsonl")
+                pid = getattr(manager, "_pid", None) or getattr(getattr(manager, "_process", None), "pid", None)
+                if pid:
+                    try:
+                        cwd = Path(f"/proc/{pid}/cwd").resolve()
+                        add(cwd / raw_path / "journal.jsonl")
+                    except Exception:
+                        pass
+                # Fallback: repo root above a worktree-style app cwd.
+                try:
+                    add(BASE_DIR.parent.parent / raw_path / "journal.jsonl")
+                except Exception:
+                    pass
+
+            return candidates
+
+        def _has_live_data(live):
+            if not live:
+                return False
+            return any(
+                live.get(k) is not None
+                for k in ("active_tokens", "active_tokens_est", "virtual_tokens", "cached_tokens", "segment", "mode")
+            ) or (live.get("recalls", 0) > 0)
+
         def parse_journal_for_conversation(journal_path, conv_id):
             """Parse journal.jsonl for the latest request event and recall counts for a conversation."""
             live = {
@@ -1087,11 +1138,11 @@ def api_proxy_strata_context(model):
                 "mode": None,
                 "recalls": 0,
             }
-            if not os.path.exists(journal_path):
+            if not journal_path or not os.path.exists(journal_path):
                 return live
-            
+
             try:
-                with open(journal_path, 'r', encoding='utf-8') as f:
+                with open(journal_path, "r", encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -1100,13 +1151,12 @@ def api_proxy_strata_context(model):
                             event = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        
+
                         if event.get("conv") != conv_id:
                             continue
-                        
+
                         ev_type = event.get("event")
                         if ev_type == "request":
-                            # Latest request event has the live metrics
                             live["active_tokens"] = event.get("prompt_tokens")
                             live["active_tokens_est"] = event.get("est_tokens")
                             live["virtual_tokens"] = event.get("virtual_tokens")
@@ -1118,50 +1168,86 @@ def api_proxy_strata_context(model):
             except Exception:
                 pass
             return live
-        
-        # Helper: get store stats via proxy API
+
+        def find_latest_conversation_id(journal_paths):
+            """Return the most recent conversation id seen in journal files."""
+            latest_conv = None
+            for journal_path in journal_paths:
+                if not journal_path or not os.path.exists(journal_path):
+                    continue
+                try:
+                    with open(journal_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                event = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            conv = event.get("conv")
+                            if conv:
+                                latest_conv = conv
+                except Exception:
+                    continue
+            return latest_conv
+
+        def find_journal_for_conversation(journal_paths, conv_id):
+            for journal_path in journal_paths:
+                live = parse_journal_for_conversation(journal_path, conv_id)
+                if _has_live_data(live):
+                    return journal_path, live
+            for journal_path in journal_paths:
+                if journal_path and os.path.exists(journal_path):
+                    return journal_path, parse_journal_for_conversation(journal_path, conv_id)
+            return (journal_paths[0] if journal_paths else None), {
+                "active_tokens": None,
+                "active_tokens_est": None,
+                "virtual_tokens": None,
+                "cached_tokens": None,
+                "segment": None,
+                "mode": None,
+                "recalls": 0,
+            }
+
         def get_store_stats(port, conv_id):
             try:
                 resp = requests.get(
                     f"http://127.0.0.1:{port}/v1/strata/conversations/{conv_id}",
                     timeout=10,
-                    headers={"Accept": "application/json"}
+                    headers={"Accept": "application/json"},
                 )
                 if resp.status_code == 200:
                     return resp.json()
             except Exception:
                 pass
             return None
-        
-        # Helper: list conversations via proxy API
+
         def list_conversations(port):
             try:
                 resp = requests.get(
                     f"http://127.0.0.1:{port}/v1/strata/conversations",
                     timeout=10,
-                    headers={"Accept": "application/json"}
+                    headers={"Accept": "application/json"},
                 )
                 if resp.status_code == 200:
                     return resp.json()
             except Exception:
                 pass
             return None
-        
-        journal_path = data_dir / "journal.jsonl"
-        
-        # If conversation_id provided, use it directly
-        if conversation_id:
-            store_data = get_store_stats(proxy_port, conversation_id)
-            live_data = parse_journal_for_conversation(journal_path, conversation_id)
-            
-            strata_context = {
-                "conversation_id": conversation_id,
+
+        def build_strata_context(conv_id, journal_paths, store_data=None):
+            journal_path, live_data = find_journal_for_conversation(journal_paths, conv_id)
+            if store_data is None:
+                store_data = get_store_stats(proxy_port, conv_id)
+
+            strata = {
+                "conversation_id": conv_id,
                 "source": "live+store" if store_data else "live",
             }
-            
-            # Merge store data (archived, masked, segments)
+
             if store_data:
-                strata_context.update({
+                strata.update({
                     "archived": store_data.get("archived", 0),
                     "archived_tokens": store_data.get("archived_tokens", 0),
                     "masked": store_data.get("masked", 0),
@@ -1170,7 +1256,7 @@ def api_proxy_strata_context(model):
                     "segment_list": store_data.get("segment_list", []),
                 })
             else:
-                strata_context.update({
+                strata.update({
                     "archived": 0,
                     "archived_tokens": 0,
                     "masked": 0,
@@ -1178,87 +1264,56 @@ def api_proxy_strata_context(model):
                     "segments": 0,
                     "segment_list": [],
                 })
-            
-            # Add live metrics
-            strata_context.update({
-                "active_tokens": live_data["active_tokens"],
-                "active_tokens_est": live_data["active_tokens_est"],
-                "virtual_tokens": live_data["virtual_tokens"],
-                "cached_tokens": live_data["cached_tokens"],
-                "segment": live_data["segment"],
-                "mode": live_data["mode"],
-                "recalls": live_data["recalls"],
+
+            strata.update({
+                "active_tokens": live_data.get("active_tokens"),
+                "active_tokens_est": live_data.get("active_tokens_est"),
+                "virtual_tokens": live_data.get("virtual_tokens"),
+                "cached_tokens": live_data.get("cached_tokens"),
+                "segment": live_data.get("segment"),
+                "mode": live_data.get("mode"),
+                "recalls": live_data.get("recalls", 0),
             })
-            
+            return strata
+
+        journal_paths = _candidate_journal_paths(proxy_manager)
+
+        # If conversation_id provided, use it directly
+        if conversation_id:
+            strata_context = build_strata_context(conversation_id, journal_paths)
             return jsonify({
                 "model": model,
                 "strata_context": strata_context,
                 "status_code": 200,
-                "conversation_id": conversation_id
+                "conversation_id": conversation_id,
             })
-        
-        # Otherwise, get the most recent conversation from the store
-        # The proxy returns conversations sorted most-recent-first (ORDER BY max(created) DESC)
+
+        # Otherwise, get the most recent conversation from the proxy store API.
         conv_list = list_conversations(proxy_port)
-        
         strata_context = None
         if conv_list:
             conversations = conv_list.get("conversations", [])
             if conversations:
-                # Get the most recent conversation (FIRST one in the list, not last)
                 latest = conversations[0]
-                # The list endpoint uses "conversation" key
                 conv_id = latest.get("conversation")
-                
                 if conv_id:
-                    store_data = get_store_stats(proxy_port, conv_id)
-                    live_data = parse_journal_for_conversation(journal_path, conv_id)
-                    
-                    strata_context = {
-                        "conversation_id": conv_id,
-                        "source": "live+store" if store_data else "live",
-                    }
-                    
-                    # Merge store data
-                    if store_data:
-                        strata_context.update({
-                            "archived": store_data.get("archived", 0),
-                            "archived_tokens": store_data.get("archived_tokens", 0),
-                            "masked": store_data.get("masked", 0),
-                            "masked_tokens": store_data.get("masked_tokens", 0),
-                            "segments": store_data.get("segments", 0),
-                            "segment_list": store_data.get("segment_list", []),
-                        })
-                    else:
-                        strata_context.update({
-                            "archived": 0,
-                            "archived_tokens": 0,
-                            "masked": 0,
-                            "masked_tokens": 0,
-                            "segments": 0,
-                            "segment_list": [],
-                        })
-                    
-                    # Add live metrics
-                    strata_context.update({
-                        "active_tokens": live_data["active_tokens"],
-                        "active_tokens_est": live_data["active_tokens_est"],
-                        "virtual_tokens": live_data["virtual_tokens"],
-                        "cached_tokens": live_data["cached_tokens"],
-                        "segment": live_data["segment"],
-                        "mode": live_data["mode"],
-                        "recalls": live_data["recalls"],
-                    })
-        
+                    strata_context = build_strata_context(conv_id, journal_paths)
+
+        # Fallback: derive the latest conversation from journal.jsonl directly.
+        # /v1/strata/conversations may be unavailable in some proxy builds.
+        if strata_context is None:
+            latest_conv_id = find_latest_conversation_id(journal_paths)
+            if latest_conv_id:
+                strata_context = build_strata_context(latest_conv_id, journal_paths)
+
         return jsonify({
             "model": model,
             "strata_context": strata_context,
             "status_code": 200 if strata_context else 404,
-            "conversation_id": strata_context.get("conversation_id") if strata_context else None
+            "conversation_id": strata_context.get("conversation_id") if strata_context else None,
         })
     except Exception as e:
         return jsonify({"error": f"Failed to fetch Strata context: {str(e)}", "model": model}), 502
-
 
 @lifecycle_bp.route("/api/proxy/list", methods=["GET"])
 def api_proxy_list():

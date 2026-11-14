@@ -222,6 +222,10 @@ DEFAULTS: dict[str, Any] = {
     "swa_full": False,
     # Chat template
     "chat_template_file": "",
+    # Multimodal projector parameters
+    "mmproj": "",  # Path to multimodal projector file (default empty)
+    "mmproj_auto": True,  # Whether to use multimodal projector file (enabled if file path not empty)
+    "mmproj_offload": True,  # Whether to enable GPU offloading for multimodal projector
     # Custom HTTP Header for Kilo Code Config
     "custom_header_key": "",
     "custom_header_value": "",

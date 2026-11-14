@@ -346,12 +346,17 @@ function generateConfig(agentType, proxyUrl, modelId, context) {
     
     if (context && agentType === 'kilo') {
         contextLimit = context;
+        // Use 70/30 ratio: input = 70% of context, output = 30% of context
+        inputLimit = Math.round(context * 0.7);
+        outputLimit = Math.round(context * 0.3);
+        
         // Ensure output doesn't exceed context (leave at least 1 for input)
-        outputLimit = Math.min(Math.max(Math.round(context * 0.15), 16384), contextLimit - 1);
-        // input + output cannot exceed context
-        // input should be at least 49152 (or 85% of context), but capped at context - output
-        const minInput = Math.max(Math.round(context * 0.85), 49152);
-        inputLimit = Math.max(1, Math.min(minInput, contextLimit - outputLimit));
+        outputLimit = Math.min(outputLimit, contextLimit - 1);
+        // Ensure input + output doesn't exceed context
+        inputLimit = Math.min(inputLimit, contextLimit - outputLimit);
+        // Minimum bounds
+        inputLimit = Math.max(inputLimit, 1);
+        outputLimit = Math.max(outputLimit, 1);
     }
     
     let config = '';

@@ -361,7 +361,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 proxy_status["message"] = cached_health.get("message", "mnemonic-proxy not running")
 
     # Build result dict, excluding mnemonic_proxy from meta spread so our proxy status isn't overwritten
-    extra_meta = {k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists", "mnemonic_proxy"]}
+    # Also exclude "model" to prevent meta from overwriting the explicit model name
+    extra_meta = {k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists", "mnemonic_proxy", "model"]}
     return {
         "model": model,
         "port": port,
@@ -516,6 +517,10 @@ def api_status():
         models = get_models()
         results = _get_model_statuses_parallel(models, registry)
     
+    # Validate that each model row has unique identifying data (regression check for web-47ob)
+    if results and not registry.is_remote_mode:
+        _validate_status_uniqueness(results)
+    
     # Add mode and remote health info to response
     from config import PREFER_LINUX_BINARY
     response_data = {
@@ -531,6 +536,75 @@ def api_status():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+def _validate_status_uniqueness(results: list) -> None:
+    """Validate that each model row has unique identifying data.
+    
+    This is a regression check for bug web-47ob where all model rows
+    were serialized with identical port/pid/proxy state due to loop-carried
+    variables in the serializer.
+    
+    Logs a warning if duplicates are detected but does not fail the request.
+    """
+    if not results:
+        return
+    
+    # Track seen values for each field
+    seen_pids = {}
+    seen_ports = {}
+    seen_proxy_pids = {}
+    seen_model_names = {}
+    
+    for idx, row in enumerate(results):
+        model_name = row.get("model")
+        pid = row.get("pid")
+        port = row.get("port")
+        proxy = row.get("mnemonic_proxy", {})
+        proxy_pid = proxy.get("pid") if isinstance(proxy, dict) else None
+        
+        # Check model name uniqueness
+        if model_name in seen_model_names:
+            log.warning(
+                f"Status serialization bug detected: duplicate model name '{model_name}' "
+                f"at indices {seen_model_names[model_name]} and {idx}. "
+                f"This indicates loop-carried variable bug in _status_for_model."
+            )
+        else:
+            seen_model_names[model_name] = idx
+        
+        # Check pid uniqueness (only for running models)
+        if pid is not None:
+            if pid in seen_pids:
+                log.warning(
+                    f"Status serialization bug detected: duplicate pid {pid} "
+                    f"for models '{seen_pids[pid]}' and '{model_name}' (indices {seen_pids[pid]} and {idx}). "
+                    f"All models should have unique pids unless they genuinely share a process."
+                )
+            else:
+                seen_pids[pid] = model_name
+        
+        # Check port uniqueness (only for running models with listeners)
+        if port is not None and row.get("status") == "running":
+            if port in seen_ports:
+                log.warning(
+                    f"Status serialization bug detected: duplicate port {port} "
+                    f"for models '{seen_ports[port]}' and '{model_name}' (indices {seen_ports[port]} and {idx}). "
+                    f"Each running model should have its own port."
+                )
+            else:
+                seen_ports[port] = model_name
+        
+        # Check proxy pid uniqueness
+        if proxy_pid is not None:
+            if proxy_pid in seen_proxy_pids:
+                log.warning(
+                    f"Status serialization bug detected: duplicate proxy pid {proxy_pid} "
+                    f"for models '{seen_proxy_pids[proxy_pid]}' and '{model_name}' (indices {seen_proxy_pids[proxy_pid]} and {idx}). "
+                    f"Each mnemonic-proxy should have its own pid."
+                )
+            else:
+                seen_proxy_pids[proxy_pid] = model_name
 
 
 @status_bp.route("/api/debug/<model_name>")
