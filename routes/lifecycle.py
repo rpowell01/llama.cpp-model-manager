@@ -362,6 +362,10 @@ def api_start():
             "log_verbosity": getattr(model_dict, 'log_verbosity', 3),
             # Chat template
             "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
+            # Multimodal projector parameters
+            "mmproj": getattr(model_dict, 'mmproj', ''),
+            "mmproj_auto": getattr(model_dict, 'mmproj_auto', True),
+            "mmproj_offload": getattr(model_dict, 'mmproj_offload', True),
             # Generation / Sampling parameters
             "use_generation_params": getattr(model_dict, 'use_generation_params', True),
             "temperature": getattr(model_dict, 'temperature', 0.7),

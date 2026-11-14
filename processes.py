@@ -1161,18 +1161,18 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     mmproj = meta.get("mmproj", DEFAULTS["mmproj"])
     if mmproj:
         cmd += ["--mmproj", convert_path_for_binary(mmproj, is_windows_binary_for_paths)]
-    
-    mmproj_auto = meta.get("mmproj_auto", DEFAULTS["mmproj_auto"])
-    if mmproj_auto:
-        cmd += ["--mmproj-auto"]
-    else:
-        cmd += ["--no-mmproj-auto"]
-    
-    mmproj_offload = meta.get("mmproj_offload", DEFAULTS["mmproj_offload"])
-    if mmproj_offload:
-        cmd += ["--mmproj-offload"]
-    else:
-        cmd += ["--no-mmproj-offload"]
+        
+        mmproj_auto = meta.get("mmproj_auto", DEFAULTS["mmproj_auto"])
+        if mmproj_auto:
+            cmd += ["--mmproj-auto"]
+        else:
+            cmd += ["--no-mmproj-auto"]
+        
+        mmproj_offload = meta.get("mmproj_offload", DEFAULTS["mmproj_offload"])
+        if mmproj_offload:
+            cmd += ["--mmproj-offload"]
+        else:
+            cmd += ["--no-mmproj-offload"]
     
     cache_reuse = meta.get("cache_reuse", DEFAULTS["cache_reuse"])
     if cache_reuse:

@@ -285,6 +285,10 @@ def api_update_model_meta():
     "reasoning_effort": str,
     "reasoning_budget": int,
     "reasoning_budget_message": str,
+    # Multimodal projector parameters
+    "mmproj": str,
+    "mmproj_auto": bool,
+    "mmproj_offload": bool,
     # llama.cpp platform and backend selection
     "llama_cpp_platform": str,
     "llama_cpp_backend": str,

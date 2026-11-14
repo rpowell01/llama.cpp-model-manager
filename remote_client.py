@@ -136,6 +136,10 @@ class Model:
     log_verbosity: int = 3
     # Chat template
     chat_template_file: str = ""
+    # Multimodal projector parameters
+    mmproj: str = ""
+    mmproj_auto: bool = True
+    mmproj_offload: bool = True
     # Generation / Sampling parameters
     use_generation_params: bool = True
     temperature: float = 0.7
@@ -249,6 +253,10 @@ class Model:
             log_verbosity=data.get("log_verbosity", 3),
             # Chat template
             chat_template_file=data.get("chat_template_file", ""),
+            # Multimodal projector parameters
+            mmproj=data.get("mmproj", ""),
+            mmproj_auto=data.get("mmproj_auto", True),
+            mmproj_offload=data.get("mmproj_offload", True),
             # Generation / Sampling parameters
             use_generation_params=data.get("use_generation_params", True),
             temperature=data.get("temperature", 0.7),
