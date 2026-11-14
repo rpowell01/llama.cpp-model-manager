@@ -257,6 +257,7 @@ editor_model: {model_id}
           "input": {input_limit},
           "output": {output_limit}
         },
+        {modalities}
         "supported_parameters": [
           "include_reasoning",
           "max_tokens",
@@ -328,9 +329,10 @@ editor_model: {model_id}
  * @param {string} proxyUrl - Base URL of mnemonic-proxy (e.g., 'http://localhost:8096')
  * @param {string} modelId - Model identifier
  * @param {number} [context] - Model context size (optional, used for kilo config limits)
+ * @param {string} [mmproj] - Multimodal projector file path (optional, used for kilo config modalities)
  * @returns {Object} Configuration object with formatted config and metadata
  */
-function generateConfig(agentType, proxyUrl, modelId, context) {
+function generateConfig(agentType, proxyUrl, modelId, context, mmproj) {
     const agent = AGENT_CONFIGS[agentType];
     if (!agent) {
         throw new Error(`Unknown agent type: ${agentType}`);
@@ -359,6 +361,15 @@ function generateConfig(agentType, proxyUrl, modelId, context) {
         outputLimit = Math.max(outputLimit, 1);
     }
     
+    // Build modalities block for kilo if mmproj is set
+    let modalitiesBlock = '';
+    if (agentType === 'kilo' && mmproj && mmproj.trim()) {
+        modalitiesBlock = `"modalities": {
+          "input": ["text", "image"],
+          "output": ["text"]
+        },`;
+    }
+    
     let config = '';
     let format = 'text';
     
@@ -377,6 +388,8 @@ function generateConfig(agentType, proxyUrl, modelId, context) {
     } else if (agent.json || agent.jsonc) {
         // JSON or JSONC format
         config = replaceAll(replaceAll(agent.jsonc || agent.json, '{proxy_url}', normalizedUrl), '{model_id}', modelId);
+        // Replace modalities placeholder for kilo
+        config = replaceAll(config, '{modalities}', modalitiesBlock);
         format = agent.jsonc ? 'jsonc' : 'json';
     } else if (agent.yaml) {
         config = replaceAll(replaceAll(agent.yaml, '{proxy_url}', normalizedUrl), '{model_id}', modelId);
@@ -424,12 +437,13 @@ function getSupportedAgents() {
  * @param {string} proxyUrl - Base URL of mnemonic-proxy
  * @param {string} modelId - Model identifier
  * @param {number} [context] - Model context size (optional, used for kilo config limits)
+ * @param {string} [mmproj] - Multimodal projector file path (optional, used for kilo config modalities)
  * @returns {Object} Map of agentType to config object
  */
-function generateAllConfigs(proxyUrl, modelId, context) {
+function generateAllConfigs(proxyUrl, modelId, context, mmproj) {
     const configs = {};
     for (const agentType of Object.keys(AGENT_CONFIGS)) {
-        configs[agentType] = generateConfig(agentType, proxyUrl, modelId, context);
+        configs[agentType] = generateConfig(agentType, proxyUrl, modelId, context, mmproj);
     }
     return configs;
 }

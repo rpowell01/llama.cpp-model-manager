@@ -1544,8 +1544,9 @@ async function generateAgentConfig() {
   agentConfigGenerate.textContent = 'Generating...';
   
   try {
-    // Find model data to get context size for kilo config
+    // Find model data to get context size and mmproj for kilo config
     let modelContext = null;
+    let modelMmproj = null;
     // Use global currentModelRows (defined in state.js, populated by model-manager.js)
     // Note: let/const globals don't become window properties, so use direct reference
     // Fallback to window.currentModelRows in case of module scope differences
@@ -1557,15 +1558,20 @@ async function generateAgentConfig() {
       // Use normalized comparison to match model name (consistent with model-manager.js)
       const normalizedModelId = modelId.trim().toLowerCase();
       const modelData = modelRows.find(r => r.model.trim().toLowerCase() === normalizedModelId);
-      if (modelData && modelData.ctx_size) {
-        modelContext = modelData.ctx_size;
+      if (modelData) {
+        if (modelData.ctx_size) {
+          modelContext = modelData.ctx_size;
+        }
+        if (modelData.mmproj && modelData.mmproj.trim()) {
+          modelMmproj = modelData.mmproj;
+        }
       }
     }
     
     // Use the ProxyAgentConfig module
     if (window.ProxyAgentConfig && window.ProxyAgentConfig.generateConfig) {
-      currentConfig = window.ProxyAgentConfig.generateConfig(agentType, proxyUrl, modelId, modelContext);
-      allConfigs = window.ProxyAgentConfig.generateAllConfigs(proxyUrl, modelId, modelContext);
+      currentConfig = window.ProxyAgentConfig.generateConfig(agentType, proxyUrl, modelId, modelContext, modelMmproj);
+      allConfigs = window.ProxyAgentConfig.generateAllConfigs(proxyUrl, modelId, modelContext, modelMmproj);
     } else {
       // Fallback if module not loaded
       throw new Error('ProxyAgentConfig module not loaded');
