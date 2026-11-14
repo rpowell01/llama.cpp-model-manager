@@ -299,10 +299,10 @@ function updateTileSelection(modelName) {
 /**
  * Normalize a model name for consistent comparison
  * @param {string} name - Model name to normalize
- * @returns {string} Lowercase, trimmed model name
+ * @returns {string} Lowercase, trimmed model name with spaces/underscores/dots replaced by hyphens
  */
 function normalizeModelName(name) {
-  return name.trim().toLowerCase();
+  return name.trim().toLowerCase().replace(/[\s_.]+/g, '-');
 }
 
 /**

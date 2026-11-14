@@ -472,11 +472,13 @@ def load_models_cache() -> None:
     # Merge with filesystem scan
     filesystem_models = scan_models_directory()
     for model_name, fs_meta in filesystem_models.items():
-        # Normalize names for comparison (lowercase + spaces to hyphens)
-        normalized_fs_name = model_name.lower().replace(" ", "-")
+        # Normalize names for comparison (lowercase, replace spaces/underscores/dots with hyphens)
+        def normalize(name: str) -> str:
+            return name.lower().replace(" ", "-").replace("_", "-").replace(".", "-")
+        normalized_fs_name = normalize(model_name)
         existing_key = None
         for key in models:
-            if key.lower().replace(" ", "-") == normalized_fs_name:
+            if normalize(key) == normalized_fs_name:
                 existing_key = key
                 break
 
@@ -678,6 +680,10 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],
                 "grp_attn_n": DEFAULTS["grp_attn_n"],
+                # Multimodal projector defaults
+                "mmproj": DEFAULTS["mmproj"],
+                "mmproj_auto": DEFAULTS["mmproj_auto"],
+                "mmproj_offload": DEFAULTS["mmproj_offload"],
                 # Mnemonic Proxy defaults
                 "mnemonic_proxy": {
                     "enabled": False,

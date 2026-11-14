@@ -1498,6 +1498,11 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       // Chat template
       'chat_template_file': '',
       
+      // Multimodal projector
+      'mmproj': '',
+      'mmproj_auto': true,
+      'mmproj_offload': true,
+      
       // Generation / Sampling parameters
       'use_generation_params': false,
       'temperature': 0.7,
@@ -1916,7 +1921,15 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
   const configBtn = document.getElementById(`generate-config-${modelSafeId}`);
   if (configBtn) {
     configBtn.addEventListener("click", () => {
-      openKiloCodeModal(data, modelName);
+      // Read current mmproj value from UI input (may have been changed but not saved yet)
+      const mmprojInput = content.querySelector('.meta-input[data-field="mmproj"]');
+      const mmprojAutoInput = content.querySelector('.meta-input[data-field="mmproj_auto"]');
+      const mmprojOffloadInput = content.querySelector('.meta-input[data-field="mmproj_offload"]');
+      const currentData = { ...data };
+      if (mmprojInput) currentData.mmproj = mmprojInput.value;
+      if (mmprojAutoInput) currentData.mmproj_auto = mmprojAutoInput.checked;
+      if (mmprojOffloadInput) currentData.mmproj_offload = mmprojOffloadInput.checked;
+      openKiloCodeModal(currentData, modelName);
     });
   }
 

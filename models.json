@@ -2053,7 +2053,7 @@
     "file_exists": true,
     "file_size_gb": 16.88,
     "bind_host": "0.0.0.0",
-    "mmproj": "",
+    "mmproj": "c:/llama.cpp-models/tiel-coder-35b-a3b-mtp-ud-iq4-xs/mmproj-BF16.gguf",
     "mmproj_auto": true,
     "mmproj_offload": true
   }
