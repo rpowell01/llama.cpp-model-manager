@@ -537,6 +537,7 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "device": DEFAULTS["device"],
         "cpu_moe": DEFAULTS["cpu_moe"],
         "n_cpu_moe": DEFAULTS["n_cpu_moe"],
+        "moe_cache_mib": DEFAULTS["moe_cache_mib"],
         "cache_type_k": DEFAULTS["cache_type_k"],
         "cache_type_v": DEFAULTS["cache_type_v"],
         "numa": DEFAULTS["numa"],
