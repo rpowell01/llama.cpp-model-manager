@@ -312,6 +312,7 @@ def api_start():
             "device": getattr(model_dict, 'device', ''),
             "cpu_moe": getattr(model_dict, 'cpu_moe', False),
             "n_cpu_moe": getattr(model_dict, 'n_cpu_moe', 0),
+            "moe_cache_mib": getattr(model_dict, 'moe_cache_mib', 0),
             "cache_type_k": getattr(model_dict, 'cache_type_k', 'fp16'),
             "cache_type_v": getattr(model_dict, 'cache_type_v', 'fp16'),
             "numa": getattr(model_dict, 'numa', True),
