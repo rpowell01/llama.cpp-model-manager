@@ -13,6 +13,11 @@ import sys
 import threading
 from pathlib import Path
 
+# Ensure the repository root is on sys.path so that the `webapp` package
+# and `routes` package are importable when running this script directly
+# (e.g., `python webapp/main.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from flask import Flask, render_template
 
 # Import configuration
