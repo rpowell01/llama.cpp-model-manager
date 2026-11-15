@@ -182,6 +182,7 @@ def add_model_entry(
     device: str = "",
     cpu_moe: bool = False,
     n_cpu_moe: int = 0,
+    moe_cache_mib: int = 0,
     cache_type_k: str = "f16",
     cache_type_v: str = "f16",
     numa: bool = True,
@@ -310,6 +311,7 @@ def add_model_entry(
             "device": device,
             "cpu_moe": cpu_moe,
             "n_cpu_moe": n_cpu_moe,
+            "moe_cache_mib": moe_cache_mib,
             "cache_type_k": cache_type_k,
             "cache_type_v": cache_type_v,
             "numa": numa,
@@ -680,6 +682,8 @@ def scan_models_directory() -> dict[str, dict[str, Any]]:
                 "sycl": DEFAULTS["sycl"],
                 "grp_attn": DEFAULTS["grp_attn"],
                 "grp_attn_n": DEFAULTS["grp_attn_n"],
+                # MoE CPU offloading
+                "moe_cache_mib": DEFAULTS["moe_cache_mib"],
                 # Multimodal projector defaults
                 "mmproj": DEFAULTS["mmproj"],
                 "mmproj_auto": DEFAULTS["mmproj_auto"],

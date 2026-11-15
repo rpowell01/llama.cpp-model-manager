@@ -1115,6 +1115,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     # MoE CPU offloading
     cpu_moe = meta.get("cpu_moe", DEFAULTS["cpu_moe"])
     n_cpu_moe = meta.get("n_cpu_moe", DEFAULTS["n_cpu_moe"])
+    moe_cache_mib = meta.get("moe_cache_mib", DEFAULTS["moe_cache_mib"])
     if cpu_moe:
         # --cpu-moe means offload ALL MoE experts to CPU
         # Mutually exclusive with --n-cpu-moe
@@ -1123,6 +1124,10 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         # --n-cpu-moe N means offload N MoE experts to CPU
         # Only used when cpu_moe is false
         cmd += ["--n-cpu-moe", str(n_cpu_moe)]
+    # --moe-cache-mib N: GPU cache size in MiB for MoE experts kept in CPU
+    # Only used when n_cpu_moe > 0 or cpu_moe is true
+    if moe_cache_mib and moe_cache_mib > 0:
+        cmd += ["--moe-cache-mib", str(moe_cache_mib)]
     
     cache_type_k = meta.get("cache_type_k", DEFAULTS["cache_type_k"])
     if cache_type_k and cache_type_k != "f16":

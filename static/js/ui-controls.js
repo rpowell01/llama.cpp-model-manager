@@ -856,6 +856,7 @@ async function renderPanelProperties(data, modelName) {
     // CPU MoE - checkbox that disables n-cpu-moe when checked
     const cpuMoe = data.cpu_moe ?? false;
     const nCpuMoe = data.n_cpu_moe ?? 0;
+    const moeCacheMib = data.moe_cache_mib ?? 0;
     html += `<div class="panel-item">
       <span class="label">CPU MoE (all layers)</span>
       <span class="value">
@@ -866,6 +867,12 @@ async function renderPanelProperties(data, modelName) {
       <span class="label">N CPU MoE (layers)</span>
       <span class="value">
         <input type="number" class="meta-input" data-field="n_cpu_moe" value="${he(String(nCpuMoe))}" step="1" min="0">
+      </span>
+    </div>`;
+    html += `<div class="panel-item" id="moe-cache-mib-row" style="${(!cpuMoe && nCpuMoe === 0) ? 'display:none;' : ''}">
+      <span class="label">MoE Cache (MiB)</span>
+      <span class="value">
+        <input type="number" class="meta-input" data-field="moe_cache_mib" value="${he(String(moeCacheMib))}" step="1" min="0" placeholder="0 = disabled">
       </span>
     </div>`;
     
@@ -1444,6 +1451,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       'gpu_layers': 99,
       'cpu_moe': false,
       'n_cpu_moe': 0,
+      'moe_cache_mib': 0,
       'flash_attn': 'on',
       
       // KV Cache
@@ -1586,15 +1594,27 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     logHtml('<b>Properties reset to default parameters</b>', 'green');
   }
 
-  // Initialize CPU MoE checkbox toggle (shows/hides N CPU MoE field)
+  // Initialize CPU MoE checkbox toggle (shows/hides N CPU MoE field and MoE Cache field)
   const cpuMoeCheckbox = content.querySelector('.meta-input[data-field="cpu_moe"]');
   const nCpuMoeRow = content.querySelector('#n-cpu-moe-row');
-  if (cpuMoeCheckbox && nCpuMoeRow) {
+  const moeCacheMibRow = content.querySelector('#moe-cache-mib-row');
+  if (cpuMoeCheckbox && nCpuMoeRow && moeCacheMibRow) {
     const toggleCpuMoe = () => {
-      const show = !cpuMoeCheckbox.checked; // Show n_cpu_moe when cpu_moe is FALSE
-      nCpuMoeRow.style.display = show ? '' : 'none';
+      const cpuMoeChecked = cpuMoeCheckbox.checked;
+      const nCpuMoeInput = content.querySelector('.meta-input[data-field="n_cpu_moe"]');
+      const nCpuMoeVal = nCpuMoeInput ? parseInt(nCpuMoeInput.value, 10) || 0 : 0;
+      const showNcpuMoe = !cpuMoeChecked; // Show n_cpu_moe when cpu_moe is FALSE
+      const showMoeCache = cpuMoeChecked || nCpuMoeVal > 0; // Show moe_cache_mib when cpu_moe is TRUE or n_cpu_moe > 0
+      nCpuMoeRow.style.display = showNcpuMoe ? '' : 'none';
+      moeCacheMibRow.style.display = showMoeCache ? '' : 'none';
     };
     cpuMoeCheckbox.addEventListener('change', toggleCpuMoe);
+    // Also listen for changes to n_cpu_moe to update moe_cache_mib visibility
+    const nCpuMoeInput = content.querySelector('.meta-input[data-field="n_cpu_moe"]');
+    if (nCpuMoeInput) {
+      nCpuMoeInput.addEventListener('input', toggleCpuMoe);
+      nCpuMoeInput.addEventListener('change', toggleCpuMoe);
+    }
     // Initial state
     toggleCpuMoe();
   }

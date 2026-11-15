@@ -163,6 +163,7 @@ DEFAULTS: dict[str, Any] = {
     "device": "",  # GPU device to use (empty = auto, "none" = disable GPU/SYCL entirely)
     "cpu_moe": False,  # Keep all Mixture of Experts (MoE) weights in CPU
     "n_cpu_moe": 0,  # Keep MoE weights of first N layers in CPU (when cpu_moe is False)
+    "moe_cache_mib": 0,  # GPU cache size in MiB for MoE experts kept in CPU (0 = disabled)
     "cache_type_k": "fp16",  # KV cache type: fp16, q4_0, q8_0
     "cache_type_v": "fp16",  # KV cache type for V
     "numa": True,  # Enable NUMA awareness

@@ -76,6 +76,7 @@ class Model:
     device: str = ""
     cpu_moe: bool = False
     n_cpu_moe: int = 0
+    moe_cache_mib: int = 0
     cache_type_k: str = "f16"
     cache_type_v: str = "f16"
     numa: bool = True

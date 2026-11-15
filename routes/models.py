@@ -210,6 +210,7 @@ def api_update_model_meta():
     "device": str,
     "cpu_moe": bool,
     "n_cpu_moe": int,
+    "moe_cache_mib": int,
     "cache_type_k": str,
     "cache_type_v": str,
         "numa": bool,
