@@ -194,6 +194,7 @@ class Model:
             device=data.get("device", ""),
             cpu_moe=data.get("cpu_moe", False),
             n_cpu_moe=data.get("n_cpu_moe", 0),
+            moe_cache_mib=data.get("moe_cache_mib", 0),
             cache_type_k=data.get("cache_type_k", "f16"),
             cache_type_v=data.get("cache_type_v", "f16"),
             numa=data.get("numa", True),
