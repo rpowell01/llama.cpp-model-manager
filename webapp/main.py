@@ -143,8 +143,12 @@ def main() -> None:
     args = parser.parse_args()
 
     log.info("Creating Flask app...")
-    # Create Flask app
-    app = Flask(__name__)
+    # Create Flask app with static/template folders inside webapp/
+    app = Flask(
+        __name__,
+        static_folder=str(BASE_DIR / "webapp" / "static"),
+        template_folder=str(BASE_DIR / "webapp" / "templates"),
+    )
     log.info("Flask app created")
     
     # Set app config for template variables
