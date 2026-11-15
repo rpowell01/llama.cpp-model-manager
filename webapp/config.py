@@ -74,7 +74,7 @@ def _is_windows_absolute_path(path_str: str) -> bool:
 # ──────────────────────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Mnemonic Proxy Config Override Defaults (loaded from JSON file)

@@ -7,11 +7,11 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
-from config import DEFAULTS, normalize_path_for_binary
-from metrics import fetch_metrics_snapshot
-from models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
-from processes import _check_model_ready
-from state import add_log_entry
+from webapp.config import DEFAULTS, normalize_path_for_binary
+from webapp.metrics import fetch_metrics_snapshot
+from webapp.models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
+from webapp.processes import _check_model_ready
+from webapp.state import add_log_entry
 
 log = getLogger("llamaweb")
 
@@ -411,7 +411,7 @@ def api_export_metrics():
     import csv
     from datetime import datetime
     import os
-    from config import BASE_DIR
+    from webapp.config import BASE_DIR
     
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
@@ -554,7 +554,7 @@ def api_get_metrics_from_csv():
     """Get historical metrics from CSV for stopped models."""
     import csv
     import os
-    from config import BASE_DIR
+    from webapp.config import BASE_DIR
     
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
@@ -779,7 +779,7 @@ def api_get_metrics():
 @models_bp.route("/api/mnemonic-default-config-override", methods=["GET"])
 def api_get_mnemonic_default_config_override():
     """Get the default mnemonic proxy config override from the JSON file."""
-    from config import load_mnemonic_default_config_override
+    from webapp.config import load_mnemonic_default_config_override
     return jsonify(load_mnemonic_default_config_override())
 
 
@@ -788,7 +788,7 @@ def api_get_export_config():
     """Get the current metrics export configuration."""
     scheduler = current_app.config.get("SCHEDULER")
     if scheduler is None:
-        from config import (
+        from webapp.config import (
             METRICS_EXPORT_ENABLED,
             METRICS_EXPORT_INTERVAL_SECONDS,
             METRICS_EXPORT_MODELS,
@@ -848,14 +848,14 @@ def api_refresh_models():
 @models_bp.route("/api/platform-backend-config", methods=["GET"])
 def api_get_platform_backend_config():
     """Get all platform/backend directory mappings."""
-    from config import get_all_platform_backend_dirs
+    from webapp.config import get_all_platform_backend_dirs
     return jsonify(get_all_platform_backend_dirs())
 
 
 @models_bp.route("/api/platform-backend-config", methods=["POST"])
 def api_set_platform_backend_config():
     """Update platform/backend directory mappings."""
-    from config import (
+    from webapp.config import (
         set_all_platform_backend_dirs,
         get_all_platform_backend_dirs,
         PLATFORM_BACKEND_COMBINATIONS,
@@ -892,14 +892,14 @@ def api_get_kilo_config():
     When a model has a non-empty ``mmproj`` path, a ``modalities`` block is
     included after ``limit`` and before ``supported_parameters``.
     """
-    from kilo_config import generate_kilo_config
+    from webapp.kilo_config import generate_kilo_config
     return jsonify(generate_kilo_config())
 
 
 @models_bp.route("/api/kilo-config/<model_name>", methods=["GET"])
 def api_get_kilo_config_for_model(model_name: str):
     """Generate kilo.jsonc-compatible configuration for a single model."""
-    from kilo_config import generate_kilo_config_for_model
+    from webapp.kilo_config import generate_kilo_config_for_model
     entry = generate_kilo_config_for_model(model_name)
     if entry is None:
         return jsonify({"error": f"Unknown model '{model_name}'"}), 404
@@ -936,7 +936,7 @@ def _llama_update_progress(message: str, percent: int) -> None:
 def _run_llama_update(tag: str | None) -> None:
     """Worker body: run the update, then record the outcome."""
     try:
-        import llama_updater
+        import webapp.llama_updater as llama_updater
 
         result = llama_updater.update_backends(
             tag=tag,
@@ -981,7 +981,7 @@ def api_llama_update_status():
 def api_llama_latest_release():
     """Get the latest llama.cpp nightly release tag from GitHub."""
     try:
-        from llama_updater import _get_latest_nightly_tag
+        from webapp.llama_updater import _get_latest_nightly_tag
         tag = _get_latest_nightly_tag()
         if not tag:
             return jsonify({"error": "Failed to fetch latest release from GitHub"}), 502
@@ -1080,7 +1080,7 @@ def api_mnemonic_update_status():
 def api_mnemonic_latest_release():
     """Get the latest mnemonic-proxy release tag from GitHub/PyPI."""
     try:
-        from mnemonic_proxy_updater import _get_latest_github_release, _get_latest_pypi_version
+        from webapp.mnemonic_proxy_updater import _get_latest_github_release, _get_latest_pypi_version
         tag = _get_latest_github_release() or _get_latest_pypi_version()
         if not tag:
             return jsonify({"error": "Failed to fetch latest release from GitHub or PyPI"}), 502

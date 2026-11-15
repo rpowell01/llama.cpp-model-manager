@@ -8,7 +8,7 @@ import logging
 import queue
 from pathlib import Path
 from collections import deque
-from config import BASE_DIR, LOG_FILE
+from webapp.config import BASE_DIR, LOG_FILE
 
 log = logging.getLogger("llamaweb")
 

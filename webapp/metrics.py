@@ -5,8 +5,8 @@ from typing import NamedTuple
 
 import requests
 
-from config import DEFAULTS
-from processes import get_server_host
+from webapp.config import DEFAULTS
+from webapp.processes import get_server_host
 
 log = logging.getLogger("llamaweb")
 

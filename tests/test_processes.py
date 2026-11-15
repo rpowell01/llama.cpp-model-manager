@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from processes import build_cmd
+from webapp.processes import build_cmd
 
 
 def _rope_flags(cmd: list[str]) -> set[str]:

@@ -9,10 +9,10 @@ from typing import Any, Generator
 from flask import Blueprint, jsonify, request, Response
 import requests
 
-from config import BASE_DIR, DEFAULTS, MODELS_DIR, resolve_model_path
-from downloads import start_download, download_status, download_lock
-from models import get_models, save_models
-from utils import estimate_gguf_size
+from webapp.config import BASE_DIR, DEFAULTS, MODELS_DIR, resolve_model_path
+from webapp.downloads import start_download, download_status, download_lock
+from webapp.models import get_models, save_models
+from webapp.utils import estimate_gguf_size
 
 log = getLogger("llamaweb")
 

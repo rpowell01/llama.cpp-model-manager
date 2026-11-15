@@ -17,11 +17,11 @@ import logging
 import threading
 from typing import Optional
 
-from models import get_models, load_models_cache
+from webapp.models import get_models, load_models_cache
 from routes.status import get_status_registry
-from processes import check_port_active, _check_model_ready
+from webapp.processes import check_port_active, _check_model_ready
 
-from config import (
+from webapp.config import (
     METRICS_EXPORT_ENABLED,
     METRICS_EXPORT_INTERVAL_SECONDS,
     METRICS_EXPORT_MODELS,
@@ -242,7 +242,7 @@ class Scheduler:
         """
         # Imported locally to keep the exporter module optional at import time
         # and to avoid any import-order coupling with the Flask app.
-        from exporter import export_metrics_for_model
+        from webapp.exporter import export_metrics_for_model
 
         result = export_metrics_for_model(model_name)
         log.debug(

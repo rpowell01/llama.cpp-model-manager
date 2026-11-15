@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
 # Import the module under test
-from mnemonic_proxy import MnemonicProxyManager
+from webapp.mnemonic_proxy import MnemonicProxyManager
 
 
 class TestMnemonicProxyConfigGeneration:
@@ -29,7 +29,7 @@ class TestMnemonicProxyConfigGeneration:
     
     def test_generate_config_basic(self, mock_model_config):
         """Test basic config generation."""
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_model_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_model_config}):
             manager = MnemonicProxyManager('test-model', 9931)
             config = manager.generate_config()
             
@@ -50,7 +50,7 @@ class TestMnemonicProxyConfigGeneration:
             "spec_type": "none",
             "model_path": "/tmp/model.gguf",
         }
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
             manager = MnemonicProxyManager('test-model', 9931)
             config = manager.generate_config()
             
@@ -66,7 +66,7 @@ class TestMnemonicProxyConfigGeneration:
             "spec_type": "draft-mtp,ngram-mod",
             "model_path": "/tmp/model.gguf",
         }
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
             manager = MnemonicProxyManager('test-model', 9931)
             config = manager.generate_config()
             
@@ -80,7 +80,7 @@ class TestMnemonicProxyConfigGeneration:
             "spec_type": "draft-dflash",
             "model_path": "/tmp/model.gguf",
         }
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
             manager = MnemonicProxyManager('test-model', 9931)
             config = manager.generate_config()
             
@@ -88,7 +88,7 @@ class TestMnemonicProxyConfigGeneration:
     
     def test_generate_config_no_model_config(self):
         """Test config generation when model config not found."""
-        with patch('mnemonic_proxy.get_models', return_value={}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
             manager = MnemonicProxyManager('unknown-model', 9931)
             config = manager.generate_config()
             
@@ -105,7 +105,7 @@ class TestMnemonicProxyConfigGeneration:
             "spec_type": "none",
             "model_path": "/tmp/model.gguf",
         }
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
             manager = MnemonicProxyManager('test-model', 9931, mcp_enabled=True, mcp_port=8133)
             config = manager.generate_config()
             
@@ -123,7 +123,7 @@ class TestMnemonicProxyConfigGeneration:
             "mask_anchor": False,
             "custom_setting": "value"
         }
-        with patch('mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'test-model': mock_config}):
             manager = MnemonicProxyManager('test-model', 9931, config_override=custom_override)
             config = manager.generate_config()
             
@@ -138,8 +138,8 @@ class TestMnemonicProxyManager:
         """Test that initialization creates data directory."""
         data_dir = str(tmp_path / "test-data")
         
-        with patch('mnemonic_proxy.get_models', return_value={}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 manager = MnemonicProxyManager(
                     'test-model', 9931, data_dir=data_dir
                 )
@@ -148,8 +148,8 @@ class TestMnemonicProxyManager:
     
     def test_init_sets_defaults(self):
         """Test that initialization sets correct defaults."""
-        with patch('mnemonic_proxy.get_models', return_value={}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 manager = MnemonicProxyManager('test-model', 9931)
         
         assert manager.model_name == 'test-model'
@@ -161,8 +161,8 @@ class TestMnemonicProxyManager:
     
     def test_get_mcp_status_not_running(self):
         """Test MCP status when not running."""
-        with patch('mnemonic_proxy.get_models', return_value={}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 manager = MnemonicProxyManager('test-model', 9931, mcp_enabled=True)
         
         status = manager.get_mcp_status()
@@ -175,8 +175,8 @@ class TestMnemonicProxyManager:
     
     def test_get_status_includes_mcp(self):
         """Test that get_status includes MCP status."""
-        with patch('mnemonic_proxy.get_models', return_value={}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 manager = MnemonicProxyManager('test-model', 9931, mcp_enabled=True)
         
         with patch.object(manager, 'is_running', return_value=False):
@@ -215,8 +215,8 @@ class TestMnemonicProxyStartReadiness:
     """
 
     def _make_manager(self, tmp_path):
-        with patch('mnemonic_proxy.get_models', return_value={}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={}):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 return MnemonicProxyManager(
                     'test-model', 9931, data_dir=str(tmp_path / "data")
                 )
@@ -224,7 +224,7 @@ class TestMnemonicProxyStartReadiness:
     def test_health_state_ok(self, tmp_path):
         manager = self._make_manager(tmp_path)
         manager._pid = 1234
-        with patch('mnemonic_proxy.requests.get') as mock_get:
+        with patch('webapp.mnemonic_proxy.requests.get') as mock_get:
             mock_get.return_value = Mock(status_code=200)
             assert manager._health_state() == "ok"
         assert manager._last_health == "ok"
@@ -233,7 +233,7 @@ class TestMnemonicProxyStartReadiness:
         """503 = engine still loading: the proxy itself is up."""
         manager = self._make_manager(tmp_path)
         manager._pid = 1234
-        with patch('mnemonic_proxy.requests.get') as mock_get:
+        with patch('webapp.mnemonic_proxy.requests.get') as mock_get:
             mock_get.return_value = Mock(status_code=503)
             assert manager._health_state() == "listening"
 
@@ -242,7 +242,7 @@ class TestMnemonicProxyStartReadiness:
         import requests as _requests
         manager = self._make_manager(tmp_path)
         manager._pid = 1234
-        with patch('mnemonic_proxy.requests.get',
+        with patch('webapp.mnemonic_proxy.requests.get',
                    side_effect=_requests.exceptions.Timeout()):
             assert manager._health_state() == "listening"
 
@@ -250,7 +250,7 @@ class TestMnemonicProxyStartReadiness:
         import requests as _requests
         manager = self._make_manager(tmp_path)
         manager._pid = 1234
-        with patch('mnemonic_proxy.requests.get',
+        with patch('webapp.mnemonic_proxy.requests.get',
                    side_effect=_requests.exceptions.ConnectionError()):
             assert manager._health_state() == "down"
 
@@ -260,10 +260,10 @@ class TestMnemonicProxyStartReadiness:
         states = iter(["down", "down", "listening", "listening", "ok"])
 
         with patch.object(manager, 'build_cmd', return_value=['fake-proxy']), \
-             patch('mnemonic_proxy.subprocess.Popen') as mock_popen, \
+             patch('webapp.mnemonic_proxy.subprocess.Popen') as mock_popen, \
              patch.object(manager, '_health_state', side_effect=lambda **kw: next(states)), \
              patch.object(manager, '_kill_process') as mock_kill, \
-             patch('mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
+             patch('webapp.mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
             mock_popen.return_value = Mock(pid=4242, poll=Mock(return_value=None))
             assert manager.start() is True
 
@@ -278,7 +278,7 @@ class TestMnemonicProxyStartReadiness:
         """A proxy that dies during startup fails immediately (no 30s wait)."""
         manager = self._make_manager(tmp_path)
         with patch.object(manager, 'build_cmd', return_value=['fake-proxy']), \
-             patch('mnemonic_proxy.subprocess.Popen') as mock_popen, \
+             patch('webapp.mnemonic_proxy.subprocess.Popen') as mock_popen, \
              patch.object(manager, '_kill_process') as mock_kill, \
              patch.object(manager, '_health_state', return_value="down"):
             mock_popen.return_value = Mock(pid=4242, poll=Mock(return_value=1))
@@ -290,10 +290,10 @@ class TestMnemonicProxyStartReadiness:
         """Never leave an orphaned proxy holding the port after a failure."""
         manager = self._make_manager(tmp_path)
         with patch.object(manager, 'build_cmd', return_value=['fake-proxy']), \
-             patch('mnemonic_proxy.subprocess.Popen') as mock_popen, \
+             patch('webapp.mnemonic_proxy.subprocess.Popen') as mock_popen, \
              patch.object(manager, '_health_state', return_value="down"), \
              patch.object(manager, '_kill_process') as mock_kill, \
-             patch('mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
+             patch('webapp.mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
             mock_popen.return_value = Mock(pid=4242, poll=Mock(return_value=None))
             assert manager.start(timeout=0.05) is False
         mock_kill.assert_called_once_with(4242)
@@ -311,9 +311,9 @@ class TestMnemonicProxyStartReadiness:
             return "down"
 
         with patch.object(manager, 'build_cmd', return_value=['fake-proxy']), \
-             patch('mnemonic_proxy.subprocess.Popen') as mock_popen, \
+             patch('webapp.mnemonic_proxy.subprocess.Popen') as mock_popen, \
              patch.object(manager, '_health_state', side_effect=health), \
-             patch('mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
+             patch('webapp.mnemonic_proxy.PROXY_START_POLL_INTERVAL', 0.01):
             mock_popen.return_value = Mock(pid=4242, poll=Mock(return_value=None))
             manager.start(timeout=0.2)
 
@@ -343,7 +343,7 @@ class TestMnemonicProxyConfigPrecedence:
             "upstream": "http://127.0.0.1:9931",
             "mask_anchor": False,
         }
-        with patch('mnemonic_proxy.get_models',
+        with patch('webapp.mnemonic_proxy.get_models',
                    return_value={'qwen': mock_config}):
             manager = MnemonicProxyManager(
                 'qwen', 8123, config_override=stale_override
@@ -358,7 +358,7 @@ class TestMnemonicProxyConfigPrecedence:
 
     def test_override_slot_dir_used_when_model_has_none(self):
         mock_config = {"slot_save_path": "", "model_path": "/tmp/model.gguf"}
-        with patch('mnemonic_proxy.get_models', return_value={'m': mock_config}):
+        with patch('webapp.mnemonic_proxy.get_models', return_value={'m': mock_config}):
             manager = MnemonicProxyManager(
                 'm', 9931, config_override={"slot_dir": "data/fallback"}
             )
@@ -370,10 +370,10 @@ class TestCreateProxyManager:
     """Stale (not running) managers must be replaced so new config applies."""
 
     def test_stale_manager_is_replaced(self):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         mp._proxy_managers.clear()
         try:
-            with patch('mnemonic_proxy._validate_local_mode'):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 m1 = mp.create_proxy_manager('model-a', 9931, data_dir='/tmp/a')
                 assert m1.llama_port == 9931
                 # same model, new port: stale (not running) manager must be replaced
@@ -384,10 +384,10 @@ class TestCreateProxyManager:
             mp._proxy_managers.clear()
 
     def test_running_manager_is_kept(self):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         mp._proxy_managers.clear()
         try:
-            with patch('mnemonic_proxy._validate_local_mode'):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 m1 = mp.create_proxy_manager('model-b', 9931, data_dir='/tmp/b')
                 m1._pid = 999  # pretend it is running
                 m2 = mp.create_proxy_manager('model-b', 9955, data_dir='/tmp/b')
@@ -408,9 +408,9 @@ class TestMnemonicProxyZstdSupport:
     KV_OVERRIDE = {"kv_archive": True, "kv_archive_level": 3}
 
     def _manager(self, tmp_path, config_override=None):
-        with patch('mnemonic_proxy.get_models', return_value={
+        with patch('webapp.mnemonic_proxy.get_models', return_value={
                 'm': {'slot_save_path': '', 'model_path': '/tmp/model.gguf'}}):
-            with patch('mnemonic_proxy._validate_local_mode'):
+            with patch('webapp.mnemonic_proxy._validate_local_mode'):
                 return MnemonicProxyManager(
                     'm', 9931, data_dir=str(tmp_path / "data"),
                     config_override=config_override if config_override is not None
@@ -421,40 +421,40 @@ class TestMnemonicProxyZstdSupport:
         """On Python < 3.14 without compression.zstd the shim is required."""
         if sys.version_info >= (3, 14):
             pytest.skip("running on Python >= 3.14 (native compression.zstd)")
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         with patch.dict(sys.modules):
             sys.modules.pop('compression.zstd', None)
             sys.modules.pop('compression', None)
             assert mp._needs_zstd_shim() is True
 
     def test_zstd_shim_usable_true_when_installed(self):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         with patch.object(mp, '_needs_zstd_shim', return_value=True):
             assert mp._zstd_shim_usable() is True  # shim file + zstandard present
 
     def test_zstd_shim_usable_false_without_zstandard(self):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         with patch.object(mp, '_needs_zstd_shim', return_value=True), \
              patch.dict(sys.modules, {'zstandard': None}):
             assert mp._zstd_shim_usable() is False
 
     def test_apply_runtime_requirements_disables_kv_archive_without_shim(self, tmp_path):
         """Without the shim the proxy would exit: turn kv_archive off instead."""
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         with patch.object(mp, '_zstd_shim_usable', return_value=False):
             config = manager._apply_runtime_requirements({"kv_archive": True})
         assert config["kv_archive"] is False
 
     def test_apply_runtime_requirements_keeps_kv_archive_with_shim(self, tmp_path):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         with patch.object(mp, '_zstd_shim_usable', return_value=True):
             config = manager._apply_runtime_requirements({"kv_archive": True})
         assert config["kv_archive"] is True
 
     def test_apply_runtime_requirements_ignores_absent_kv_archive(self, tmp_path):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         with patch.object(mp, '_zstd_shim_usable', return_value=False):
             config = manager._apply_runtime_requirements({"autosave": True})
@@ -462,7 +462,7 @@ class TestMnemonicProxyZstdSupport:
         assert config["autosave"] is True
 
     def test_launcher_prefix_empty_without_kv_archive(self, tmp_path):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path, config_override={"autosave": True})
         with patch.object(mp, '_needs_zstd_shim', return_value=True):
             assert manager._launcher_prefix(Path("/fake/binary"),
@@ -470,14 +470,14 @@ class TestMnemonicProxyZstdSupport:
 
     def test_launcher_prefix_empty_on_python_314(self, tmp_path):
         """Python >= 3.14 has compression.zstd: no preloader needed."""
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         with patch.object(mp, '_needs_zstd_shim', return_value=False):
             assert manager._launcher_prefix(
                 Path("/fake/binary"), {"kv_archive": True}) == []
 
     def test_launcher_prefix_preloads_shim(self, tmp_path):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         with patch.object(mp, '_needs_zstd_shim', return_value=True):
             cmd = manager._launcher_prefix(Path("/fake/mnemonic-proxy"),
@@ -491,7 +491,7 @@ class TestMnemonicProxyZstdSupport:
 
     def test_build_cmd_uses_preloader_for_kv_archive(self, tmp_path):
         """Regression: the binary path must not become a stray argv entry."""
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path)
         binary = tmp_path / "mnemonic-proxy"
         binary.write_text("#!/usr/bin/env python3\n")
@@ -508,7 +508,7 @@ class TestMnemonicProxyZstdSupport:
         assert config["kv_archive"] is True
 
     def test_build_cmd_plain_without_kv_archive(self, tmp_path):
-        import mnemonic_proxy as mp
+        import webapp.mnemonic_proxy as mp
         manager = self._manager(tmp_path, config_override={"autosave": True})
         binary = tmp_path / "mnemonic-proxy"
         binary.write_text("#!/usr/bin/env python3\n")

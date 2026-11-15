@@ -95,7 +95,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "oxcoder-9b.q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/oxcoder-9b.q4-k-m/OxCoder-9B.Q4_K_M.gguf",
@@ -191,7 +192,8 @@
     "llama_cpp_backend": "auto",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "pentacoder-9b.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/pentacoder-9b.i1-q4-k-m/PentaCoder-9B.i1-Q4_K_M.gguf",
@@ -288,7 +290,8 @@
     "llama_cpp_backend": "auto",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "mellum2-12b-a2.5b-instruct.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/mellum2-12b-a2.5b-instruct.i1-q4-k-m/Mellum2-12B-A2.5B-Instruct.i1-Q4_K_M.gguf",
@@ -415,7 +418,8 @@
     "llama_cpp_backend": "auto",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "qwopus3-5-9b-coder-flash.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/qwopus3-5-9b-coder-flash.i1-q4-k-m/Qwopus3-5-9B-Coder-Flash.i1-Q4_K_M.gguf",
@@ -555,7 +559,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "koa-ai-v2-code-9b.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/koa-ai-v2-code-9b.i1-q4-k-m/Koa-AI-v2-code-9B.i1-Q4_K_M.gguf",
@@ -658,7 +663,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "openai-20b-neo-code-dimat-mxfp4-moe4": {
     "model_path": "/mnt/c/llama.cpp-models/openai-20b-neo-code-dimat-mxfp4-moe4/OpenAI-20B-NEO-CODE-DIMAT-MXFP4_MOE4.gguf",
@@ -768,7 +774,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "qwen3-30b-a3b-instruct-2507-q4-k-s": {
     "model_path": "/mnt/c/llama.cpp-models/qwen3-30b-a3b-instruct-2507-q4-k-s/Qwen3-30B-A3B-Instruct-2507-Q4_K_S.gguf",
@@ -903,7 +910,8 @@
     "llama_cpp_backend": "sycl",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "nvidia-nemotron-labs-3-elastic-12b-a2b.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/nvidia-nemotron-labs-3-elastic-12b-a2b.i1-q4-k-m/NVIDIA-Nemotron-Labs-3-Elastic-12B-A2B.i1-Q4_K_M.gguf",
@@ -1012,7 +1020,8 @@
     "llama_cpp_backend": "auto",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "lfm2.5-24b-a2b-tbrill-neo-iq4-xs": {
     "model_path": "/mnt/c/llama.cpp-models/lfm2.5-24b-a2b-tbrill-neo-iq4-xs/LFM2.5-24B-A2B-TBrill-NEO-IQ4_XS.gguf",
@@ -1121,7 +1130,8 @@
     "llama_cpp_backend": "auto",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "gpt-oss-20b-q5-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/gpt-oss-20b-q5-k-m/gpt-oss-20b-Q5_K_M.gguf",
@@ -1261,7 +1271,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "groot-19b-a3b-261023-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/groot-19b-a3b-261023-q4-k-m/Groot-19B-A3B-261023-Q4_K_M.gguf",
@@ -1358,7 +1369,8 @@
     "llama_cpp_backend": "sycl",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "vibecoder-20b-rl1-0.i1-q4-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/vibecoder-20b-rl1-0.i1-q4-k-m/VibeCoder-20b-RL1_0.i1-Q4_K_M.gguf",
@@ -1498,7 +1510,8 @@
     "bind_host": "0.0.0.0",
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "qwen3-coder-30b-a3b-instruct-1m-iq4-xs": {
     "model_path": "/mnt/c/llama.cpp-models/qwen3-coder-30b-a3b-instruct-1m-iq4-xs/Qwen3-Coder-30B-A3B-Instruct-1M-IQ4_XS.gguf",
@@ -1637,7 +1650,8 @@
     "use_generation_params": false,
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "swift-1.5-qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-q4-k": {
     "model_path": "/mnt/c/llama.cpp-models/swift-1.5-qwen3.8-27b-gsq-rco-intel-arc-tuned-mtp-q4-k/Swift-1.5-Qwen3.8-27B-GSQ-RCO-Intel-Arc-Tuned-MTP-Q4_K.gguf",
@@ -1776,7 +1790,8 @@
     "speculative_decoding_model": false,
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "ternary-flint-40b-pq2-0-calibrated-11gb": {
     "model_path": "/mnt/c/llama.cpp-models/ternary-flint-40b-pq2-0-calibrated-11gb/Ternary-Flint-40B-PQ2_0-Calibrated-11GB.gguf",
@@ -1915,7 +1930,8 @@
     "speculative_decoding_model": false,
     "mmproj": "",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 0
   },
   "tiel-coder-35b-a3b-mtp-ud-iq4-xs": {
     "model_path": "/mnt/c/llama.cpp-models/tiel-coder-35b-a3b-mtp-ud-iq4-xs/Tiel-Coder-35B-A3B-MTP-UD-IQ4_XS.gguf",
@@ -2055,6 +2071,7 @@
     "bind_host": "0.0.0.0",
     "mmproj": "c:/llama.cpp-models/tiel-coder-35b-a3b-mtp-ud-iq4-xs/mmproj-BF16.gguf",
     "mmproj_auto": true,
-    "mmproj_offload": true
+    "mmproj_offload": true,
+    "moe_cache_mib": 1024
   }
 }

@@ -31,7 +31,7 @@ import urllib.error
 from pathlib import Path
 from typing import Any, Callable, Optional, Dict, List, Tuple
 
-from config import BASE_DIR
+from webapp.config import BASE_DIR
 
 log = logging.getLogger("llamaweb")
 

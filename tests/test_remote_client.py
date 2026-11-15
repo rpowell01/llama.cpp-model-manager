@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import requests
 
-from remote_client import (
+from webapp.remote_client import (
     RemoteModelRegistry,
     Model,
     RemoteAPIError,
@@ -62,7 +62,7 @@ class TestRemoteModelRegistry:
         
         assert client.base_url == "http://localhost:8080"
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_list_models(self, mock_session_class):
         """Test listing models with OpenAI format response."""
         mock_session = Mock()
@@ -85,7 +85,7 @@ class TestRemoteModelRegistry:
         assert models[0].name == "model1"
         assert models[1].name == "model2"
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_list_models_dict_response(self, mock_session_class):
         """Test listing models with OpenAI format dict response."""
         mock_session = Mock()
@@ -106,7 +106,7 @@ class TestRemoteModelRegistry:
         assert len(models) == 1
         assert models[0].name == "model1"
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_load_model(self, mock_session_class):
         """Test loading a model - checks if model exists in list."""
         mock_session = Mock()
@@ -126,7 +126,7 @@ class TestRemoteModelRegistry:
         # load_model calls list_models to check if model exists
         assert mock_session.request.call_count >= 1
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_load_model_not_found(self, mock_session_class):
         """Test loading a model that doesn't exist."""
         mock_session = Mock()
@@ -143,7 +143,7 @@ class TestRemoteModelRegistry:
         with pytest.raises(ModelNotFoundError):
             client.load_model("nonexistent")
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_unload_model(self, mock_session_class):
         """Test unloading a model - checks if model exists in list."""
         mock_session = Mock()
@@ -161,7 +161,7 @@ class TestRemoteModelRegistry:
         
         assert result is True
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_unload_model_not_found(self, mock_session_class):
         """Test unloading a model that doesn't exist."""
         mock_session = Mock()
@@ -178,7 +178,7 @@ class TestRemoteModelRegistry:
         with pytest.raises(ModelNotFoundError):
             client.unload_model("nonexistent")
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_get_model_not_found(self, mock_session_class):
         """Test getting a model that doesn't exist in the list."""
         mock_session = Mock()
@@ -196,7 +196,7 @@ class TestRemoteModelRegistry:
         
         assert result is None
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_get_status(self, mock_session_class):
         """Test getting server status - calls root endpoint."""
         mock_session = Mock()
@@ -217,7 +217,7 @@ class TestRemoteModelRegistry:
             timeout=30,
         )
     
-    @patch("remote_client.requests.Session")
+    @patch("webapp.remote_client.requests.Session")
     def test_context_manager(self, mock_session_class):
         """Test using RemoteModelRegistry as context manager."""
         mock_session = Mock()

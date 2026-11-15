@@ -27,10 +27,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from config import BASE_DIR
-from metrics import _fetch_metrics_from_model
-from models import get_models
-from processes import check_port_active, _check_model_ready
+from webapp.config import BASE_DIR
+from webapp.metrics import _fetch_metrics_from_model
+from webapp.models import get_models
+from webapp.processes import check_port_active, _check_model_ready
 
 log = logging.getLogger("llamaweb.exporter")
 

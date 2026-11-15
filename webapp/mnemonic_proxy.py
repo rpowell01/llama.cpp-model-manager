@@ -30,7 +30,7 @@ from typing import Any, Optional
 
 import requests
 
-from config import (
+from webapp.config import (
     BASE_DIR,
     DEFAULTS,
     WINDOWS,
@@ -38,7 +38,7 @@ from config import (
     convert_path_for_binary,
     resolve_model_path,
 )
-from models import InvalidModeError, get_models
+from webapp.models import InvalidModeError, get_models
 
 log = logging.getLogger("llamaweb.mnemonic_proxy")
 
@@ -90,7 +90,7 @@ def _zstd_shim_usable() -> bool:
     """
     if not _needs_zstd_shim():
         return True
-    if not (BASE_DIR / "compression_zstd_shim.py").exists():
+    if not (BASE_DIR / "webapp" / "compression_zstd_shim.py").exists():
         return False
     try:
         import zstandard  # noqa: F401
@@ -475,7 +475,7 @@ class MnemonicProxyManager:
             return []
 
         preload = (
-            f"import sys; sys.path.insert(0, {str(BASE_DIR)!r}); "
+            f"import sys; sys.path.insert(0, {str(BASE_DIR / 'webapp')!r}); "
             f"import compression_zstd_shim; "
             f"sys.argv[0] = {str(binary)!r}; "
             f"from ctxproxy.server import main; sys.exit(main())"
@@ -539,7 +539,7 @@ class MnemonicProxyManager:
                 # Prepare environment
                 env = os.environ.copy()
                 # Add Intel oneAPI env if needed (same as processes.py)
-                from processes import _get_intel_env
+                from webapp.processes import _get_intel_env
                 env.update(_get_intel_env())
 
                 # Resolve data directory and ensure it exists
@@ -1012,7 +1012,7 @@ class MnemonicProxyManager:
                 
                 # Prepare environment
                 env = os.environ.copy()
-                from processes import _get_intel_env
+                from webapp.processes import _get_intel_env
                 env.update(_get_intel_env())
                 
                 # Capture output to the data dir for diagnostics
@@ -1279,7 +1279,7 @@ def regenerate_all_proxy_configs() -> dict[str, Path]:
     Returns:
         Dictionary mapping model names to their config file paths
     """
-    from models import get_models
+    from webapp.models import get_models
     
     models = get_models()
     results = {}

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 
 # Import our optimizer
-from optimizer import BenchmarkOptimizer, optimize_model
+from webapp.optimizer import BenchmarkOptimizer, optimize_model
 
 def demo_optimizer():
     """Demonstrate the optimizer functionality."""

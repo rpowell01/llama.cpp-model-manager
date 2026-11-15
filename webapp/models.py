@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, normalize_path_for_binary, resolve_model_path
+from webapp.config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, normalize_path_for_binary, resolve_model_path
 
 # Thread-safe in-memory model cache
 _models: dict[str, dict[str, Any]] = {}
@@ -47,7 +47,7 @@ class InvalidModeError(Exception):
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Import Model from remote_client to avoid duplication
-from remote_client import Model
+from webapp.remote_client import Model
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ class ModelRegistry:
         self._remote_client = None
         
         if self._config.is_remote_mode:
-            from remote_client import RemoteModelRegistry
+            from webapp.remote_client import RemoteModelRegistry
             self._remote_client = RemoteModelRegistry(self._config.remote_url)
     
     @property

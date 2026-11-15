@@ -3,10 +3,10 @@ from flask import Blueprint, jsonify, request, g
 import requests
 import logging
 
-from config import BASE_DIR, Config
-from models import ModelRegistry, get_models
-from processes import check_port_active, get_server_host, _check_model_ready
-from config import WSL
+from webapp.config import BASE_DIR, Config
+from webapp.models import ModelRegistry, get_models
+from webapp.processes import check_port_active, get_server_host, _check_model_ready
+from webapp.config import WSL
 from routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)

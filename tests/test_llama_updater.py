@@ -17,7 +17,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from llama_updater import (
+from webapp.llama_updater import (
     _get_latest_nightly_tag,
     _get_release_assets,
     _load_config,
@@ -32,7 +32,7 @@ from llama_updater import (
 class TestGetLatestNightlyTag(unittest.TestCase):
     """Test the _get_latest_nightly_tag function."""
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_returns_latest_nightly(self, mock_request):
         mock_request.return_value = [
             {"tag_name": "v0.9.0", "published_at": "2026-11-04"},
@@ -43,7 +43,7 @@ class TestGetLatestNightlyTag(unittest.TestCase):
         result = _get_latest_nightly_tag()
         self.assertEqual(result, "b12189")
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_ignores_non_nightly_tags(self, mock_request):
         mock_request.return_value = [
             {"tag_name": "v0.9.0", "published_at": "2026-11-04"},
@@ -52,13 +52,13 @@ class TestGetLatestNightlyTag(unittest.TestCase):
         result = _get_latest_nightly_tag()
         self.assertIsNone(result)
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_handles_api_failure(self, mock_request):
         mock_request.return_value = None
         result = _get_latest_nightly_tag()
         self.assertIsNone(result)
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_picks_highest_number(self, mock_request):
         mock_request.return_value = [
             {"tag_name": "b999", "published_at": "2026-01-01"},
@@ -72,7 +72,7 @@ class TestGetLatestNightlyTag(unittest.TestCase):
 class TestGetReleaseAssets(unittest.TestCase):
     """Test the _get_release_assets function."""
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_returns_asset_dict(self, mock_request):
         mock_request.return_value = {
             "assets": [
@@ -85,7 +85,7 @@ class TestGetReleaseAssets(unittest.TestCase):
         self.assertEqual(result["llama-b12189-bin-win-sycl-x64.zip"]["url"], "https://example.com/sycl.zip")
         self.assertEqual(result["llama-b12189-bin-win-sycl-x64.zip"]["size"], 1000)
     
-    @patch("llama_updater._github_request")
+    @patch("webapp.llama_updater._github_request")
     def test_handles_api_failure(self, mock_request):
         mock_request.return_value = None
         result = _get_release_assets("b12189")
@@ -105,7 +105,7 @@ class TestConfigManagement(unittest.TestCase):
         import shutil
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
     
-    @patch("llama_updater._get_config_file")
+    @patch("webapp.llama_updater._get_config_file")
     def test_load_empty_config(self, mock_get_config_file):
         mock_get_config_file.return_value = Path(self.tmp_dir) / "nonexistent.json"
         config = _load_config()
@@ -115,7 +115,7 @@ class TestConfigManagement(unittest.TestCase):
             self.assertEqual(config[combo], "")
         self.assertIn("global_default", config)
     
-    @patch("llama_updater._get_config_file")
+    @patch("webapp.llama_updater._get_config_file")
     def test_save_and_load_config(self, mock_get_config_file):
         mock_get_config_file.return_value = self.config_file
         _save_config({"windows-sycl": "C:/test/bin", "global_default": "windows-sycl"})
@@ -123,7 +123,7 @@ class TestConfigManagement(unittest.TestCase):
         self.assertEqual(config["windows-sycl"], "C:/test/bin")
         self.assertEqual(config["global_default"], "windows-sycl")
     
-    @patch("llama_updater._get_config_file")
+    @patch("webapp.llama_updater._get_config_file")
     def test_set_and_get_platform_backend_dir(self, mock_get_config_file):
         mock_get_config_file.return_value = self.config_file
         _set_platform_backend_dir("windows", "sycl", "C:/llama.cpp-sycl/bin")
@@ -146,18 +146,18 @@ class TestUpdateBackends(unittest.TestCase):
         """Run update_backends against a fully faked filesystem + network."""
         fake_home = Path(tempfile.mkdtemp(prefix="llama_updater_test_"))
         try:
-            with patch("llama_updater._get_latest_nightly_tag", mock_latest_tag), \
-                 patch("llama_updater._get_release_assets", mock_assets), \
-                 patch("llama_updater.urllib.request.urlretrieve") as mock_urlretrieve, \
-                 patch("llama_updater._extract_zip", return_value=True), \
-                 patch("llama_updater._extract_tar_gz", return_value=True), \
-                 patch("llama_updater._find_binary_in_dir") as mock_find, \
-                 patch("llama_updater.shutil.copy2") as mock_copy, \
-                 patch("llama_updater._set_platform_backend_dir") as mock_set_dir, \
-                 patch("llama_updater._save_config") as mock_save, \
-                 patch("llama_updater.Path.home", return_value=fake_home), \
-                 patch("llama_updater.shutil.rmtree") as mock_rmtree, \
-                 patch("llama_updater.shutil.move") as mock_move:
+            with patch("webapp.llama_updater._get_latest_nightly_tag", mock_latest_tag), \
+                 patch("webapp.llama_updater._get_release_assets", mock_assets), \
+                 patch("webapp.llama_updater.urllib.request.urlretrieve") as mock_urlretrieve, \
+                 patch("webapp.llama_updater._extract_zip", return_value=True), \
+                 patch("webapp.llama_updater._extract_tar_gz", return_value=True), \
+                 patch("webapp.llama_updater._find_binary_in_dir") as mock_find, \
+                 patch("webapp.llama_updater.shutil.copy2") as mock_copy, \
+                 patch("webapp.llama_updater._set_platform_backend_dir") as mock_set_dir, \
+                 patch("webapp.llama_updater._save_config") as mock_save, \
+                 patch("webapp.llama_updater.Path.home", return_value=fake_home), \
+                 patch("webapp.llama_updater.shutil.rmtree") as mock_rmtree, \
+                 patch("webapp.llama_updater.shutil.move") as mock_move:
 
                 mock_find.return_value = fake_home / "fake" / "llama-server.exe"
 
@@ -273,17 +273,17 @@ class TestUpdateBackends(unittest.TestCase):
         self.assertTrue(mocks["write"].called)
         self.assertTrue(mocks["set_dir"].called)
 
-    @patch("llama_updater._get_latest_nightly_tag")
+    @patch("webapp.llama_updater._get_latest_nightly_tag")
     def test_update_uses_latest_tag_when_none_provided(self, mock_latest_tag):
         mock_latest_tag.return_value = "b12189"
         # This will fail at asset fetching, but we just want to verify tag detection
-        with patch("llama_updater._get_release_assets") as mock_assets:
+        with patch("webapp.llama_updater._get_release_assets") as mock_assets:
             mock_assets.return_value = {}
             result = update_backends(tag=None)
             self.assertFalse(result["success"])
             self.assertEqual(result["tag"], "b12189")
     
-    @patch("llama_updater._get_latest_nightly_tag")
+    @patch("webapp.llama_updater._get_latest_nightly_tag")
     def test_update_fails_when_no_nightly_found(self, mock_latest_tag):
         mock_latest_tag.return_value = None
         result = update_backends(tag=None)
@@ -311,7 +311,7 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertIn("progress", data)
         self.assertIn("message", data)
     
-    @patch("llama_updater._get_latest_nightly_tag")
+    @patch("webapp.llama_updater._get_latest_nightly_tag")
     def test_get_latest_release(self, mock_tag):
         mock_tag.return_value = "b12189"
         resp = self.client.get("/api/llama-latest-release")
@@ -319,7 +319,7 @@ class TestAPIEndpoints(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data["tag"], "b12189")
     
-    @patch("llama_updater.update_backends")
+    @patch("webapp.llama_updater.update_backends")
     def test_post_update_backends_starts_thread(self, mock_update):
         mock_update.return_value = {
             "success": True,

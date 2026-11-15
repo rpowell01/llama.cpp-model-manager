@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from benchmarks import (
+from webapp.benchmarks import (
     BenchmarkConfig,
     BenchmarkError,
     BenchmarkRunner,
@@ -77,12 +77,12 @@ class TestBenchmarkConfig(unittest.TestCase):
 class TestBenchmarkRunnerInit(unittest.TestCase):
     """Tests for BenchmarkRunner initialization and binary discovery."""
 
-    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
-    @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
-    @patch("config.LLAMA_SERVER", None)
-    @patch("config.WINDOWS", False)
-    @patch("config.WSL", False)
+    @patch("webapp.benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("webapp.config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
+    @patch("webapp.config.LLAMA_SERVER", None)
+    @patch("webapp.config.WINDOWS", False)
+    @patch("webapp.config.WSL", False)
     def test_init_with_explicit_dir(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization with explicit directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,8 +93,8 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             batched_bin.touch(mode=0o755)
 
             # Mock the config binaries to return our test files
-            with patch("benchmarks.LLAMA_BENCH", bench_bin), \
-                 patch("benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
+            with patch("webapp.benchmarks.LLAMA_BENCH", bench_bin), \
+                 patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
                 self.assertTrue(runner.has_llama_bench)
@@ -102,12 +102,12 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
                 self.assertEqual(runner._bench_binary, bench_bin)
                 self.assertEqual(runner._batched_bench_binary, batched_bin)
 
-    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
-    @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
-    @patch("config.LLAMA_SERVER", None)
-    @patch("config.WINDOWS", False)
-    @patch("config.WSL", False)
+    @patch("webapp.benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("webapp.config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
+    @patch("webapp.config.LLAMA_SERVER", None)
+    @patch("webapp.config.WINDOWS", False)
+    @patch("webapp.config.WSL", False)
     def test_init_missing_binaries(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization when binaries are missing."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -116,12 +116,12 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             self.assertFalse(runner.has_llama_bench)
             self.assertFalse(runner.has_llama_batched_bench)
 
-    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
-    @patch("config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
-    @patch("config.LLAMA_SERVER", None)
-    @patch("config.WINDOWS", True)
-    @patch("config.WSL", False)
+    @patch("webapp.benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("webapp.config.BASE_DIR", new_callable=lambda: Path("/fake/base"))
+    @patch("webapp.config.LLAMA_SERVER", None)
+    @patch("webapp.config.WINDOWS", True)
+    @patch("webapp.config.WSL", False)
     def test_init_windows_binaries(self, _mock_batch, _mock_bench, _mock_base_dir: Mock) -> None:
         """Test initialization finds .exe binaries on Windows."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -131,17 +131,17 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin.touch(mode=0o755)
             batched_bin.touch(mode=0o755)
 
-            with patch("benchmarks.LLAMA_BENCH", bench_bin), \
-                 patch("benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
+            with patch("webapp.benchmarks.LLAMA_BENCH", bench_bin), \
+                 patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", batched_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
 
                 self.assertTrue(runner.has_llama_bench)
                 self.assertTrue(runner.has_llama_batched_bench)
 
-    @patch("benchmarks.LLAMA_BENCH", new_callable=lambda: None)
-    @patch("benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
-    @patch("config.WINDOWS", False)
-    @patch("config.WSL", False)
+    @patch("webapp.benchmarks.LLAMA_BENCH", new_callable=lambda: None)
+    @patch("webapp.benchmarks.LLAMA_BATCHED_BENCH", new_callable=lambda: None)
+    @patch("webapp.config.WINDOWS", False)
+    @patch("webapp.config.WSL", False)
     def test_find_bench_binaries(self, _mock_batch, _mock_bench) -> None:
         """Test find_bench_binaries method."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -149,7 +149,7 @@ class TestBenchmarkRunnerInit(unittest.TestCase):
             bench_bin = tmpdir_path / "llama-bench"
             bench_bin.touch(mode=0o755)
 
-            with patch("benchmarks.LLAMA_BENCH", bench_bin):
+            with patch("webapp.benchmarks.LLAMA_BENCH", bench_bin):
                 runner = BenchmarkRunner(llama_server_dir=tmpdir)
                 result = runner.find_bench_binaries()
 
@@ -572,8 +572,8 @@ class TestRunLlamaBench(unittest.TestCase):
         self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
         self.runner._bench_binary = Path("/fake/dir/llama-bench")
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_success(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test successful llama-bench execution."""
         # Setup mock temp dir
@@ -608,8 +608,8 @@ class TestRunLlamaBench(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_multiple_repetitions_median(
         self, mock_popen: Mock, mock_tempdir: Mock
     ) -> None:
@@ -649,8 +649,8 @@ class TestRunLlamaBench(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_timeout(
         self, mock_popen: Mock, mock_tempdir: Mock
     ) -> None:
@@ -674,8 +674,8 @@ class TestRunLlamaBench(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_execution_error(
         self, mock_popen: Mock, mock_tempdir: Mock
     ) -> None:
@@ -728,7 +728,7 @@ class TestRunLlamaBench(unittest.TestCase):
         """Test repetitions parameter overrides config_dict."""
         self.runner._bench_binary = Path("/fake/dir/llama-bench")
 
-        with patch("benchmarks.tempfile.TemporaryDirectory") as mock_tempdir:
+        with patch("webapp.benchmarks.tempfile.TemporaryDirectory") as mock_tempdir:
             mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
 
             mock_process = Mock()
@@ -736,7 +736,7 @@ class TestRunLlamaBench(unittest.TestCase):
             mock_process.stdout = json.dumps({"pp_avg": 1000.0, "tg_avg": 50.0})
             mock_process.stderr = ""
 
-            with patch("benchmarks.subprocess.Popen", return_value=mock_process) as mock_popen:
+            with patch("webapp.benchmarks.subprocess.Popen", return_value=mock_process) as mock_popen:
                 with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
                     model_path = f.name
 
@@ -761,8 +761,8 @@ class TestRunLlamaBatchedBench(unittest.TestCase):
         self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
         self.runner._batched_bench_binary = Path("/fake/dir/llama-batched-bench")
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_batched_bench_success(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test successful llama-batched-bench execution."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
@@ -793,8 +793,8 @@ class TestRunLlamaBatchedBench(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_batched_bench_timeout(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test llama-batched-bench timeout handling."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
@@ -813,8 +813,8 @@ class TestRunLlamaBatchedBench(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_batched_bench_execution_error(
         self, mock_popen: Mock, mock_tempdir: Mock
     ) -> None:
@@ -866,7 +866,7 @@ class TestRunLlamaBatchedBench(unittest.TestCase):
         self
     ) -> None:
         """Test median aggregation across multiple repetitions for batched bench."""
-        with patch("benchmarks.tempfile.TemporaryDirectory") as mock_tempdir:
+        with patch("webapp.benchmarks.tempfile.TemporaryDirectory") as mock_tempdir:
             mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
 
             outputs = [
@@ -885,7 +885,7 @@ class TestRunLlamaBatchedBench(unittest.TestCase):
                 mp.wait.return_value = None
                 mock_processes.append(mp)
 
-            with patch("benchmarks.subprocess.Popen", side_effect=mock_processes):
+            with patch("webapp.benchmarks.subprocess.Popen", side_effect=mock_processes):
                 with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as f:
                     model_path = f.name
 
@@ -936,7 +936,7 @@ class TestDictToConfig(unittest.TestCase):
 class TestConvenienceFunctions(unittest.TestCase):
     """Tests for convenience functions."""
 
-    @patch("benchmarks.BenchmarkRunner")
+    @patch("webapp.benchmarks.BenchmarkRunner")
     def test_run_llama_bench_convenience(self, mock_runner_class: Mock) -> None:
         """Test run_llama_bench convenience function."""
         mock_runner = Mock()
@@ -951,7 +951,7 @@ class TestConvenienceFunctions(unittest.TestCase):
             "/model.gguf", {"threads": 8}, 2
         )
 
-    @patch("benchmarks.BenchmarkRunner")
+    @patch("webapp.benchmarks.BenchmarkRunner")
     def test_run_llama_batched_bench_convenience(self, mock_runner_class: Mock) -> None:
         """Test run_llama_batched_bench convenience function."""
         mock_runner = Mock()
@@ -966,7 +966,7 @@ class TestConvenienceFunctions(unittest.TestCase):
             "/model.gguf", {"threads": 8}, 2
         )
 
-    @patch("benchmarks.BenchmarkRunner")
+    @patch("webapp.benchmarks.BenchmarkRunner")
     def test_find_bench_binaries_convenience(self, mock_runner_class: Mock) -> None:
         """Test find_bench_binaries convenience function."""
         mock_runner = Mock()
@@ -1058,10 +1058,10 @@ class TestAggregateMetrics(unittest.TestCase):
 class TestWSLPathConversion(unittest.TestCase):
     """Tests for WSL path conversion (internal helper)."""
 
-    @patch("config.WSL", True)
+    @patch("webapp.config.WSL", True)
     def test_wsl_path_conversion(self) -> None:
         """Test Windows to WSL path conversion."""
-        from config import _convert_windows_path_to_wsl
+        from webapp.config import _convert_windows_path_to_wsl
 
         # Windows path
         win_path = Path("C:/Users/test/model.gguf")
@@ -1073,10 +1073,10 @@ class TestWSLPathConversion(unittest.TestCase):
         result = _convert_windows_path_to_wsl(linux_path)
         self.assertEqual(result, linux_path)
 
-    @patch("config.WSL", False)
+    @patch("webapp.config.WSL", False)
     def test_non_wsl_no_conversion(self) -> None:
         """Test no conversion when not in WSL."""
-        from config import _convert_windows_path_to_wsl
+        from webapp.config import _convert_windows_path_to_wsl
 
         win_path = Path("C:/Users/test/model.gguf")
         result = _convert_windows_path_to_wsl(win_path)
@@ -1089,7 +1089,7 @@ class TestConvertPathForBinary(unittest.TestCase):
     def setUp(self) -> None:
         self.runner = BenchmarkRunner(llama_server_dir="/fake/dir")
 
-    @patch("benchmarks.config.convert_path_for_binary")
+    @patch("webapp.benchmarks.config.convert_path_for_binary")
     def test_convert_path_for_binary_calls_config(self, mock_convert: Mock) -> None:
         """Test _convert_path_for_binary delegates to config.convert_path_for_binary."""
         mock_convert.return_value = "/converted/path"
@@ -1109,8 +1109,8 @@ class TestPartialFailureScenarios(unittest.TestCase):
         self.runner._bench_binary = Path("/fake/dir/llama-bench")
         self.runner._batched_bench_binary = Path("/fake/dir/llama-batched-bench")
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_partial_failure(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test llama-bench with some repetitions failing and some succeeding."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
@@ -1155,8 +1155,8 @@ class TestPartialFailureScenarios(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_batched_bench_partial_failure(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test llama-batched-bench with some repetitions failing and some succeeding."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
@@ -1210,8 +1210,8 @@ class TestNoParseableMetrics(unittest.TestCase):
         self.runner._bench_binary = Path("/fake/dir/llama-bench")
         self.runner._batched_bench_binary = Path("/fake/dir/llama-batched-bench")
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_bench_no_parseable_metrics(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test llama-bench when all repetitions produce no parseable metrics."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"
@@ -1240,8 +1240,8 @@ class TestNoParseableMetrics(unittest.TestCase):
         finally:
             os.unlink(model_path)
 
-    @patch("benchmarks.tempfile.TemporaryDirectory")
-    @patch("benchmarks.subprocess.Popen")
+    @patch("webapp.benchmarks.tempfile.TemporaryDirectory")
+    @patch("webapp.benchmarks.subprocess.Popen")
     def test_run_llama_batched_bench_no_parseable_metrics(self, mock_popen: Mock, mock_tempdir: Mock) -> None:
         """Test llama-batched-bench when all repetitions produce no parseable metrics."""
         mock_tempdir.return_value.__enter__.return_value = "/tmp/test_bench"

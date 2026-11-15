@@ -16,7 +16,7 @@ import pytest
 # Add project root to path (matches existing test conventions).
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from exporter import (  # noqa: E402
+from webapp.exporter import (  # noqa: E402
     _append_row_to_csv,
     build_metrics_row,
     export_metrics_for_model,
@@ -57,8 +57,8 @@ class TestBuildMetricsRow:
     """Tests for build_metrics_row using the shared metrics fetch."""
 
     def test_builds_row_from_shared_fetch(self):
-        with patch("exporter._check_model_ready", return_value=True), patch(
-            "exporter._fetch_metrics_from_model", return_value=dict(METRICS)
+        with patch("webapp.exporter._check_model_ready", return_value=True), patch(
+            "webapp.exporter._fetch_metrics_from_model", return_value=dict(METRICS)
         ):
             row = build_metrics_row("test-model", dict(META))
 
@@ -90,7 +90,7 @@ class TestBuildMetricsRow:
             build_metrics_row("test-model", {})
 
     def test_raises_runtime_error_when_not_running(self):
-        with patch("exporter._check_model_ready", return_value=False):
+        with patch("webapp.exporter._check_model_ready", return_value=False):
             with pytest.raises(RuntimeError, match="is not running"):
                 build_metrics_row("test-model", dict(META))
 
@@ -98,8 +98,8 @@ class TestBuildMetricsRow:
         # _fetch_metrics_from_model returns only {"pp", "tg", "pg"} on failure;
         # build_metrics_row must surface that as an error rather than writing
         # a row of zeros.
-        with patch("exporter._check_model_ready", return_value=True), patch(
-            "exporter._fetch_metrics_from_model",
+        with patch("webapp.exporter._check_model_ready", return_value=True), patch(
+            "webapp.exporter._fetch_metrics_from_model",
             return_value={"pp": None, "tg": None, "pg": None},
         ):
             with pytest.raises(RuntimeError, match="Failed to fetch metrics"):
@@ -112,9 +112,9 @@ class TestExportMetricsForModel:
     def test_exports_and_returns_result(self):
         fake_row = {"timestamp": "2026-01-01T00:00:00", "model": "test-model", "port": 8080}
         with patch(
-            "exporter.get_models", return_value={"test-model": dict(META)}
-        ), patch("exporter.build_metrics_row", return_value=fake_row), patch(
-            "exporter._append_row_to_csv", return_value=Path("/tmp/x_metrics.csv")
+            "webapp.exporter.get_models", return_value={"test-model": dict(META)}
+        ), patch("webapp.exporter.build_metrics_row", return_value=fake_row), patch(
+            "webapp.exporter._append_row_to_csv", return_value=Path("/tmp/x_metrics.csv")
         ) as append_mock:
             result = export_metrics_for_model("test-model")
 
@@ -126,7 +126,7 @@ class TestExportMetricsForModel:
         append_mock.assert_called_once_with("test-model", fake_row)
 
     def test_raises_value_error_for_unknown_model(self):
-        with patch("exporter.get_models", return_value={}):
+        with patch("webapp.exporter.get_models", return_value={}):
             with pytest.raises(ValueError, match="Unknown model"):
                 export_metrics_for_model("no-such-model")
 
@@ -135,7 +135,7 @@ class TestAppendRowToCSV:
     """Tests for the thread-safe CSV append."""
 
     def test_writes_header_and_row(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("exporter.CSV_DIR", tmp_path)
+        monkeypatch.setattr("webapp.exporter.CSV_DIR", tmp_path)
         row = {"timestamp": "t", "model": "m", "port": 1}
         path = _append_row_to_csv("m", row)
 
@@ -145,7 +145,7 @@ class TestAppendRowToCSV:
         assert content.endswith("t,m,1\n")
 
     def test_appends_without_rewriting_header(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("exporter.CSV_DIR", tmp_path)
+        monkeypatch.setattr("webapp.exporter.CSV_DIR", tmp_path)
         row = {"timestamp": "t", "model": "m", "port": 1}
         _append_row_to_csv("m", row)
         _append_row_to_csv("m", row)

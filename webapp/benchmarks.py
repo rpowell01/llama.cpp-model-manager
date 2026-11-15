@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import config
-from config import WSL, WINDOWS, LLAMA_BENCH, LLAMA_BATCHED_BENCH
+import webapp.config as config
+from webapp.config import WSL, WINDOWS, LLAMA_BENCH, LLAMA_BATCHED_BENCH
 
 log = logging.getLogger("llamaweb.benchmarks")
 

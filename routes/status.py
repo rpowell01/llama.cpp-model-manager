@@ -7,12 +7,12 @@ from flask import Blueprint, render_template, jsonify, g, Response
 from typing import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import config
-from config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
-from models import get_models, ModelRegistry
-from processes import check_port_active, find_pid_by_port, _check_model_ready
+import webapp.config as config
+from webapp.config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
+from webapp.models import get_models, ModelRegistry
+from webapp.processes import check_port_active, find_pid_by_port, _check_model_ready
 from routes.system import get_hardware_info
-from state import (
+from webapp.state import (
     _recent_stops,
     _recent_stops_lock,
     _wsl_pids,
@@ -20,10 +20,10 @@ from state import (
     _start_timestamps,
     _start_timestamps_lock,
 )
-from downloads import download_status, download_lock
-from metrics import _fetch_metrics_from_model
-from utils import estimate_gguf_size
-from mnemonic_proxy import list_proxy_managers, get_proxy_manager
+from webapp.downloads import download_status, download_lock
+from webapp.metrics import _fetch_metrics_from_model
+from webapp.utils import estimate_gguf_size
+from webapp.mnemonic_proxy import list_proxy_managers, get_proxy_manager
 
 log = logging.getLogger("llamaweb")
 
@@ -218,7 +218,7 @@ def _get_cached_port_listener(port: int, platform: str) -> bool:
             return cached["has_listener"]
     
     # Compute fresh - import here to avoid circular imports
-    from processes import _port_has_listener
+    from webapp.processes import _port_has_listener
     has_listener = _port_has_listener(port, platform)
     
     _port_listener_cache[cache_key] = {"has_listener": has_listener, "timestamp": now}
@@ -522,7 +522,7 @@ def api_status():
         _validate_status_uniqueness(results)
     
     # Add mode and remote health info to response
-    from config import PREFER_LINUX_BINARY
+    from webapp.config import PREFER_LINUX_BINARY
     response_data = {
         "models": results,
         "mode": "remote" if registry.is_remote_mode else "local",

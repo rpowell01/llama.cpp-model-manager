@@ -19,10 +19,11 @@ except ImportError:
     detect = None
     GPUInfo = None
 
-from config import LOG_FILE, FLASK_PORT
+import webapp.config as config
+from webapp.config import LOG_FILE, FLASK_PORT
 from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
-from state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
-from models import get_models as get_models_local
+from webapp.state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
+from webapp.models import get_models as get_models_local
 
 # Use the imported function directly (not re-imported inside functions)
 get_models = get_models_local
@@ -513,8 +514,8 @@ def api_hardware_info():
 def api_get_binary_preference():
     """Get the current llama.cpp binary preference (Linux vs Windows)."""
     try:
-        import config
-        from config import get_effective_binary_preference
+        import webapp.config as config
+        from webapp.config import get_effective_binary_preference
         
         prefer_linux = get_effective_binary_preference()
         binary_path = str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None
@@ -557,8 +558,8 @@ def api_set_binary_preference():
         if prefer_linux is not None:
             prefer_linux = bool(prefer_linux)
         
-        from config import set_binary_preference
-        import config
+        from webapp.config import set_binary_preference
+        import webapp.config as config
         
         success = set_binary_preference(prefer_linux)
         
@@ -816,8 +817,8 @@ def api_benchmark_optimize():
     """
     from flask import request
     import time as time_module
-    from optimizer import BenchmarkOptimizer
-    import config
+    from webapp.optimizer import BenchmarkOptimizer
+    import webapp.config as config
     
     # Check if benchmark optimization is enabled
     if not config.BENCHMARK_ENABLED:
@@ -869,7 +870,7 @@ def api_benchmark_optimize():
     
     # Resolve model path
     try:
-        from config import resolve_model_path
+        from webapp.config import resolve_model_path
         model_path = resolve_model_path(model_path_str)
         if not model_path.exists():
             return jsonify({"error": f"Model file not found: {model_path}"}), 404
@@ -1032,8 +1033,8 @@ def api_benchmark_deep_sweep():
     """
     from flask import request
     import time as time_module
-    from optimizer import BenchmarkOptimizer
-    import config
+    from webapp.optimizer import BenchmarkOptimizer
+    import webapp.config as config
     
     if not config.BENCHMARK_ENABLED:
         return jsonify({"error": "Benchmark optimization is disabled. Set BENCHMARK_ENABLED=true to enable."}), 403
@@ -1075,7 +1076,7 @@ def api_benchmark_deep_sweep():
         return jsonify({"error": f"Model '{model_name}' has no associated file path"}), 400
     
     try:
-        from config import resolve_model_path
+        from webapp.config import resolve_model_path
         model_path = resolve_model_path(model_path_str)
         if not model_path.exists():
             return jsonify({"error": f"Model file not found: {model_path}"}), 404
@@ -1140,8 +1141,8 @@ def api_benchmark_history():
         }
     """
     from flask import request
-    from optimizer import BenchmarkOptimizer
-    import config
+    from webapp.optimizer import BenchmarkOptimizer
+    import webapp.config as config
     
     data = request.get_json(force=True) or {}
     
@@ -1167,7 +1168,7 @@ def api_benchmark_history():
         return jsonify({"error": f"Model '{model_name}' has no associated file path"}), 400
     
     try:
-        from config import resolve_model_path
+        from webapp.config import resolve_model_path
         model_path = resolve_model_path(model_path_str)
         if not model_path.exists():
             return jsonify({"error": f"Model file not found: {model_path}"}), 404
@@ -1306,8 +1307,8 @@ def api_benchmark_cancel():
         }
     """
     from flask import request
-    from optimizer import BenchmarkOptimizer, _get_running_optimizer
-    import config
+    from webapp.optimizer import BenchmarkOptimizer, _get_running_optimizer
+    import webapp.config as config
     
     data = request.get_json(force=True) or {}
     
@@ -1341,7 +1342,7 @@ def api_benchmark_cancel():
     
     # Resolve model path
     try:
-        from config import resolve_model_path
+        from webapp.config import resolve_model_path
         model_path = resolve_model_path(model_path_str)
         if not model_path.exists():
             return jsonify({"success": False, "message": f"Model file not found: {model_path}"}), 404

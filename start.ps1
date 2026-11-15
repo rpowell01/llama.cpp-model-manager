@@ -235,7 +235,7 @@ function Start-App {
     Set-Location $ScriptDir
 
     # Start the Flask application using venv python
-    & $venvPython main.py @AppArgs
+    & $venvPython webapp/main.py @AppArgs
 }
 
 # Main execution

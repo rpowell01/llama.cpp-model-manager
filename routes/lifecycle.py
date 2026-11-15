@@ -9,10 +9,10 @@ import subprocess
 import os
 from pathlib import Path
 
-import config
-from config import BASE_DIR, DEFAULTS, WINDOWS, WSL, convert_path_for_binary, Config
-from models import ModelRegistry, InvalidModeError
-from processes import (
+import webapp.config as config
+from webapp.config import BASE_DIR, DEFAULTS, WINDOWS, WSL, convert_path_for_binary, Config
+from webapp.models import ModelRegistry, InvalidModeError
+from webapp.processes import (
     find_pid_by_port,
     find_pids_by_port,
     _kill_tree,
@@ -25,14 +25,14 @@ from processes import (
     wait_port_free,
     _port_has_listener,
 )
-from mnemonic_proxy import (
+from webapp.mnemonic_proxy import (
     create_proxy_manager,
     get_proxy_manager,
     list_proxy_managers,
     remove_proxy_manager,
     stop_all_proxies,
 )
-from state import (
+from webapp.state import (
     _recent_stops,
     _recent_stops_lock,
     _wsl_pids,
@@ -99,7 +99,7 @@ def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
     # process actually holding the port may live in the namespace of the
     # *previous* configuration. Resolution is therefore namespace-agnostic:
     # find every listener on the port in both namespaces and kill them all.
-    from models import get_models
+    from webapp.models import get_models
     model_meta = get_models().get(model, {})
     llama_cpp_platform = model_meta.get("llama_cpp_platform", "auto") or "auto"
 
@@ -275,7 +275,7 @@ def api_start():
             return jsonify({"error": "Missing 'model'"}), 400
         
         # Refresh model cache to pick up any recent changes before starting
-        from models import refresh_models_cache
+        from webapp.models import refresh_models_cache
         refresh_models_cache()
         
         # Get models from registry (local mode uses local cache)
@@ -516,7 +516,7 @@ def api_start():
         # cold page cache (e.g. right after another backend evicted it) can take
         # minutes, and the old 40-second cap reported "Server exited
         # immediately" for a process that was still loading perfectly fine.
-        from processes import _check_model_ready
+        from webapp.processes import _check_model_ready
         is_running = False
         process_died = False
         readiness_deadline = time.monotonic() + MODEL_READY_TIMEOUT_SECONDS

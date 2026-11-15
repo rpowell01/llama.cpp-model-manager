@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from optimizer import (
+from webapp.optimizer import (
     BenchmarkOptimizer,
     optimize_model,
 )
@@ -61,8 +61,8 @@ class TestBenchmarkOptimizer(unittest.TestCase):
 
     def test_init_default_cache_dir(self) -> None:
         """Test initialization with default cache directory."""
-        with patch("optimizer.Path.home") as mock_home, \
-             patch("optimizer.Path.mkdir") as mock_mkdir:
+        with patch("webapp.optimizer.Path.home") as mock_home, \
+             patch("webapp.optimizer.Path.mkdir") as mock_mkdir:
             mock_home.return_value = Path("/fake/home")
             optimizer = BenchmarkOptimizer()
             expected_cache_dir = Path("/fake/home/.cache/llama-web/benchmarks")
@@ -148,7 +148,7 @@ class TestBenchmarkOptimizer(unittest.TestCase):
             self.assertIn("batch_size", config)
             self.assertIn("threads", config)
 
-    @patch("optimizer.BenchmarkRunner")
+    @patch("webapp.optimizer.BenchmarkRunner")
     def test_run_benchmark_sweep(self, mock_runner_class) -> None:
         """Test benchmark sweep execution."""
         # Setup mock runner
@@ -338,7 +338,7 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         best_config_throughput = optimizer.select_optimal_config([], "throughput")
         self.assertEqual(best_config_throughput, {})
 
-    @patch("optimizer.BenchmarkRunner")
+    @patch("webapp.optimizer.BenchmarkRunner")
     def test_run_benchmark_sweep_time_limit_early_exit(self, mock_runner_class) -> None:
         """Test that run_benchmark_sweep exits early when max_duration_sec is exceeded."""
         # Setup mock runner that takes some time
@@ -440,10 +440,10 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         loaded_changed_mem = optimizer._load_from_cache(cache_key, changed_hw_mem)
         self.assertIsNone(loaded_changed_mem, "Should return None when memory changes")
 
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
-    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
-    @patch("optimizer.BenchmarkOptimizer.select_optimal_config")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("webapp.optimizer.BenchmarkOptimizer.select_optimal_config")
     def test_optimize_method(
         self, mock_select, mock_sweep, mock_generate, mock_hw_info
     ) -> None:
@@ -489,10 +489,10 @@ class TestBenchmarkOptimizer(unittest.TestCase):
         # Check that optimal settings were selected correctly
         self.assertEqual(result["optimal_settings"], {"n_gpu_layers": 20, "batch_size": 512})
 
-    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer._load_from_cache")
+    @patch("webapp.optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer._load_from_cache")
     def test_optimize_uses_cache_incrementally(self, mock_load_cache, mock_hw_info, mock_gen_configs, mock_run_sweep) -> None:
         """Test that optimize loads cached results and only runs missing configurations."""
         # Setup mocks
@@ -571,7 +571,7 @@ class TestBenchmarkOptimizer(unittest.TestCase):
 
     def test_convenience_function(self) -> None:
         """Test the optimize_model convenience function."""
-        with patch("optimizer.BenchmarkOptimizer") as mock_optimizer_class:
+        with patch("webapp.optimizer.BenchmarkOptimizer") as mock_optimizer_class:
             mock_optimizer = Mock()
             mock_optimizer.optimize.return_value = {"test": "result"}
             mock_optimizer_class.return_value = mock_optimizer
@@ -1002,7 +1002,7 @@ class TestRunBenchmarkSweepExceptions(unittest.TestCase):
         import shutil
         shutil.rmtree(self.test_dir)
 
-    @patch("optimizer.BenchmarkRunner")
+    @patch("webapp.optimizer.BenchmarkRunner")
     def test_run_benchmark_sweep_exception_handling(self, mock_runner_class) -> None:
         """Test that run_benchmark_sweep catches exceptions and continues."""
         mock_runner = Mock()
@@ -1120,8 +1120,8 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
         import shutil
         shutil.rmtree(self.test_dir)
 
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
     def test_optimize_empty_config_list_fallback(self, mock_generate, mock_hw_info) -> None:
         """Test optimize falls back to heuristic when config list is empty."""
         mock_hw_info.return_value = {
@@ -1142,9 +1142,9 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
         self.assertEqual(result["fallback_reason"], "no_configurations_generated")
         self.assertEqual(result["benchmark_results"], [])
 
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
-    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.BenchmarkOptimizer.run_benchmark_sweep")
     def test_optimize_sweep_exception_fallback(self, mock_sweep, mock_generate, mock_hw_info) -> None:
         """Test optimize falls back when benchmark sweep raises exception."""
         mock_hw_info.return_value = {
@@ -1166,10 +1166,10 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
         self.assertIn("Benchmark failed", result["fallback_reason"])
         self.assertEqual(result["benchmark_results"], [])
 
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
-    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
-    @patch("optimizer.BenchmarkOptimizer.select_optimal_config")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("webapp.optimizer.BenchmarkOptimizer.select_optimal_config")
     def test_optimize_no_successful_results_fallback(self, mock_select, mock_sweep, mock_generate, mock_hw_info) -> None:
         """Test optimize falls back when all benchmarks fail."""
         mock_hw_info.return_value = {
@@ -1195,7 +1195,7 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
         self.assertIn("optimal_settings", result)
         self.assertEqual(result["benchmark_results"], mock_sweep.return_value)
 
-    @patch("optimizer.get_hardware_info")
+    @patch("webapp.optimizer.get_hardware_info")
     def test_optimize_file_not_found(self, mock_hw_info) -> None:
         """Test optimize raises FileNotFoundError for missing model."""
         mock_hw_info.return_value = {"cpu_count_logical": 8}
@@ -1204,10 +1204,10 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             optimizer.optimize("/nonexistent/model.gguf")
 
-    @patch("optimizer.get_hardware_info")
-    @patch("optimizer.BenchmarkOptimizer.generate_config_combinations")
-    @patch("optimizer.BenchmarkOptimizer.run_benchmark_sweep")
-    @patch("optimizer.BenchmarkOptimizer.select_optimal_config")
+    @patch("webapp.optimizer.get_hardware_info")
+    @patch("webapp.optimizer.BenchmarkOptimizer.generate_config_combinations")
+    @patch("webapp.optimizer.BenchmarkOptimizer.run_benchmark_sweep")
+    @patch("webapp.optimizer.BenchmarkOptimizer.select_optimal_config")
     def test_optimize_saves_fallback_to_cache(self, mock_select, mock_sweep, mock_generate, mock_hw_info) -> None:
         """Test that fallback results are saved to cache (empty config list case)."""
         mock_hw_info.return_value = {
@@ -1236,8 +1236,8 @@ class TestOptimizeFallbackPaths(unittest.TestCase):
 class TestOptimizeInitPermissionError(unittest.TestCase):
     """Tests for BenchmarkOptimizer __init__ PermissionError handling."""
 
-    @patch("optimizer.Path.home")
-    @patch("optimizer.Path.mkdir")
+    @patch("webapp.optimizer.Path.home")
+    @patch("webapp.optimizer.Path.mkdir")
     @patch("tempfile.gettempdir")
     def test_init_permission_error_fallback(self, mock_gettempdir, mock_mkdir, mock_home) -> None:
         """Test init falls back to temp dir on PermissionError."""

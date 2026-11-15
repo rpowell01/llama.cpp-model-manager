@@ -97,7 +97,7 @@ def app_with_remote_mode(mock_remote_server):
     
     with patch.dict(os.environ, env, clear=False):
         # Create fresh Config
-        from config import Config
+        from webapp.config import Config
         cfg = Config()
         
         app = Flask(__name__)
@@ -119,7 +119,7 @@ def app_with_local_mode():
     
     with patch.dict(os.environ, {"REMOTE_MODE": "false"}, clear=False):
         # Create fresh Config
-        from config import Config
+        from webapp.config import Config
         cfg = Config()
         
         app = Flask(__name__)

@@ -16,7 +16,7 @@ import requests
 # Add project root to path (matches existing test conventions).
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from metrics import (  # noqa: E402
+from webapp.metrics import (  # noqa: E402
     _fetch_metrics_from_model,
     _metrics_snapshots,
     _parse_metrics_text,
@@ -77,8 +77,8 @@ class TestFetchMetricsFromModel:
         return resp
 
     def test_returns_derived_and_raw_counters_on_success(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
         ):
             result = _fetch_metrics_from_model(8080)
 
@@ -95,8 +95,8 @@ class TestFetchMetricsFromModel:
         assert result["llamacpp:spec_decode_num_draft_tokens_total"] == 500.0
 
     def test_returns_defaults_on_non_ok_status(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response("x", status_code=500)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response("x", status_code=500)
         ):
             result = _fetch_metrics_from_model(8080)
 
@@ -105,8 +105,8 @@ class TestFetchMetricsFromModel:
         assert "llamacpp:prompt_seconds_total" not in result
 
     def test_returns_defaults_on_fetch_exception(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get",
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get",
             side_effect=ConnectionError("connection refused"),
         ):
             result = _fetch_metrics_from_model(8080)
@@ -130,8 +130,8 @@ class TestFetchMetricsSnapshot:
         _metrics_snapshots.clear()
 
     def test_returns_parsed_values_on_success(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
         ):
             snapshot = fetch_metrics_snapshot(8080)
 
@@ -141,8 +141,8 @@ class TestFetchMetricsSnapshot:
         assert snapshot.age_seconds is None
 
     def test_caches_the_successful_snapshot(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
         ):
             fetch_metrics_snapshot(8080)
 
@@ -150,13 +150,13 @@ class TestFetchMetricsSnapshot:
 
     def test_falls_back_to_cached_snapshot_when_fetch_fails(self):
         """A busy llama-server times out; the last known values are reused."""
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
         ):
             fetch_metrics_snapshot(8080)
 
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get",
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get",
             side_effect=requests.exceptions.ReadTimeout("read timed out"),
         ):
             snapshot = fetch_metrics_snapshot(8080)
@@ -169,8 +169,8 @@ class TestFetchMetricsSnapshot:
         assert snapshot.age_seconds >= 0
 
     def test_returns_empty_snapshot_when_fetch_fails_without_cache(self):
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get",
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get",
             side_effect=requests.exceptions.ReadTimeout("read timed out"),
         ):
             snapshot = fetch_metrics_snapshot(8080)
@@ -181,15 +181,15 @@ class TestFetchMetricsSnapshot:
 
     def test_expired_cache_is_not_served(self):
         """A snapshot older than the max age must not be shown as current."""
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get", return_value=self._mock_response(METRICS_TEXT)
         ):
             fetch_metrics_snapshot(8080)
 
         _metrics_snapshots[8080]["fetched_at"] -= 3600
 
-        with patch("metrics.get_server_host", return_value="127.0.0.1"), patch(
-            "metrics.requests.get",
+        with patch("webapp.metrics.get_server_host", return_value="127.0.0.1"), patch(
+            "webapp.metrics.requests.get",
             side_effect=requests.exceptions.ReadTimeout("read timed out"),
         ):
             snapshot = fetch_metrics_snapshot(8080)

@@ -16,9 +16,9 @@ from typing import Any, Dict
 
 import requests
 
-from config import BASE_DIR, resolve_model_path
-from models import get_models
-from state import log_event
+from webapp.config import BASE_DIR, resolve_model_path
+from webapp.models import get_models
+from webapp.state import log_event
 
 # Global download status tracking
 download_status: Dict[str, Dict[str, Any]] = {}

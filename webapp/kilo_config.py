@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from config import DEFAULTS
-from models import get_models
+from webapp.config import DEFAULTS
+from webapp.models import get_models
 
 
 def _has_mmproj(meta: dict[str, Any]) -> bool:

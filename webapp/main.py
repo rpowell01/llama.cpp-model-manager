@@ -16,13 +16,13 @@ from pathlib import Path
 from flask import Flask, render_template
 
 # Import configuration
-from config import BASE_DIR, Config, METRICS_EXPORT_INTERVAL_SECONDS, WSL
+from webapp.config import BASE_DIR, Config, METRICS_EXPORT_INTERVAL_SECONDS, WSL
 
 # Import models functions
-from models import load_models_cache
+from webapp.models import load_models_cache
 
 # Import scheduler
-from scheduler import init_scheduler
+from webapp.scheduler import init_scheduler
 
 # Import hardware detection
 from routes.system import get_hardware_info
@@ -100,7 +100,7 @@ def _get_wsl_ip() -> str | None:
 
 def main() -> None:
     # Configure logging with SSE handler for web console
-    from state import add_log_entry
+    from webapp.state import add_log_entry
     
     class SSELogHandler(logging.Handler):
         """Custom logging handler that forwards logs to SSE clients."""

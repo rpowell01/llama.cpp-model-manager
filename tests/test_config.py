@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 import os
 
-from config import Config
+from webapp.config import Config
 
 
 class TestConfig(unittest.TestCase):
@@ -130,12 +130,12 @@ class TestNormalizePathForBinary(unittest.TestCase):
         llama-server.exe runs in a Windows context, so /mnt/c/... paths have
         to be handed over as C:/...
         """
-        from config import normalize_path_for_binary
+        from webapp.config import normalize_path_for_binary
 
-        with patch('config.WSL', True), \
-             patch('config.LLAMA_SERVER_TYPE', "windows"), \
-             patch('config.LLAMA_BENCH', None), \
-             patch('config.LLAMA_BATCHED_BENCH', None):
+        with patch('webapp.config.WSL', True), \
+             patch('webapp.config.LLAMA_SERVER_TYPE', "windows"), \
+             patch('webapp.config.LLAMA_BENCH', None), \
+             patch('webapp.config.LLAMA_BATCHED_BENCH', None):
             self.assertEqual(
                 normalize_path_for_binary('/mnt/c/llama.cpp-models/draft.gguf'),
                 'C:/llama.cpp-models/draft.gguf',
@@ -143,12 +143,12 @@ class TestNormalizePathForBinary(unittest.TestCase):
 
     def test_native_linux_binary_keeps_posix_path(self) -> None:
         """With a native Linux binary the path stays in POSIX form."""
-        from config import normalize_path_for_binary
+        from webapp.config import normalize_path_for_binary
 
-        with patch('config.WSL', True), \
-             patch('config.LLAMA_SERVER_TYPE', "linux"), \
-             patch('config.LLAMA_BENCH', None), \
-             patch('config.LLAMA_BATCHED_BENCH', None):
+        with patch('webapp.config.WSL', True), \
+             patch('webapp.config.LLAMA_SERVER_TYPE', "linux"), \
+             patch('webapp.config.LLAMA_BENCH', None), \
+             patch('webapp.config.LLAMA_BATCHED_BENCH', None):
             self.assertEqual(
                 normalize_path_for_binary('/mnt/c/llama.cpp-models/draft.gguf'),
                 '/mnt/c/llama.cpp-models/draft.gguf',
@@ -156,7 +156,7 @@ class TestNormalizePathForBinary(unittest.TestCase):
 
     def test_windows_path_keeps_windows_form(self) -> None:
         """A Windows path stays a Windows path, with forward slashes."""
-        from config import normalize_path_for_binary
+        from webapp.config import normalize_path_for_binary
 
         self.assertEqual(
             normalize_path_for_binary('C:/llama.cpp-models/draft.gguf'),
@@ -169,7 +169,7 @@ class TestNormalizePathForBinary(unittest.TestCase):
 
     def test_empty_path_is_unchanged(self) -> None:
         """An empty path (no draft model) is left alone."""
-        from config import normalize_path_for_binary
+        from webapp.config import normalize_path_for_binary
 
         self.assertEqual(normalize_path_for_binary(''), '')
 

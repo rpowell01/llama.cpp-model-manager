@@ -206,7 +206,7 @@ class TestStatusRoutes:
     @patch('routes.status.get_status_registry')
     def test_api_status_remote_mode_preserves_context_settings(self, mock_get_registry, client):
         """Remote status must include context values used by the properties panel."""
-        from remote_client import Model
+        from webapp.remote_client import Model
 
         remote_model = Model(
             name='remote-model',
@@ -640,7 +640,7 @@ class TestGetMetrics:
 
     @staticmethod
     def _snapshot(values, error=None, stale=False, age_seconds=None):
-        from metrics import MetricsSnapshot
+        from webapp.metrics import MetricsSnapshot
         return MetricsSnapshot(
             values=values, error=error, stale=stale, age_seconds=age_seconds
         )
@@ -742,7 +742,7 @@ class TestAddModel:
     @patch('routes.models.add_model_entry')
     def test_minimal_payload_uses_defaults_for_removed_runtime_fields(self, mock_add, client):
         """Only the essential fields are required; the rest fall back to DEFAULTS."""
-        from config import DEFAULTS
+        from webapp.config import DEFAULTS
         mock_add.return_value = True
 
         response = client.post('/api/add-model', json=self.ESSENTIAL_FIELDS,
@@ -943,8 +943,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_missing_model(self, mock_optimizer_class, mock_resolve_path, 
                                                mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize without model name returns 400."""
@@ -962,8 +962,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_unknown_model(self, mock_optimizer_class, mock_resolve_path, 
                                                mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with unknown model returns 404."""
@@ -981,8 +981,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_target(self, mock_optimizer_class, mock_resolve_path,
                                                 mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with invalid target returns 400."""
@@ -1002,8 +1002,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_duration(self, mock_optimizer_class, mock_resolve_path,
                                                   mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with invalid max_duration_sec returns 400."""
@@ -1043,8 +1043,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_no_model_path(self, mock_optimizer_class, mock_resolve_path,
                                                mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with model missing file path returns 400."""
@@ -1064,8 +1064,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_model_file_not_found(self, mock_optimizer_class, mock_resolve_path,
                                                       mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize when model file doesn't exist returns 404."""
@@ -1087,8 +1087,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_success(self, mock_optimizer_class, mock_resolve_path,
                                          mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns optimization results."""
@@ -1182,8 +1182,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_cached(self, mock_optimizer_class, mock_resolve_path,
                                         mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns cached result when available."""
@@ -1242,8 +1242,8 @@ class TestSystemRoutes:
     
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
                                                  mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize includes fallback_reason when optimizer falls back."""
@@ -1343,8 +1343,8 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_cached_with_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
                                                              mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns cached result with fallback_reason."""
@@ -1405,8 +1405,8 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_throughput_target(self, mock_optimizer_class, mock_resolve_path,
                                                    mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with throughput target."""
@@ -1458,8 +1458,8 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_latency_target(self, mock_optimizer_class, mock_resolve_path,
                                                 mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with latency target."""
@@ -1502,8 +1502,8 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_max_duration_boundary(self, mock_optimizer_class, mock_resolve_path,
                                                        mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize with min/max duration values."""
@@ -1552,8 +1552,8 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_optimizer_exception(self, mock_optimizer_class, mock_resolve_path,
                                                      mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize handles optimizer exceptions."""
@@ -1590,7 +1590,7 @@ class TestSystemRoutes:
 
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
+    @patch('webapp.config.resolve_model_path')
     def test_benchmark_optimize_file_not_found(self, mock_resolve_path, mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns 404 when model file not found."""
         from unittest.mock import MagicMock
@@ -1729,8 +1729,8 @@ class TestBenchmarkOptimizationPerformance:
     )
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_sweep_time_budget(self, mock_optimizer_class, mock_resolve_path,
                                           mock_hardware_info, mock_get_models, make_app):
         """Verify benchmark sweep completes within time budget."""
@@ -1786,8 +1786,8 @@ class TestBenchmarkOptimizationPerformance:
     )
     @patch('routes.system.get_models')
     @patch('routes.system.get_hardware_info')
-    @patch('config.resolve_model_path')
-    @patch('optimizer.BenchmarkOptimizer')
+    @patch('webapp.config.resolve_model_path')
+    @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_cache_hit_performance(self, mock_optimizer_class, mock_resolve_path,
                                     mock_hardware_info, mock_get_models, make_app):
         """Verify cache hit reduces response time to < 1s."""

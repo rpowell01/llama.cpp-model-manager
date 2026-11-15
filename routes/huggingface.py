@@ -3,8 +3,8 @@ from flask import Blueprint, jsonify, request
 import requests
 from logging import getLogger
 
-from config import BASE_DIR
-from utils import estimate_gguf_size
+from webapp.config import BASE_DIR
+from webapp.utils import estimate_gguf_size
 
 hf_bp = Blueprint("huggingface", __name__)
 log = getLogger("llamaweb")
@@ -17,7 +17,7 @@ def api_hf_repo_search():
     if not model:
         return jsonify({"error": "Missing model name"}), 400
     # Get models to validate existence (optional)
-    from models import get_models
+    from webapp.models import get_models
     models = get_models()
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
@@ -64,7 +64,7 @@ def api_hf_metadata():
     if not model:
         return jsonify({"error": "Missing 'model' query param"}), 400
 
-    from models import get_models
+    from webapp.models import get_models
     models = get_models()
     if model not in models:
         return jsonify({"error": f"Unknown model '{model}'"}), 404

@@ -24,8 +24,8 @@ from typing import Any
 
 import requests
 
-import config
-from config import (
+import webapp.config as config
+from webapp.config import (
     BASE_DIR,
     DEFAULTS,
     WINDOWS,
@@ -34,7 +34,7 @@ from config import (
     resolve_model_path,
     get_platform_backend_dir,
 )
-from models import InvalidModeError
+from webapp.models import InvalidModeError
 
 log = logging.getLogger("llamaweb.processes")
 
@@ -441,7 +441,7 @@ def _get_model_platform(model: str = "") -> str:
     if not model:
         return "auto"
     try:
-        from models import get_models
+        from webapp.models import get_models
         meta = get_models().get(model)
         if meta:
             return meta.get("llama_cpp_platform", "auto") or "auto"
@@ -465,7 +465,7 @@ def _is_windows_process(pid: int, model: str = "") -> bool:
         return True
 
     try:
-        from state import _wsl_pids, _wsl_pids_lock
+        from webapp.state import _wsl_pids, _wsl_pids_lock
         with _wsl_pids_lock:
             if pid in _wsl_pids.values():
                 return True
@@ -879,7 +879,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     """Build the command for starting a model."""
     _validate_local_mode()
     
-    from config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL, get_platform_backend_dir, convert_path_for_binary, DEFAULTS
+    from webapp.config import LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE, WSL, get_platform_backend_dir, convert_path_for_binary, DEFAULTS
     
     # Get model's platform and backend selection (default to "auto" for backward compatibility)
     llama_cpp_platform = meta.get("llama_cpp_platform", "auto")
@@ -934,7 +934,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     # Fall back to global auto-detection if no specific directory configured or binary not found
     if llama_server_binary is None:
-        from config import LLAMA_SERVER, LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
+        from webapp.config import LLAMA_SERVER, LLAMA_SERVER_TYPE, LLAMA_SERVER_USES_SERVE
         llama_server_binary = config.LLAMA_SERVER
         uses_serve_subcommand = LLAMA_SERVER_USES_SERVE
         llama_cpp_platform = LLAMA_SERVER_TYPE or "auto"
