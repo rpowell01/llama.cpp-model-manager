@@ -21,7 +21,7 @@ except ImportError:
 
 import webapp.config as config
 from webapp.config import LOG_FILE, FLASK_PORT
-from routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
+from webapp.routes.lifecycle import _stop_all_models, _kill_all_llama_processes, get_model_registry
 from webapp.state import register_sse_client, unregister_sse_client, get_recent_logs, add_log_entry
 from webapp.models import get_models as get_models_local
 

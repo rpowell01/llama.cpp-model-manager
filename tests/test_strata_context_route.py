@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from routes.lifecycle import lifecycle_bp
+from webapp.routes.lifecycle import lifecycle_bp
 
 
 class FakeResp:
@@ -74,7 +74,7 @@ def test_strata_context_falls_back_to_journal_when_conversations_api_unavailable
             return proxy_cwd_dir
         return orig_resolve(self)
 
-    with patch("routes.lifecycle.get_proxy_manager", return_value=PM()):
+    with patch("webapp.routes.lifecycle.get_proxy_manager", return_value=PM()):
         with patch.object(Path, "resolve", autospec=True, side_effect=resolve_side_effect):
             with patch("requests.get", side_effect=fake_get):
                 resp = client.get("/api/proxy/strata-context/test-model")
@@ -121,7 +121,7 @@ def test_strata_context_uses_candidate_journal_for_explicit_conversation(tmp_pat
             return proxy_cwd_dir
         return orig_resolve(self)
 
-    with patch("routes.lifecycle.get_proxy_manager", return_value=PM()):
+    with patch("webapp.routes.lifecycle.get_proxy_manager", return_value=PM()):
         with patch.object(Path, "resolve", autospec=True, side_effect=resolve_side_effect):
             with patch("requests.get", side_effect=fake_get):
                 resp = client.get("/api/proxy/strata-context/test-model?conversation_id=conv-xyz")

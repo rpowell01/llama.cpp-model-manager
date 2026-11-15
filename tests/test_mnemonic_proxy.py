@@ -192,7 +192,7 @@ class TestMnemonicProxyAPIEndpoints:
     
     def test_proxy_endpoint_functions_exist(self):
         """Test that proxy endpoint functions exist in lifecycle module."""
-        import routes.lifecycle as lifecycle
+        import webapp.routes.lifecycle as lifecycle
         
         # Check that all endpoint functions exist
         assert hasattr(lifecycle, 'api_proxy_status')

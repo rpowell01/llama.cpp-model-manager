@@ -297,7 +297,7 @@ class TestAPIEndpoints(unittest.TestCase):
     
     def setUp(self):
         from flask import Flask
-        from routes.models import models_bp
+        from webapp.routes.models import models_bp
         app = Flask(__name__)
         app.register_blueprint(models_bp)
         app.config['TESTING'] = True

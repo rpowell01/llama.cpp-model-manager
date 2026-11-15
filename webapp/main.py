@@ -30,16 +30,16 @@ from webapp.models import load_models_cache
 from webapp.scheduler import init_scheduler
 
 # Import hardware detection
-from routes.system import get_hardware_info
+from webapp.routes.system import get_hardware_info
 
 # Import route blueprints
-from routes.chat import chat_bp
-from routes.downloads import downloads_bp
-from routes.huggingface import hf_bp
-from routes.lifecycle import lifecycle_bp
-from routes.models import models_bp
-from routes.status import status_bp
-from routes.system import system_bp
+from webapp.routes.chat import chat_bp
+from webapp.routes.downloads import downloads_bp
+from webapp.routes.huggingface import hf_bp
+from webapp.routes.lifecycle import lifecycle_bp
+from webapp.routes.models import models_bp
+from webapp.routes.status import status_bp
+from webapp.routes.system import system_bp
 
 
 def _get_wsl_ips() -> list[str]:

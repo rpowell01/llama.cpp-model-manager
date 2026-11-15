@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from webapp.benchmarks import BenchmarkRunner, BenchmarkConfig, BenchmarkError
-from routes.system import compute_optimal_settings, get_hardware_info
+from webapp.routes.system import compute_optimal_settings, get_hardware_info
 from webapp.config import LLAMA_CLI, WSL
 
 log = logging.getLogger("llamaweb.optimizer")

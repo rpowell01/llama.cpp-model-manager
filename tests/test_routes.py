@@ -16,7 +16,7 @@ class TestLifecycleRoutes:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.lifecycle import lifecycle_bp
+        from webapp.routes.lifecycle import lifecycle_bp
         app = Flask(__name__)
         app.register_blueprint(lifecycle_bp)
         app.config['TESTING'] = True
@@ -26,7 +26,7 @@ class TestLifecycleRoutes:
     def client(self, app):
         return app.test_client()
     
-    @patch('routes.lifecycle.get_model_registry')
+    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_start_remote_mode(self, mock_get_registry, client):
         """Test start endpoint in remote mode returns 202 Accepted."""
         mock_registry = Mock()
@@ -46,7 +46,7 @@ class TestLifecycleRoutes:
         # get_status is called in validate_remote_connectivity (before_request) and in api_start
         assert mock_registry._remote_client.get_status.call_count >= 1
     
-    @patch('routes.lifecycle.get_model_registry')
+    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_start_local_mode_unknown_model(self, mock_get_registry, client):
         """Test start endpoint in local mode with unknown model returns 404."""
         mock_registry = Mock()
@@ -62,7 +62,7 @@ class TestLifecycleRoutes:
         data = response.get_json()
         assert 'error' in data
     
-    @patch('routes.lifecycle.get_model_registry')
+    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_start_missing_model(self, mock_get_registry, client):
         """Test start endpoint without model name returns 400."""
         mock_registry = Mock()
@@ -77,7 +77,7 @@ class TestLifecycleRoutes:
         data = response.get_json()
         assert 'error' in data
     
-    @patch('routes.lifecycle.get_model_registry')
+    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_stop_remote_mode(self, mock_get_registry, client):
         """Test stop endpoint in remote mode returns stopped status."""
         mock_registry = Mock()
@@ -94,7 +94,7 @@ class TestLifecycleRoutes:
         # In remote mode, models are pre-loaded and cannot be stopped via API
         mock_registry.unload_model.assert_not_called()
     
-    @patch('routes.lifecycle.get_model_registry')
+    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_stop_missing_model(self, mock_get_registry, client):
         """Test stop endpoint without model name returns 400."""
         mock_registry = Mock()
@@ -114,7 +114,7 @@ class TestChatRoutes:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.chat import chat_bp
+        from webapp.routes.chat import chat_bp
         app = Flask(__name__)
         app.register_blueprint(chat_bp)
         app.config['TESTING'] = True
@@ -124,7 +124,7 @@ class TestChatRoutes:
     def client(self, app):
         return app.test_client()
     
-    @patch('routes.chat.get_chat_registry')
+    @patch('webapp.routes.chat.get_chat_registry')
     def test_chat_missing_model(self, mock_get_registry, client):
         """Test chat endpoint without model name returns 400."""
         mock_registry = Mock()
@@ -139,7 +139,7 @@ class TestChatRoutes:
         data = response.get_json()
         assert 'error' in data
     
-    @patch('routes.chat.get_chat_registry')
+    @patch('webapp.routes.chat.get_chat_registry')
     def test_chat_missing_messages(self, mock_get_registry, client):
         """Test chat endpoint without messages returns 400."""
         mock_registry = Mock()
@@ -163,7 +163,7 @@ class TestStatusRoutes:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.status import status_bp
+        from webapp.routes.status import status_bp
         app = Flask(__name__)
         app.register_blueprint(status_bp)
         app.config['TESTING'] = True
@@ -173,7 +173,7 @@ class TestStatusRoutes:
     def client(self, app):
         return app.test_client()
     
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.get_status_registry')
     def test_api_status(self, mock_get_registry, client):
         """Test status endpoint returns mode and remote health."""
         mock_registry = Mock()
@@ -189,7 +189,7 @@ class TestStatusRoutes:
         assert data['mode'] == 'local'
         assert 'remote_healthy' in data
     
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.get_status_registry')
     def test_api_status_remote_mode(self, mock_get_registry, client):
         """Test status endpoint in remote mode."""
         mock_registry = Mock()
@@ -203,7 +203,7 @@ class TestStatusRoutes:
         data = response.get_json()
         assert data['mode'] == 'remote'
 
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.get_status_registry')
     def test_api_status_remote_mode_preserves_context_settings(self, mock_get_registry, client):
         """Remote status must include context values used by the properties panel."""
         from webapp.remote_client import Model
@@ -225,22 +225,22 @@ class TestStatusRoutes:
         assert model_data['ctx_size'] == 128000
         assert model_data['yarn_orig_ctx'] == 32768
     
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.get_status_registry')
     def test_api_next_port_local(self, mock_get_registry, client):
         """Test next-port endpoint in local mode."""
         mock_registry = Mock()
         mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
-        with patch('routes.status.check_port_active', return_value=False):
-            with patch('routes.status.get_models', return_value={}):
+        with patch('webapp.routes.status.check_port_active', return_value=False):
+            with patch('webapp.routes.status.get_models', return_value={}):
                 response = client.get('/api/next-port')
         
         assert response.status_code == 200
         data = response.get_json()
         assert 'port' in data
     
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.get_status_registry')
     def test_api_next_port_remote(self, mock_get_registry, client):
         """Test next-port endpoint in remote mode returns placeholder."""
         mock_registry = Mock()
@@ -254,9 +254,9 @@ class TestStatusRoutes:
         assert data['port'] == 0
         assert 'note' in data
 
-    @patch('routes.status._status_for_model')
-    @patch('routes.status.get_models')
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status._status_for_model')
+    @patch('webapp.routes.status.get_models')
+    @patch('webapp.routes.status.get_status_registry')
     def test_status_returns_unique_model_per_row(self, mock_get_registry, mock_get_models,
                                                   mock_status_for_model, client):
         """Each model row in /api/status must have its own unique model name.
@@ -315,9 +315,9 @@ class TestStatusRoutes:
         pids = [m['pid'] for m in models]
         assert len(set(pids)) == 3, f"Expected unique pids, got {pids}"
 
-    @patch('routes.status._status_for_model')
-    @patch('routes.status.get_models')
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status._status_for_model')
+    @patch('webapp.routes.status.get_models')
+    @patch('webapp.routes.status.get_status_registry')
     def test_status_mnemonic_proxy_per_model(self, mock_get_registry, mock_get_models,
                                               mock_status_for_model, client):
         """Each model row must have its own mnemonic_proxy status.
@@ -390,7 +390,7 @@ class TestUpdateModelMeta:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.models import models_bp
+        from webapp.routes.models import models_bp
         app = Flask(__name__)
         app.register_blueprint(models_bp)
         app.config['TESTING'] = True
@@ -404,14 +404,14 @@ class TestUpdateModelMeta:
     def status_client(self):
         """Client for the status blueprint, which owns /api/status."""
         from flask import Flask
-        from routes.status import status_bp
+        from webapp.routes.status import status_bp
         status_app = Flask(__name__)
         status_app.register_blueprint(status_bp)
         status_app.config['TESTING'] = True
         return status_app.test_client()
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_speculative_decoding_model_is_saved(self, mock_get_models, mock_save_models, client):
         """Checking the Speculative Decoding Model box must persist the flag.
 
@@ -434,8 +434,8 @@ class TestUpdateModelMeta:
         assert models['test-model']['speculative_decoding_model'] is True
         mock_save_models.assert_called_once()
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_speculative_decoding_model_can_be_unchecked(self, mock_get_models, mock_save_models, client):
         """Unchecking the box must persist False, not be dropped as a no-op."""
         models = {'test-model': {'port': 11000, 'speculative_decoding_model': True}}
@@ -450,8 +450,8 @@ class TestUpdateModelMeta:
         assert response.status_code == 200
         assert models['test-model']['speculative_decoding_model'] is False
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_boolean_strings_are_normalized_not_truthiness_coerced(self, mock_get_models, mock_save_models, client):
         """String booleans must be parsed, not truthiness-coerced.
 
@@ -474,9 +474,9 @@ class TestUpdateModelMeta:
                 f"{raw!r} should persist as {expected!r}"
             )
 
-    @patch('routes.status.check_port_active', return_value=False)
-    @patch('routes.status.get_models')
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.check_port_active', return_value=False)
+    @patch('webapp.routes.status.get_models')
+    @patch('webapp.routes.status.get_status_registry')
     def test_status_returns_speculative_decoding_model(self, mock_get_registry, mock_get_models,
                                                       mock_check_port, status_client):
         """The refresh path must return the flag so the panel can re-render it."""
@@ -493,8 +493,8 @@ class TestUpdateModelMeta:
         models = response.get_json()['models']
         assert models[0]['speculative_decoding_model'] is True
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_draft_model_path_is_stored_in_windows_form(self, mock_get_models, mock_save_models, client):
         """The draft model path must be stored in Windows form.
 
@@ -504,7 +504,7 @@ class TestUpdateModelMeta:
         models = {'test-model': {'port': 11000, 'threads': 8}}
         mock_get_models.return_value = models
 
-        with patch('routes.models.normalize_path_for_binary',
+        with patch('webapp.routes.models.normalize_path_for_binary',
                    return_value='C:/llama.cpp-models/draft.gguf') as mock_normalize:
             response = client.post(
                 '/api/update-model-meta',
@@ -516,14 +516,14 @@ class TestUpdateModelMeta:
         assert models['test-model']['spec_draft_model'] == 'C:/llama.cpp-models/draft.gguf'
         mock_normalize.assert_called_once_with('/mnt/c/llama.cpp-models/draft.gguf')
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_empty_draft_model_path_is_stored_as_empty(self, mock_get_models, mock_save_models, client):
         """Clearing the draft model must not run the path through normalisation."""
         models = {'test-model': {'port': 11000, 'spec_draft_model': 'C:/llama.cpp-models/draft.gguf'}}
         mock_get_models.return_value = models
 
-        with patch('routes.models.normalize_path_for_binary') as mock_normalize:
+        with patch('webapp.routes.models.normalize_path_for_binary') as mock_normalize:
             response = client.post(
                 '/api/update-model-meta',
                 json={'model': 'test-model', 'spec_draft_model': ''},
@@ -534,9 +534,9 @@ class TestUpdateModelMeta:
         assert models['test-model']['spec_draft_model'] == ''
         mock_normalize.assert_not_called()
 
-    @patch('routes.status.check_port_active', return_value=False)
-    @patch('routes.status.get_models')
-    @patch('routes.status.get_status_registry')
+    @patch('webapp.routes.status.check_port_active', return_value=False)
+    @patch('webapp.routes.status.get_models')
+    @patch('webapp.routes.status.get_status_registry')
     def test_status_returns_model_path_in_binary_form(self, mock_get_registry, mock_get_models,
                                                       mock_check_port, status_client):
         """The status payload must expose the model path in binary form.
@@ -551,7 +551,7 @@ class TestUpdateModelMeta:
             'test-model': {'port': 11000, 'model_path': '/mnt/c/llama.cpp-models/test.gguf'},
         }
 
-        with patch('routes.status.convert_path_for_binary',
+        with patch('webapp.routes.status.convert_path_for_binary',
                    return_value='C:/llama.cpp-models/test.gguf'):
             response = status_client.get('/api/status')
 
@@ -559,8 +559,8 @@ class TestUpdateModelMeta:
         models = response.get_json()['models']
         assert models[0]['model_path_for_binary'] == 'C:/llama.cpp-models/test.gguf'
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_rating_zero_is_accepted(self, mock_get_models, mock_save_models, client):
         """A rating of 0 means "unrated" and must be saveable.
 
@@ -580,8 +580,8 @@ class TestUpdateModelMeta:
         assert models['test-model']['rating_speed'] == 0
         assert models['test-model']['rating_coding'] == 0
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_rating_bounds_are_enforced(self, mock_get_models, mock_save_models, client):
         """Ratings outside 0-5 must be rejected."""
         models = {'test-model': {'port': 11000}}
@@ -598,8 +598,8 @@ class TestUpdateModelMeta:
                 assert response.status_code == 400, f"{field}={bad} should be rejected"
                 assert field not in models['test-model']
 
-    @patch('routes.models.save_models')
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.save_models')
+    @patch('webapp.routes.models.get_models')
     def test_rating_string_values_are_coerced(self, mock_get_models, mock_save_models, client):
         """The UI sends number inputs as strings; they must still be accepted."""
         models = {'test-model': {'port': 11000}}
@@ -628,7 +628,7 @@ class TestGetMetrics:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.models import models_bp
+        from webapp.routes.models import models_bp
         app = Flask(__name__)
         app.register_blueprint(models_bp)
         app.config['TESTING'] = True
@@ -645,7 +645,7 @@ class TestGetMetrics:
             values=values, error=error, stale=stale, age_seconds=age_seconds
         )
 
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.get_models')
     def test_returns_metrics_when_the_model_answers(self, mock_get_models, client):
         mock_get_models.return_value = {'test-model': {'port': 11000, 'threads': 8}}
         snapshot = self._snapshot({
@@ -653,7 +653,7 @@ class TestGetMetrics:
             'llamacpp:prompt_tokens_total': 1000.0,
         })
 
-        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+        with patch('webapp.routes.models.fetch_metrics_snapshot', return_value=snapshot):
             response = client.post(
                 '/api/get-metrics',
                 json={'model': 'test-model'},
@@ -666,7 +666,7 @@ class TestGetMetrics:
         assert data['stale'] is False
         assert data['metrics']['prompt_eval_ms_per_token'] == 10.5
 
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.get_models')
     def test_returns_last_known_metrics_when_the_model_is_busy(self, mock_get_models, client):
         mock_get_models.return_value = {'test-model': {'port': 11000}}
         snapshot = self._snapshot(
@@ -676,7 +676,7 @@ class TestGetMetrics:
             age_seconds=42.0,
         )
 
-        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+        with patch('webapp.routes.models.fetch_metrics_snapshot', return_value=snapshot):
             response = client.post(
                 '/api/get-metrics',
                 json={'model': 'test-model'},
@@ -690,12 +690,12 @@ class TestGetMetrics:
         assert data['cache_age_seconds'] == 42.0
         assert 'ReadTimeout' in data['warning']
 
-    @patch('routes.models.get_models')
+    @patch('webapp.routes.models.get_models')
     def test_reports_unavailable_when_there_are_no_metrics_at_all(self, mock_get_models, client):
         mock_get_models.return_value = {'test-model': {'port': 11000}}
         snapshot = self._snapshot({}, error='ReadTimeout from 127.0.0.1', stale=True)
 
-        with patch('routes.models.fetch_metrics_snapshot', return_value=snapshot):
+        with patch('webapp.routes.models.fetch_metrics_snapshot', return_value=snapshot):
             response = client.post(
                 '/api/get-metrics',
                 json={'model': 'test-model'},
@@ -729,7 +729,7 @@ class TestAddModel:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.models import models_bp
+        from webapp.routes.models import models_bp
         app = Flask(__name__)
         app.register_blueprint(models_bp)
         app.config['TESTING'] = True
@@ -739,7 +739,7 @@ class TestAddModel:
     def client(self, app):
         return app.test_client()
 
-    @patch('routes.models.add_model_entry')
+    @patch('webapp.routes.models.add_model_entry')
     def test_minimal_payload_uses_defaults_for_removed_runtime_fields(self, mock_add, client):
         """Only the essential fields are required; the rest fall back to DEFAULTS."""
         from webapp.config import DEFAULTS
@@ -763,7 +763,7 @@ class TestAddModel:
                       'spec_type', 'numa', 'mlock', 'flash_attn', 'cache_type_k'):
             assert kwargs[field] == DEFAULTS[field], f"{field} should default"
 
-    @patch('routes.models.add_model_entry')
+    @patch('webapp.routes.models.add_model_entry')
     def test_unknown_extra_fields_are_ignored(self, mock_add, client):
         """Client-only flags such as auto_download must not break the endpoint."""
         mock_add.return_value = True
@@ -776,7 +776,7 @@ class TestAddModel:
         mock_add.assert_called_once()
 
     @pytest.mark.parametrize("missing", ["name", "repo", "filename", "expected_size", "port"])
-    @patch('routes.models.add_model_entry')
+    @patch('webapp.routes.models.add_model_entry')
     def test_missing_required_field_returns_400(self, mock_add, client, missing):
         """Each essential field is still mandatory."""
         payload = {k: v for k, v in self.ESSENTIAL_FIELDS.items() if k != missing}
@@ -788,7 +788,7 @@ class TestAddModel:
         assert missing in response.get_json()['error']
         mock_add.assert_not_called()
 
-    @patch('routes.models.add_model_entry')
+    @patch('webapp.routes.models.add_model_entry')
     def test_non_integer_port_returns_400(self, mock_add, client):
         """Numeric fields must be integers."""
         payload = dict(self.ESSENTIAL_FIELDS, port='not-a-port')
@@ -799,7 +799,7 @@ class TestAddModel:
         assert response.status_code == 400
         mock_add.assert_not_called()
 
-    @patch('routes.models.add_model_entry')
+    @patch('webapp.routes.models.add_model_entry')
     def test_duplicate_model_returns_409(self, mock_add, client):
         """A rejected add (e.g. duplicate name) surfaces as 409."""
         mock_add.return_value = False
@@ -817,7 +817,7 @@ class TestDownloadRoutes:
     @pytest.fixture
     def app(self):
         from flask import Flask
-        from routes.downloads import downloads_bp
+        from webapp.routes.downloads import downloads_bp
         app = Flask(__name__)
         app.register_blueprint(downloads_bp)
         app.config['TESTING'] = True
@@ -827,8 +827,8 @@ class TestDownloadRoutes:
     def client(self, app):
         return app.test_client()
 
-    @patch('routes.downloads.start_download')
-    @patch('routes.downloads.get_models')
+    @patch('webapp.routes.downloads.start_download')
+    @patch('webapp.routes.downloads.get_models')
     def test_download_uses_canonical_model_key(
         self, mock_get_models, mock_start_download, client, tmp_path
     ):
@@ -866,7 +866,7 @@ class TestSystemRoutes:
         """Factory to create app after patches are applied."""
         def _make_app():
             from flask import Flask
-            from routes.system import system_bp
+            from webapp.routes.system import system_bp
             app = Flask(__name__)
             app.register_blueprint(system_bp)
             app.config['TESTING'] = True
@@ -877,7 +877,7 @@ class TestSystemRoutes:
     def client(self, make_app):
         return make_app().test_client()
     
-    @patch('routes.system.get_models')
+    @patch('webapp.routes.system.get_models')
     def test_optimize_settings_missing_model(self, mock_get_models, make_app):
         """Test optimize-settings without model name returns 400."""
         mock_get_models.return_value = {}
@@ -892,7 +892,7 @@ class TestSystemRoutes:
         assert 'error' in data
         assert data['error'] == 'Missing model name'
     
-    @patch('routes.system.get_models')
+    @patch('webapp.routes.system.get_models')
     def test_optimize_settings_unknown_model(self, mock_get_models, make_app):
         """Test optimize-settings with unknown model returns 404."""
         mock_get_models.return_value = {'known-model': {'model_path': 'models/known.gguf'}}
@@ -907,8 +907,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Unknown model 'unknown-model'" in data['error']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     def test_optimize_settings_success(self, mock_hardware_info, mock_get_models, make_app):
         """Test optimize-settings returns optimal settings."""
         mock_get_models.return_value = {
@@ -941,8 +941,8 @@ class TestSystemRoutes:
         assert data['model'] == 'test-model'
         assert 'gpu_layers' in data['optimal_settings']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_missing_model(self, mock_optimizer_class, mock_resolve_path, 
@@ -960,8 +960,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert data['error'] == 'Missing model name'
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_unknown_model(self, mock_optimizer_class, mock_resolve_path, 
@@ -979,8 +979,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Unknown model 'unknown-model'" in data['error']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_target(self, mock_optimizer_class, mock_resolve_path,
@@ -1000,8 +1000,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Invalid target 'invalid'" in data['error']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_invalid_duration(self, mock_optimizer_class, mock_resolve_path,
@@ -1041,8 +1041,8 @@ class TestSystemRoutes:
         # Should not return 400 (may return 500 due to mock but not 400 for validation)
         assert response.status_code != 400
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_no_model_path(self, mock_optimizer_class, mock_resolve_path,
@@ -1062,8 +1062,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "has no associated file path" in data['error']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_model_file_not_found(self, mock_optimizer_class, mock_resolve_path,
@@ -1085,8 +1085,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert 'Model file not found' in data['error']
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_success(self, mock_optimizer_class, mock_resolve_path,
@@ -1180,8 +1180,8 @@ class TestSystemRoutes:
             optimization_target='balanced'
         )
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_cached(self, mock_optimizer_class, mock_resolve_path,
@@ -1240,8 +1240,8 @@ class TestSystemRoutes:
         assert data['cached'] is True
         assert data['optimal_settings']['gpu_layers'] == 30
     
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
@@ -1341,8 +1341,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert "Unknown model '123'" in data['error']
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_cached_with_fallback_reason(self, mock_optimizer_class, mock_resolve_path,
@@ -1403,8 +1403,8 @@ class TestSystemRoutes:
         assert 'fallback_reason' in data
         assert 'llama-bench not found' in data['fallback_reason']
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_throughput_target(self, mock_optimizer_class, mock_resolve_path,
@@ -1456,8 +1456,8 @@ class TestSystemRoutes:
             str(mock_path), max_duration_sec=60, optimization_target='throughput'
         )
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_latency_target(self, mock_optimizer_class, mock_resolve_path,
@@ -1500,8 +1500,8 @@ class TestSystemRoutes:
         data = response.get_json()
         assert data['optimization_target'] == 'latency'
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_max_duration_boundary(self, mock_optimizer_class, mock_resolve_path,
@@ -1550,8 +1550,8 @@ class TestSystemRoutes:
         assert response.status_code == 200
         mock_optimizer.optimize.assert_called_with(str(mock_path), max_duration_sec=3600, optimization_target='balanced')
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_optimize_optimizer_exception(self, mock_optimizer_class, mock_resolve_path,
@@ -1588,8 +1588,8 @@ class TestSystemRoutes:
         assert 'error' in data
         assert 'Optimization failed' in data['error']
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     def test_benchmark_optimize_file_not_found(self, mock_resolve_path, mock_hardware_info, mock_get_models, make_app):
         """Test benchmark-optimize returns 404 when model file not found."""
@@ -1618,7 +1618,7 @@ class TestSystemRoutes:
         assert 'error' in data
         assert 'Model file not found' in data['error']
 
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_hardware_info')
     def test_api_hardware_info(self, mock_hardware_info, make_app):
         """Test /api/hardware-info endpoint."""
         mock_hardware_info.return_value = {
@@ -1641,7 +1641,7 @@ class TestSystemRoutes:
         assert data['total_gpu_vram_gb'] == 8
         assert data['has_nvidia_gpu'] is True
 
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_hardware_info')
     def test_api_hardware_info_exception(self, mock_hardware_info, make_app):
         """Test /api/hardware-info handles exceptions."""
         mock_hardware_info.side_effect = Exception("Hardware detection failed")
@@ -1653,8 +1653,8 @@ class TestSystemRoutes:
         data = response.get_json()
         assert 'error' in data
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     def test_optimize_settings_with_various_models(self, mock_hardware_info, mock_get_models, make_app):
         """Test optimize-settings with different model configurations."""
         mock_get_models.return_value = {
@@ -1692,8 +1692,8 @@ class TestSystemRoutes:
         # Large model on high VRAM should have high gpu_layers
         assert data['optimal_settings'].get('gpu_layers', 0) >= 50
 
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     def test_optimize_settings_cpu_only(self, mock_hardware_info, mock_get_models, make_app):
         """Test optimize-settings with CPU-only hardware."""
         mock_get_models.return_value = {
@@ -1727,8 +1727,8 @@ class TestBenchmarkOptimizationPerformance:
         not os.environ.get('RUN_PERF_TESTS'),
         reason="Performance tests require RUN_PERF_TESTS=1 and test model/binaries"
     )
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_benchmark_sweep_time_budget(self, mock_optimizer_class, mock_resolve_path,
@@ -1784,8 +1784,8 @@ class TestBenchmarkOptimizationPerformance:
         not os.environ.get('RUN_PERF_TESTS'),
         reason="Performance tests require RUN_PERF_TESTS=1 and test model/binaries"
     )
-    @patch('routes.system.get_models')
-    @patch('routes.system.get_hardware_info')
+    @patch('webapp.routes.system.get_models')
+    @patch('webapp.routes.system.get_hardware_info')
     @patch('webapp.config.resolve_model_path')
     @patch('webapp.optimizer.BenchmarkOptimizer')
     def test_cache_hit_performance(self, mock_optimizer_class, mock_resolve_path,

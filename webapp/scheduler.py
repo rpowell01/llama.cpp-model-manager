@@ -18,7 +18,7 @@ import threading
 from typing import Optional
 
 from webapp.models import get_models, load_models_cache
-from routes.status import get_status_registry
+from webapp.routes.status import get_status_registry
 from webapp.processes import check_port_active, _check_model_ready
 
 from webapp.config import (

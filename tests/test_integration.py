@@ -84,7 +84,7 @@ def mock_remote_server():
 @pytest.fixture
 def app_with_remote_mode(mock_remote_server):
     """Create a Flask app configured for remote mode with mock server."""
-    from routes import lifecycle, chat, status
+    from webapp.routes import lifecycle, chat, status
     
     # Reset the global registries before setting up
     status._status_registry = None
@@ -111,7 +111,7 @@ def app_with_remote_mode(mock_remote_server):
 @pytest.fixture
 def app_with_local_mode():
     """Create a Flask app configured for local mode."""
-    from routes import lifecycle, chat, status
+    from webapp.routes import lifecycle, chat, status
     
     # Reset the global registries before setting up
     status._status_registry = None

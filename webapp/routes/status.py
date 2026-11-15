@@ -11,7 +11,7 @@ import webapp.config as config
 from webapp.config import BASE_DIR, WINDOWS, WSL, DEFAULTS, FLASK_PORT, Config, convert_path_for_binary, resolve_model_path
 from webapp.models import get_models, ModelRegistry
 from webapp.processes import check_port_active, find_pid_by_port, _check_model_ready
-from routes.system import get_hardware_info
+from webapp.routes.system import get_hardware_info
 from webapp.state import (
     _recent_stops,
     _recent_stops_lock,

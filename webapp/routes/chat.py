@@ -7,7 +7,7 @@ from webapp.config import BASE_DIR, Config
 from webapp.models import ModelRegistry, get_models
 from webapp.processes import check_port_active, get_server_host, _check_model_ready
 from webapp.config import WSL
-from routes.status import _status_for_model
+from webapp.routes.status import _status_for_model
 
 chat_bp = Blueprint("chat", __name__)
 log = logging.getLogger("llamaweb")
