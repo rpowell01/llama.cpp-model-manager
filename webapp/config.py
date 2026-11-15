@@ -871,6 +871,7 @@ PLATFORM_BACKEND_COMBINATIONS = [
 # Default empty configuration
 _DEFAULT_PLATFORM_BACKEND_CONFIG = {combo: "" for combo in PLATFORM_BACKEND_COMBINATIONS}
 _DEFAULT_PLATFORM_BACKEND_CONFIG["global_default"] = ""
+_DEFAULT_PLATFORM_BACKEND_CONFIG["llama_release"] = ""
 
 # Cache for platform/backend config
 _platform_backend_config: dict[str, str] | None = None
@@ -895,6 +896,9 @@ def _load_platform_backend_config() -> dict[str, str]:
             # Load global_default if present
             if "global_default" in loaded:
                 config["global_default"] = loaded["global_default"]
+            # Load the currently-installed llama.cpp release tag if present
+            if "llama_release" in loaded:
+                config["llama_release"] = loaded["llama_release"]
     except Exception as e:
         log.warning(f"Failed to load platform/backend config: {e}")
     
@@ -907,8 +911,8 @@ def _save_platform_backend_config(config: dict[str, str]) -> None:
     global _platform_backend_config
     try:
         import json
-        # Only save known keys (combinations + global_default)
-        allowed_keys = PLATFORM_BACKEND_COMBINATIONS + ["global_default"]
+        # Only save known keys (combinations + global_default + llama_release)
+        allowed_keys = PLATFORM_BACKEND_COMBINATIONS + ["global_default", "llama_release"]
         save_config = {k: v for k, v in config.items() if k in allowed_keys}
         with open(PLATFORM_BACKEND_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(save_config, f, indent=2)
@@ -975,6 +979,29 @@ def get_global_default_platform_backend() -> str:
     """
     config = _load_platform_backend_config()
     return config.get("global_default", "")
+
+
+def get_llama_release() -> str:
+    """
+    Get the currently-installed llama.cpp release tag (e.g. "b12189").
+    
+    Returns:
+        The release tag string, or empty string if not set.
+    """
+    config = _load_platform_backend_config()
+    return config.get("llama_release", "")
+
+
+def set_llama_release(tag: str) -> None:
+    """
+    Persist the currently-installed llama.cpp release tag.
+    
+    Args:
+        tag: The release tag string (e.g. "b12189").
+    """
+    config = _load_platform_backend_config()
+    config["llama_release"] = tag
+    _save_platform_backend_config(config)
 
 
 def get_platform_backend_dir(platform: str, backend: str) -> str:

@@ -461,8 +461,10 @@ exec "$(dirname "$0")/llama-server-orig" "$@"
                 _set_platform_backend_dir(platform, backend, linux_config_path)
                 updated_combinations.append(combo)
         
-        # Step 5: Save the updated config
+        # Step 5: Save the updated config, recording the release tag that is
+        # now installed so the UI can report the "currently running" release.
         config = _load_config()
+        config["llama_release"] = tag
         if progress_callback:
             progress_callback("Saving configuration...", 95)
         

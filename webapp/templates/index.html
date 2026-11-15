@@ -299,6 +299,20 @@
         <p id="platform-backend-config-description" style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
           Configure llama-server directory paths for each platform/backend combination. These directories are used when a model selects a specific platform (windows/linux) and backend (vulkan/sycl/openvino) in its properties.
         </p>
+        <!-- Current versions info -->
+        <div id="platform-backend-current-versions" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface); font-size: 0.875rem;">
+          <div style="font-weight: 600; color: var(--text); margin-bottom: 0.4rem;">Currently running</div>
+          <div id="platform-backend-version-llama" style="color: var(--text2); margin-bottom: 0.25rem;">
+            <span style="font-weight: 600; color: var(--text);">llama.cpp:</span>
+            <span id="platform-backend-version-llama-tag">—</span>
+            <span id="platform-backend-version-llama-commit" style="font-weight: 500;"></span>
+          </div>
+          <div id="platform-backend-version-mnemonic" style="color: var(--text2);">
+            <span style="font-weight: 600; color: var(--text);">mnemonic-proxy:</span>
+            <span id="platform-backend-version-mnemonic-ver">—</span>
+            <span id="platform-backend-version-mnemonic-commit" style="font-weight: 500;"></span>
+          </div>
+        </div>
         <form id="platform-backend-config-form">
           <!-- Global default selection (shown at top) -->
           <fieldset id="platform-backend-global-default" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface);">
@@ -958,6 +972,11 @@ const platformBackendUpdateProgressBar = document.getElementById('platform-backe
 const platformBackendUpdateTag = document.getElementById('platform-backend-update-tag');
 let platformBackendUpdatePoll = null;
 
+const platformBackendVersionLlamaTag = document.getElementById('platform-backend-version-llama-tag');
+const platformBackendVersionLlamaCommit = document.getElementById('platform-backend-version-llama-commit');
+const platformBackendVersionMnemonicVer = document.getElementById('platform-backend-version-mnemonic-ver');
+const platformBackendVersionMnemonicCommit = document.getElementById('platform-backend-version-mnemonic-commit');
+
 const PLATFORM_BACKEND_COMBINATIONS = [
   "windows-vulkan",
   "windows-sycl",
@@ -979,6 +998,33 @@ async function fetchPlatformBackendConfig() {
   const data = await resp.json();
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+async function fetchCurrentVersions() {
+  const resp = await fetch('/api/current-versions', { method: 'GET' });
+  if (!resp.ok) throw new Error(`Current versions request failed (${resp.status})`);
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+function populateCurrentVersions(data) {
+  data = data || {};
+  const llama = data.llama || {};
+  const mnemonic = data.mnemonic || {};
+
+  if (platformBackendVersionLlamaTag) {
+    platformBackendVersionLlamaTag.textContent = llama.tag || 'not installed';
+  }
+  if (platformBackendVersionLlamaCommit) {
+    platformBackendVersionLlamaCommit.textContent = llama.commit ? ` (commit ${String(llama.commit).slice(0, 7)})` : '';
+  }
+  if (platformBackendVersionMnemonicVer) {
+    platformBackendVersionMnemonicVer.textContent = mnemonic.version || 'not installed';
+  }
+  if (platformBackendVersionMnemonicCommit) {
+    platformBackendVersionMnemonicCommit.textContent = mnemonic.commit ? ` (commit ${String(mnemonic.commit).slice(0, 7)})` : '';
+  }
 }
 
 function populatePlatformBackendConfig(config) {
@@ -1039,6 +1085,14 @@ async function openPlatformBackendConfigModal() {
     populatePlatformBackendConfig(config);
   } catch (e) {
     setPlatformBackendConfigStatus('Failed to load: ' + e.message, 'error');
+    return;
+  }
+  // Current versions are informational; never fail the modal open for them.
+  try {
+    await populateCurrentVersions(await fetchCurrentVersions());
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('platform-backend: could not fetch current versions:', e);
   }
 }
 

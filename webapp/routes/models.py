@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
-from webapp.config import DEFAULTS, normalize_path_for_binary
+from webapp.config import DEFAULTS, normalize_path_for_binary, get_llama_release
 from webapp.metrics import fetch_metrics_snapshot
 from webapp.models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
 from webapp.processes import _check_model_ready
@@ -878,6 +878,84 @@ def api_set_platform_backend_config():
     return jsonify({
         "status": "platform backend config updated",
         "config": get_all_platform_backend_dirs()
+    })
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Current versions (llama.cpp release + mnemonic-proxy version)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_GITHUB_TIMEOUT = 10
+
+
+def _github_request_json(url: str) -> dict | None:
+    """Fetch JSON from the GitHub API, returning None on any failure."""
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": "llama.cpp-model-manager",
+                "Accept": "application/vnd.github.v3+json",
+            },
+            timeout=_GITHUB_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json()
+    except Exception:
+        return None
+
+
+def _github_release_commit(owner: str, repo: str, tag: str) -> str | None:
+    """Return the commit SHA (target_commitish) for a GitHub release tag.
+
+    Tries the tag as-is plus common 'v' prefix variants, since release tagging
+    conventions differ between projects.
+    """
+    if not tag:
+        return None
+    candidates = [tag]
+    if tag.startswith("v"):
+        candidates.append(tag[1:])
+    else:
+        candidates.append("v" + tag)
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen or not candidate:
+            continue
+        seen.add(candidate)
+        data = _github_request_json(
+            f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{candidate}"
+        )
+        if data:
+            commit = data.get("target_commitish")
+            if commit:
+                return commit
+    return None
+
+
+@models_bp.route("/api/current-versions", methods=["GET"])
+def api_current_versions():
+    """Return the currently-installed llama.cpp release and mnemonic-proxy
+    versions, along with their upstream commit IDs."""
+    # llama.cpp: release tag persisted by the backend updater
+    llama_tag = get_llama_release()
+    llama_commit = _github_release_commit("ggml-org", "llama.cpp", llama_tag) if llama_tag else None
+
+    # mnemonic-proxy: version currently installed in this environment
+    mnemonic_version = None
+    mnemonic_commit = None
+    try:
+        from webapp.mnemonic_proxy_updater import _get_current_version
+        mnemonic_version = _get_current_version()
+        if mnemonic_version:
+            mnemonic_commit = _github_release_commit("lastreload", "mnemonic-proxy", mnemonic_version)
+    except Exception as e:
+        log.warning(f"Failed to read mnemonic-proxy version: {e}")
+
+    return jsonify({
+        "llama": {"tag": llama_tag or None, "commit": llama_commit},
+        "mnemonic": {"version": mnemonic_version, "commit": mnemonic_commit},
     })
 
 
