@@ -79,7 +79,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ──────────────────────────────────────────────────────────────────────────────
 # Mnemonic Proxy Config Override Defaults (loaded from JSON file)
 # ──────────────────────────────────────────────────────────────────────────────
-MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE = BASE_DIR / "mnemonic_default_config_override.json"
+MNEMONIC_DEFAULT_CONFIG_OVERRIDE_FILE = BASE_DIR / "webapp" / "data" / "mnemonic_default_config_override.json"
 
 
 def load_mnemonic_default_config_override() -> dict[str, Any]:
@@ -128,7 +128,7 @@ if MODEL_DIR_ENV:
 else:
     MODELS_DIR = BASE_DIR / "models"
 
-MODELS_JSON = BASE_DIR / "models.json"
+MODELS_JSON = BASE_DIR / "webapp" / "data" / "models.json"
 LOG_FILE = BASE_DIR / "running_models.log"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ DEFAULT_LINUX_BIN_DIR = Path.home() / "llama.cpp" / "bin"
 _binary_preference_override: bool | None = None
 
 # Config file path for persisting binary preference
-CONFIG_FILE = BASE_DIR / ".llama-web-config.json"
+CONFIG_FILE = BASE_DIR / "webapp" / "data" / ".llama-web-config.json"
 
 def _load_binary_preference():
     """Load binary preference from config file."""
@@ -856,7 +856,7 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Config file for platform/backend directory mappings
-PLATFORM_BACKEND_CONFIG_FILE = BASE_DIR / ".llama-platform-config.json"
+PLATFORM_BACKEND_CONFIG_FILE = BASE_DIR / "webapp" / "data" / ".llama-platform-config.json"
 
 # Default platform/backend combinations (6 total)
 PLATFORM_BACKEND_COMBINATIONS = [

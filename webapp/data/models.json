@@ -2057,6 +2057,7 @@
         "seal_experimental": true,
         "slot_save": true,
         "tools_paging": true,
+        "tools_paging_native_split": true,
         "upstream": "http://127.0.0.1:9931",
         "window_estimate_slack": 0.15
       },

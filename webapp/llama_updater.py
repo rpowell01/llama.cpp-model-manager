@@ -127,7 +127,7 @@ PLATFORM_BACKEND_COMBINATIONS = [
 
 def _get_config_file() -> Path:
     """Get the path to the platform/backend config file."""
-    return BASE_DIR / ".llama-platform-config.json"
+    return BASE_DIR / "webapp" / "data" / ".llama-platform-config.json"
 
 
 def _load_config() -> dict[str, str]:
