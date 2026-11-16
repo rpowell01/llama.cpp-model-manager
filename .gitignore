@@ -26,5 +26,7 @@ models.json
 
 # Runtime artifacts (generated at runtime, not committed)
 data/
+logs/*.log
+logs/*.err
 metrics_exports/
 .beads/interactions.jsonl

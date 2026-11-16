@@ -398,7 +398,7 @@ class BenchmarkOptimizer:
         has_amd = hardware_info.get("has_amd_gpu", False)
         has_intel = hardware_info.get("has_intel_gpu", False)
         
-        # Speculative decoding options (from BENCHMARK_DESIGN.md)
+        # Speculative decoding options (from docs/BENCHMARK_DESIGN.md)
         spec_type_options = ["none"]
         spec_draft_n_max_options = [0]  # Only relevant when spec_type != "none"
         spec_ngram_size_n_options = [0]

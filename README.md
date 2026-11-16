@@ -47,7 +47,7 @@ The architecture follows a clean separation of concerns, with the web interface 
    ```
 
 3. Configure the model manager:
-   - Copy `models.example.json` to `models.json`
+   - Copy `examples/models.example.json` to `models.json`
    - Update the model paths and settings in `models.json`
    - Set the preferred binary option in `.llama-web-config.json`
 
@@ -141,18 +141,34 @@ Based on recent performance analysis:
 
 ```
 llama.cpp-model-manager/
-├── public/               # Static files
-├── src/                  # Source code
-│   ├── components/       # UI components
-│   ├── pages/            # Web pages
-│   ├── services/         # API and data services
-│   └── utils/            # Utility functions
-├── styles/               # CSS files
-├── models.example.json   # Example model configuration
-├── .llama-web-config.json # Web interface configuration
-├── README.md             # This file
-├── AGENTS.md             # Agent configuration
-└── PERFORMANCE_REPORT.md # Performance analysis report
+├── webapp/              # Web application code
+│   ├── main.py          # Flask entry point
+│   ├── config.py        # Configuration
+│   ├── models.py        # Model management
+│   ├── routes/          # Flask route blueprints
+│   ├── static/          # Static assets (CSS, JS)
+│   ├── templates/       # HTML templates
+│   ├── scripts/         # Wrapper scripts
+│   └── data/            # JSON data files
+├── routes/              # Flask route blueprints
+├── tests/               # Test files
+├── examples/            # Example files
+│   ├── models.example.json    # Example model configuration
+│   └── example_benchmark_result.json
+├── docs/                # Documentation
+│   ├── BENCHMARK_DESIGN.md
+│   ├── CODING_TEST_PROMPT.md
+│   ├── llama.cpp-parameters-reference.md
+│   └── SCHEDULING_METRICS_INVESTIGATION.md
+├── logs/                # Log files
+├── README.md            # This file
+├── AGENTS.md            # Agent configuration
+├── CLAUDE.md            # Claude configuration
+├── start.sh             # Start script (Linux)
+├── start.ps1            # Start script (Windows)
+├── docker-compose.yml   # Docker configuration
+├── Dockerfile           # Docker image definition
+└── requirements.txt     # Python dependencies
 ```
 
 ### Contributing
@@ -184,9 +200,8 @@ npm run lint
 ## Support
 
 For help with the Llama.cpp Model Manager, please:
-- Check the [documentation](#)
-- Review the [performance analysis report](PERFORMANCE_REPORT.md)
-- Consult the [model configuration examples](models.example.json)
+- Check the [documentation](./docs/)
+- Consult the [model configuration examples](examples/models.example.json)
 - Open an issue on GitHub if you encounter problems
 
 ## License

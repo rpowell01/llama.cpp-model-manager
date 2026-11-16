@@ -129,7 +129,7 @@ else:
     MODELS_DIR = BASE_DIR / "models"
 
 MODELS_JSON = BASE_DIR / "webapp" / "data" / "models.json"
-LOG_FILE = BASE_DIR / "running_models.log"
+LOG_FILE = BASE_DIR / "logs" / "running_models.log"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Default server parameters

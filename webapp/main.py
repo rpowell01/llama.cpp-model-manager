@@ -125,7 +125,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         handlers=[
-            logging.FileHandler(BASE_DIR / "webapp.log"),
+            logging.FileHandler(BASE_DIR / "logs" / "webapp.log"),
             logging.StreamHandler(sys.stderr),
             SSELogHandler()
         ]
