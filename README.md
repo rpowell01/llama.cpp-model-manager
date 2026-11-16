@@ -1,157 +1,132 @@
 # Llama.cpp Model Manager
 
+A comprehensive web-based interface for managing, configuring, and optimizing [llama.cpp](https://github.com/ggerganov/llama.cpp) model deployments. Provides an intuitive dashboard for monitoring, starting/stopping models, chat proxying, performance analysis, and context management via [mnemonic-proxy](https://github.com/lastreload/mnemonic-proxy).
+
+---
+
+## Credits
+
+This project builds on the excellent work of two open-source teams:
+
+- **[llama.cpp team](https://github.com/ggerganov/llama.cpp)** — for the `llama-server` inference engine that powers model serving, with its rich parameter set, KV cache slot support, speculative decoding, and multi-backend (CPU/Vulkan/SYCL/OpenVINO) capabilities.
+- **[Mnemonics Proxy team](https://github.com/lastreload/mnemonic-proxy)** — for the context management proxy that enables long-context conversations via KV cache slot save/restore, context masking, recall tools, and semantic conversation archiving.
+
+---
+
 ## Overview
 
-The Llama.cpp Model Manager is a comprehensive web-based interface for managing and optimizing llama.cpp model deployments. This project provides an intuitive web dashboard for monitoring, configuring, and analyzing the performance of llama.cpp models, with a focus on empirical optimization and real-time performance monitoring.
+The Llama.cpp Model Manager is a Flask-based web application that provides:
+
+- **Model lifecycle management** — start, stop, list, and monitor multiple llama-server instances
+- **Chat proxy** — OpenAI-compatible chat completion endpoint routed through llama-server or mnemonic-proxy
+- **Slot KV cache persistence** — save/restore model context across sessions via llama-server slot files
+- **Mnemonic-proxy integration** — context masking, automatic recall, and semantic archiving for long conversations
+- **Performance metrics** — collect, scrape, and export per-model metrics (tokens/sec, ms/token, acceptance rates)
+- **Hugging Face integration** — search and discover models from the Hugging Face Hub
+- **Model downloading** — background download management for GGUF model files
+- **System information** — hardware detection (CPU, GPU, memory), logs, and server health
+- **Remote mode** — connect to and manage a remote llama-server instance
+- **WSL support** — Windows Subsystem for Linux with PowerShell wrapper for Intel oneAPI/SYCL
+- **Speculative decoding** — ngram and draft-model speculation configuration
+- **Background metrics scheduler** — periodic automatic metrics export
+
+---
 
 ## Key Features
 
-- **Web-based Dashboard**: Intuitive interface for model management and monitoring
-- **Empirical Performance Analysis**: Automatic collection and analysis of model metrics
-- **Optimal Configuration Recommendations**: Data-driven suggestions for model settings
-- **Real-time Monitoring**: Live performance graphs and metrics
-- **Model Configuration Management**: Easy management of model configurations via JSON files
-- **Multi-Model Support**: Simultaneous management of multiple model instances
+| Feature | Description |
+|---------|-------------|
+| **Model CRUD** | Add, list, start, stop, delete models via web UI or REST API |
+| **Chat API** | `/api/chat` — OpenAI-compatible chat completion proxy |
+| **Mnemonic Proxy** | Long-context management with KV cache slots, masking, and recall |
+| **Slot Persistence** | Save/restore KV cache per model session for context continuity |
+| **Metrics Collection** | Scrape `/metrics` from running models and export to CSV |
+| **Background Scheduler** | Automatic periodic metrics export |
+| **HF Integration** | Search Hugging Face models via `/api/hf-repo-search` |
+| **Downloads** | Resumable GGUF model downloads with progress tracking |
+| **Hardware Detection** | CPU, GPU (NVIDIA/AMD/Intel), memory detection |
+| **Remote Mode** | Manage models on a remote llama-server instance |
+| **WSL Support** | Full Windows Subsystem for Linux support with PowerShell wrapper |
+| **Speculative Decoding** | Ngram and draft model speculation parameters |
+| **SSE Logging** | Real-time log streaming to the web console |
+
+---
 
 ## Architecture
 
-The project consists of several core components:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Web Browser (Frontend)                 │
+└─────────────────────────────────────────────────────────────┘
+                              │ HTTP
+┌─────────────────────────────────────────────────────────────┐
+│              Flask Web App (webapp/main.py)                 │
+│  Port 5000  •  static/  •  templates/  •  SSE logging       │
+├─────────────────────────────────────────────────────────────┤
+│  chat     → proxy to llama-server / mnemonic-proxy          │
+│  models   → CRUD + registry                                 │
+│  lifecycle → start/stop model processes                     │
+│  status   → health, debug, proxy management                 │
+│  system   → hardware info, logs, shutdown                   │
+│  downloads → GGUF download management                       │
+│  huggingface → HF model search                              │
+└─────────────────────────────────────────────────────────────┘
+                              │ HTTP / slot restore
+┌─────────────────────────────────────────────────────────────┐
+│             llama-server (llama.cpp inference)              │
+│  Ports 9931+  •  KV cache slots  •  /metrics endpoint        │
+└─────────────────────────────────────────────────────────────┘
+                              │ optional
+┌─────────────────────────────────────────────────────────────┐
+│           mnemonic-proxy (context management)               │
+│  Port 8096  •  KV slot save/restore  •  Recall tool          │
+└─────────────────────────────────────────────────────────────┘
+```
 
-- **Frontend**: Web interface built with HTML, CSS, and JavaScript
-- **Backend**: Model management and analysis logic
-- **Data Storage**: Model configuration files (models.json) and performance metrics
-- **Performance Analysis Engine**: System for collecting and analyzing model metrics
+---
 
-The architecture follows a clean separation of concerns, with the web interface handling user interaction, the backend managing model operations, and the performance analysis engine providing data-driven insights.
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v16 or higher)
-- npm (Node Package Manager)
-- Python 3.8+ (for some model operations)
-- llama.cpp with required dependencies
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/llama.cpp-model-manager.git
-   cd llama.cpp-model-manager
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Configure the model manager:
-   - Copy `examples/models.example.json` to `models.json`
-   - Update the model paths and settings in `models.json`
-   - Set the preferred binary option in `.llama-web-config.json`
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-5. Access the web interface at `http://localhost:3000`
-
-## Configuration
-
-### Model Configuration (models.json)
-
-The `models.json` file contains all model configurations. Each model entry includes:
-
-- `model_path`: Path to the model file
-- `name`: Human-readable model name
-- `spec_type`: Speculative decoding type (`draft-simple`, `draft-mtp`, etc.)
-- `gpu_layers`: Number of layers to offload to GPU
-- `threads`: Number of CPU threads to use
-- `cache_type_k/v`: KV cache type (e.g., `fp16`, `q4_0`)
-- `ctx_size`: Context window size
-- `batch_size`: Batch size for inference
-- `ubatch_size`: Draft batch size
-- `numa`: NUMA policy setting
-- `flash_attn`: Flash attention setting
-
-### Configuration Tips
-
-- Use `draft-simple` for better acceptance rates with smaller models
-- Set `gpu_layers` to `99` for maximum GPU acceleration
-- Use `fp16` KV cache for optimal performance
-- Adjust `ubatch_size` based on acceptance rate and speed requirements
-- Enable `numa` with `isolate` policy for single-process latency
-
-## Performance Analysis
-
-The Llama.cpp Model Manager includes a powerful performance analysis system that automatically collects and analyzes model metrics. The system:
-
-- Monitors generation speed (ms/token)
-- Tracks draft acceptance rates (%)
-- Calculates estimated speedup (x)
-- Measures throughput (tokens/sec)
-
-The analysis is based on empirical data collected from model instances and is used to provide recommendations for optimal configuration settings.
-
-### Performance Report Summary
-
-Based on recent performance analysis:
-
-- **Top-performing model**: `qwen3.5-9B-glm5.1-distill-v1-q4-k-m`
-  - Fastest generation: **561.7 ms/token** (2.2x faster than runner-up)
-  - Best draft acceptance: **37.5%** (5.5% higher than runner-up)
-  - Highest estimated speedup: **29.3x** (8.7x higher than runner-up)
-
-- **Key findings**:
-  - `draft-simple` configuration generally provides better speed/acceptance balance than `draft-mtp`
-  - `fp16` KV cache typically offers optimal performance
-  - Optimal `ubatch_size` varies by model and should be tested experimentally
-
-## Usage
-
-### Managing Models
-
-1. Start the web interface
-2. Add new models via the configuration file or web interface
-3. Select a model to view its details
-4. Start, stop, or configure the model
-5. Monitor real-time performance metrics
-
-### Analyzing Performance
-
-1. Enable performance monitoring for a model
-2. Collect metrics over time
-3. Review the performance report
-4. Implement recommended configuration changes
-5. Re-test and validate improvements
-
-### Optimizing Model Settings
-
-1. Use the performance analysis to identify bottlenecks
-2. Experiment with different configuration settings
-3. Test changes on a subset of models
-4. Apply successful configurations to all models
-5. Document and share optimal settings
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 llama.cpp-model-manager/
-├── webapp/              # Web application code
+├── webapp/              # Web application (Flask)
 │   ├── main.py          # Flask entry point
-│   ├── config.py        # Configuration
-│   ├── models.py        # Model management
+│   ├── config.py        # Configuration & defaults
+│   ├── models.py        # Model registry & management
+│   ├── processes.py     # llama-server process lifecycle
+│   ├── scheduler.py     # Background metrics export scheduler
+│   ├── state.py         # Shared runtime state & SSE logging
+│   ├── remote_client.py # Remote API client abstraction
+│   ├── metrics.py       # Metrics scraping & parsing
+│   ├── mnemonic_proxy.py # Mnemonic-proxy integration
+│   ├── mnemonic_proxy_updater.py # mnemonic-proxy package updater
+│   ├── benchmarks.py    # llama-bench runner
+│   ├── downloads.py     # GGUF download management
+│   ├── exporter.py      # Metrics CSV exporter
+│   ├── kilo_config.py   # Kilo Code config generator
+│   ├── llama_updater.py # llama.cpp binary updater
+│   ├── optimizer.py     # Benchmark sweep optimizer
+│   ├── utils.py         # Utility functions
+│   ├── compression_zstd_shim.py # zstd shim for Python < 3.14
 │   ├── routes/          # Flask route blueprints
+│   │   ├── chat.py          # /api/chat
+│   │   ├── downloads.py     # /api/download
+│   │   ├── huggingface.py   # /api/hf-repo-search
+│   │   ├── lifecycle.py     # /api/models/load|unload
+│   │   ├── models.py        # /api/add-model|delete-model
+│   │   ├── status.py        # /api/status|/api/next-port
+│   │   └── system.py        # /api/system-info|/api/logs
+│   ├── scripts/         # Wrapper scripts
+│   │   ├── llama-server-wrapper.ps1     # Windows PowerShell wrapper
+│   │   └── llama-server-sycl-wrapper.sh # Linux SYCL wrapper
 │   ├── static/          # Static assets (CSS, JS)
 │   ├── templates/       # HTML templates
-│   ├── scripts/         # Wrapper scripts
 │   └── data/            # JSON data files
-├── routes/              # Flask route blueprints
-├── tests/               # Test files
+│       ├── models.json                  # Model registry (runtime)
+│       ├── mnemonic_default_config_override.json
+│       └── .llama-platform-config.json
+├── routes/              # (legacy, redirects to webapp/routes)
+├── tests/               # Test suite (pytest)
 ├── examples/            # Example files
 │   ├── models.example.json    # Example model configuration
 │   └── example_benchmark_result.json
@@ -160,50 +135,210 @@ llama.cpp-model-manager/
 │   ├── CODING_TEST_PROMPT.md
 │   ├── llama.cpp-parameters-reference.md
 │   └── SCHEDULING_METRICS_INVESTIGATION.md
-├── logs/                # Log files
+├── logs/                # Runtime log files (webapp.log, server.log, etc.)
 ├── README.md            # This file
 ├── AGENTS.md            # Agent configuration
 ├── CLAUDE.md            # Claude configuration
-├── start.sh             # Start script (Linux)
-├── start.ps1            # Start script (Windows)
+├── start.sh             # Start script (Linux/macOS/WSL)
+├── start.ps1            # Start script (Windows PowerShell)
 ├── docker-compose.yml   # Docker configuration
 ├── Dockerfile           # Docker image definition
+├── LICENSE              # MIT License
 └── requirements.txt     # Python dependencies
 ```
 
-### Contributing
+---
 
-We welcome contributions! To contribute:
+## Getting Started
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a pull request
+### Prerequisites
 
-Please ensure your code follows the project's style guidelines and includes appropriate tests.
+- **Python 3.10+** (3.14+ recommended for zstd cold archive)
+- **llama-server** built with KV cache slot save support (`--slot-save-path`)
+- **pip** packages: see `requirements.txt`
 
-### Testing
+### Installation
 
-Run the test suite:
+#### Linux / macOS / WSL
+
 ```bash
-npm test
+# Clone the repository
+git clone https://github.com/rpowell01/llama.cpp-model-manager.git
+cd llama.cpp-model-manager
+
+# Start the application (creates venv, installs deps, launches Flask)
+./start.sh
 ```
 
-### Linting
+#### Windows (PowerShell)
 
-The project uses ESLint for code quality. Run:
-```bash
-npm run lint
+```powershell
+# Clone the repository
+git clone https://github.com/rpowell01/llama.cpp-model-manager.git
+cd llama.cpp-model-manager
+
+# Start the application
+./start.ps1
 ```
 
-## Support
+The start scripts handle virtual environment creation, dependency installation, and launching the Flask app. By default the web UI is available at **http://localhost:5000**.
 
-For help with the Llama.cpp Model Manager, please:
-- Check the [documentation](./docs/)
-- Consult the [model configuration examples](examples/models.example.json)
-- Open an issue on GitHub if you encounter problems
+---
+
+## Configuration
+
+### Model Registry (`webapp/data/models.json`)
+
+Copy the example and edit for your models:
+
+```bash
+cp examples/models.example.json webapp/data/models.json
+```
+
+Each model entry supports fields such as:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `name` | Human-readable model name | `qwen3-30b-a3b` |
+| `repo` | Hugging Face repository | `Qwen/Qwen3-30B-A3B` |
+| `filename` | GGUF filename | `Qwen3-30B-A3B-Instruct-Q4_K_M.gguf` |
+| `expected_size` | Expected file size in bytes | `18000000000` |
+| `port` | llama-server port | `9931` |
+| `gpu_layers` | Layers offloaded to GPU | `99` |
+| `threads` | CPU threads | `16` |
+| `ctx_size` | Context window size | `131072` |
+| `cache_type_k/v` | KV cache quantization | `fp16`, `q4_0`, `q8_0` |
+| `spec_type` | Speculative decoding | `ngram-mod`, `none` |
+| `slot_save_path` | KV cache slot directory | `./data/<model name>` |
+| `mnemonic_proxy` | Proxy config object | see below |
+
+### Mnemonic Proxy Configuration
+
+Each model can enable mnemonic-proxy for long-context management:
+
+```json
+{
+  "mnemonic_proxy": {
+    "enabled": true,
+    "port": 8096,
+    "data_dir": "./data/my-model",
+    "slot_dir": "./data/my-model/slots",
+    "tokenizer_path": "",
+    "config_override": {
+      "mask_anchor": true,
+      "autosave": true,
+      "window_estimate_slack": 0.15,
+      "tools_paging": true,
+      "tools_core": "read/bash/edit/write/grep/find/ls/execute + read_file/write_file/patch/search_files/terminal"
+    },
+    "mcp_enabled": false,
+    "mcp_port": 8133
+  }
+}
+```
+
+The `tools_core` parameter defines which tools are always available when `tools_paging` is enabled. Add `execute` (or any other tool) to the slash-separated list to make it automatically available.
+
+### Web Interface Config (`.llama-web-config.json`)
+
+Binary preference (WSL Linux vs Windows) is persisted in `webapp/data/.llama-web-config.json`. Use the web UI or `start.sh`/`start.ps1` to toggle.
+
+---
+
+## API Endpoints
+
+### Models
+- `POST /api/add-model` — Register a new model
+- `POST /api/delete-model` — Remove a model
+- `POST /api/models/load` — Start a model
+- `POST /api/models/unload` — Stop a model
+- `GET /api/models` — List all models
+
+### Chat
+- `POST /api/chat` — OpenAI-compatible chat completion
+
+### Status
+- `GET /api/status` — Overall server status
+- `GET /api/next-port` — Get an available port
+- `GET /api/debug/<model>` — Detailed model debug info
+
+### System
+- `GET /api/system-info` — Hardware and system information
+- `GET /api/logs` — Recent application logs
+
+### Downloads
+- `POST /api/download` — Download a GGUF model
+- `GET /api/download-status` — Download progress
+
+### Hugging Face
+- `POST /api/hf-repo-search` — Search models on Hugging Face
+
+---
+
+## Usage
+
+### Starting a Model
+
+1. Add your model configuration to `webapp/data/models.json` (or via the web UI)
+2. Start the web UI: `./start.sh` (Linux) or `./start.ps1` (Windows)
+3. Navigate to `http://localhost:5000`
+4. Select your model and click "Start"
+5. Once running, use the chat interface to interact with the model
+
+### Mnemonic Proxy (Long Context)
+
+Enable `mnemonic_proxy.enabled: true` in a model's config to get:
+- KV cache slot save/restore across sessions
+- Context masking when approaching window limits
+- Semantic recall of past conversations
+- Automatic anchor-based state management
+
+### Remote Mode
+
+Set `REMOTE_MODE=true` and configure the remote URL to manage models on a remote llama-server instance instead of local processes.
+
+---
+
+## Development
+
+### Running Tests
+
+```bash
+pip install -r requirements.txt
+pip install pytest
+python -m pytest tests/
+```
+
+### Project Commands
+
+- `./start.sh` — Start the web app (Linux/macOS/WSL)
+- `./start.ps1` — Start the web app (Windows PowerShell)
+- `python -m pytest tests/` — Run the test suite
+
+---
+
+## Credits
+
+This project builds on the excellent work of:
+
+- **[llama.cpp](https://github.com/ggerganov/llama.cpp)** by Georgi Gerganov and contributors — the inference engine powering `llama-server`, with KV cache slots, speculative decoding, and multi-backend GPU support.
+- **[mnemonic-proxy](https://github.com/lastreload/mnemonic-proxy)** by lastreload — the context management proxy enabling long-context conversations via KV cache slot management, context masking, and semantic recall.
+
+Thank you to both teams for their hard work and excellent open-source software.
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+The llama.cpp and mnemonic-proxy projects are separately licensed under their respective licenses.
+
+---
+
+## Support
+
+For help with the Llama.cpp Model Manager:
+- Review the documentation in `docs/`
+- Consult the example configuration in `examples/models.example.json`
+- Open an issue on GitHub if you encounter problems
