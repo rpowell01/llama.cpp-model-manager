@@ -432,7 +432,7 @@ def api_start():
         
         log.info(f"Debug: WSL={WSL}, llama_server={llama_server}, platform={model_platform}")
         if WSL and str(llama_server).endswith('.exe'):
-            wrapper_path = BASE_DIR / "llama-server-wrapper.ps1"
+            wrapper_path = BASE_DIR / "webapp" / "scripts" / "llama-server-wrapper.ps1"
             if wrapper_path.exists():
                 # Convert WSL path to Windows path for PowerShell (use forward slashes)
                 wrapper_windows = str(wrapper_path).replace("/mnt/c/", "C:/").replace("/", "/")

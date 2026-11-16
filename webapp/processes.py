@@ -1018,7 +1018,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     
     # For Linux SYCL, prepend the wrapper script to set up Intel oneAPI environment
     if is_linux_sycl:
-        wrapper_path = BASE_DIR / "llama-server-sycl-wrapper.sh"
+        wrapper_path = BASE_DIR / "webapp" / "scripts" / "llama-server-sycl-wrapper.sh"
         if wrapper_path.exists():
             # Replace the binary path with the wrapper, passing original binary as first arg
             cmd = [str(wrapper_path), str(llama_server_binary)] + cmd[1:]
