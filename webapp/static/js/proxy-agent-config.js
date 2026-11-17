@@ -242,8 +242,9 @@ editor_model: {model_id}
     "options": {
       "baseURL": "{proxy_url}/v1",
       "apiKey": "dummy-key",
-      "rateLimitSeconds": 0.1,
-      "maxRetries": 3
+      "timeout": false,
+      "headerTimeout": false,
+      "chunkTimeout": 3600000
     },
     "models": {
       "{model_id}": {
@@ -286,8 +287,9 @@ editor_model: {model_id}
     "options": {
       "baseURL": "{proxy_url}/v1",
       "apiKey": "dummy-key",
-      "rateLimitSeconds": 0.1,
-      "maxRetries": 3
+      "timeout": false,
+      "headerTimeout": false,
+      "chunkTimeout": 3600000
     },
     "models": {
       "{model_id}": {

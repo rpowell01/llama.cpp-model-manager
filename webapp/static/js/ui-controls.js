@@ -263,15 +263,15 @@ function renderTiles(rows, dlMap, query) {
         const proxyStatusClass = proxyRunning ? "ok" : "warn";
         const proxyStatusText = proxyRunning ? "● proxy running" : "● proxy stopped";
         const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
-        // These controls manage only the mnemonic-proxy (and its MCP server) layer,
-        // completely independent of the model's own start/stop lifecycle.
-        const proxyStartDisabled = !proxyRunning && !proxyMcpRunning;
-        const proxyStopDisabled = !(proxyRunning || proxyMcpRunning);
+        // Proxy controls require the underlying model to be running.
+        // When running: Start disabled, Stop enabled. When stopped: Start enabled, Stop disabled.
+        const canStartProxy = running && !proxyRunning;
+        const canStopProxy = running && proxyRunning;
         proxyHtml = `
           <div class="proxy-status" style="margin-top: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
             <span class="chip ${proxyStatusClass}" title="Mnemonic-proxy on port ${proxyPort}${proxyMcpStatus}">${proxyStatusText} :${proxyPort}${proxyMcpStatus}</span>
-            <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true, ${proxyMcpEnabled ? 'true' : 'false'})" title="Start the mnemonic-proxy and (if enabled) its MCP server — independent of the model start/stop" ${proxyStartDisabled ? "disabled" : ""}>▶ Start</button>
-            <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false, ${proxyMcpEnabled ? 'true' : 'false'})" title="Stop the mnemonic-proxy and (if enabled) its MCP server — independent of the model start/stop" ${proxyStopDisabled ? "disabled" : ""}>&#9632; Stop</button>
+            <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true)" title="Start mnemonic-proxy" ${canStartProxy ? "" : "disabled"}>▶ Start</button>
+            <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false)" title="Stop mnemonic-proxy" ${canStopProxy ? "" : "disabled"}>■ Stop</button>
             <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
           </div>`;
       }
