@@ -71,8 +71,9 @@ function generateKiloCodeConfig(modelData, modelName) {
     options: {
       baseURL: baseURL,
       apiKey: '${LLAMA_CPP_API_KEY}',
-      rateLimitSeconds: 0.1,
-      maxRetries: 3,
+      timeout: false,
+      headerTimeout: false,
+      chunkTimeout: false,
       ...(Object.keys(headers).length > 0 ? { headers } : {})
     },
     models: {

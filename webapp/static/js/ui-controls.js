@@ -255,6 +255,7 @@ function renderTiles(rows, dlMap, query) {
       const proxyPort = proxy.port || 8096;
       const proxyMcpEnabled = proxy.mcp_enabled === true;
       const proxyMcpPort = proxy.mcp_port || 8133;
+      const proxyMcpRunning = proxy.mcp && proxy.mcp.running === true;
       const proxyDataDir = proxy.data_dir || '';
 
       let proxyHtml = "";
@@ -262,9 +263,15 @@ function renderTiles(rows, dlMap, query) {
         const proxyStatusClass = proxyRunning ? "ok" : "warn";
         const proxyStatusText = proxyRunning ? "● proxy running" : "● proxy stopped";
         const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
+        // These controls manage only the mnemonic-proxy (and its MCP server) layer,
+        // completely independent of the model's own start/stop lifecycle.
+        const proxyStartDisabled = !proxyRunning && !proxyMcpRunning;
+        const proxyStopDisabled = !(proxyRunning || proxyMcpRunning);
         proxyHtml = `
           <div class="proxy-status" style="margin-top: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
             <span class="chip ${proxyStatusClass}" title="Mnemonic-proxy on port ${proxyPort}${proxyMcpStatus}">${proxyStatusText} :${proxyPort}${proxyMcpStatus}</span>
+            <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true, ${proxyMcpEnabled ? 'true' : 'false'})" title="Start the mnemonic-proxy and (if enabled) its MCP server — independent of the model start/stop" ${proxyStartDisabled ? "disabled" : ""}>▶ Start</button>
+            <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false, ${proxyMcpEnabled ? 'true' : 'false'})" title="Stop the mnemonic-proxy and (if enabled) its MCP server — independent of the model start/stop" ${proxyStopDisabled ? "disabled" : ""}>&#9632; Stop</button>
             <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
           </div>`;
       }
@@ -3294,36 +3301,82 @@ function showPerformanceModal() {
 window.showPerformanceModal = showPerformanceModal;
 
 /**
- * Toggle mnemonic-proxy for a model
+ * Start/stop the mnemonic-proxy (and its MCP server) for a model.
+ * These controls operate only on the mnemonic-proxy + MCP layer and never
+ * touch the running model process, so they are independent of the tile's own
+ * Start/Stop button which manages the llama-server model lifecycle.
+ *
+ * When start is requested, the proxy is started first (via /api/proxy/start);
+ * if MCP is enabled for this model it is then brought up separately via
+ * /api/proxy/mcp/start (mirroring the auto-start behavior when a model starts).
+ * On stop, the MCP server is stopped first (if enabled) followed by the proxy.
+ *
  * @param {string} model - Model name
  * @param {boolean} start - true to start, false to stop
+ * @param {boolean} [mcpEnabled] - Whether MCP is enabled for this model
  */
-async function toggleProxy(model, start) {
+async function toggleProxy(model, start, mcpEnabled) {
   const action = start ? 'start' : 'stop';
-  const btn = event.target;
-  btn.disabled = true;
-  const prev = btn.textContent;
-  btn.textContent = start ? 'Starting…' : 'Stopping…';
-  
+  // Disable every proxy control button on the tile to prevent double-clicks.
+  const controls = document.querySelectorAll('.proxy-status button');
+  controls.forEach((b) => { b.disabled = true; });
+
   try {
-    const res = await fetch(`/api/proxy/${action}/${encodeURIComponent(model)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await res.json();
-    if (data.error) {
-      logHtml(`<b>Proxy ${action} error:</b> ${data.error}`, 'red');
+    if (start) {
+      const res = await fetch(`/api/proxy/start/${encodeURIComponent(model)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.error) {
+        logHtml(`<b>Proxy start error:</b> ${data.error}`, 'red');
+        return;
+      }
+      logHtml(`<b>Proxy started:</b> ${model} → ${data.status}`, 'green');
+
+      // Bring up the MCP server too when enabled (matches model auto-start).
+      if (mcpEnabled === true) {
+        const mres = await fetch(`/api/proxy/mcp/start/${encodeURIComponent(model)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const mdata = await mres.json();
+        if (mdata.error) {
+          logHtml(`<b>MCP start error:</b> ${mdata.error}`, 'orange');
+        } else {
+          logHtml(`<b>MCP started:</b> ${model} → ${mdata.status || 'started'}`, 'green');
+        }
+      }
     } else {
-      logHtml(`<b>Proxy ${action}:</b> ${model} → ${data.status}`, 'green');
+      // Stop MCP first (if enabled) so the proxy isn't left with a dangling child.
+      if (mcpEnabled === true) {
+        const mres = await fetch(`/api/proxy/mcp/stop/${encodeURIComponent(model)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const mdata = await mres.json();
+        if (mdata.error && mdata.status !== 'not_running') {
+          logHtml(`<b>MCP stop error:</b> ${mdata.error}`, 'orange');
+        }
+      }
+      const res = await fetch(`/api/proxy/stop/${encodeURIComponent(model)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.error) {
+        logHtml(`<b>Proxy stop error:</b> ${data.error}`, 'red');
+      } else {
+        logHtml(`<b>Proxy stopped:</b> ${model} → ${data.status}`, 'blue');
+      }
     }
-    // Refresh to update UI
+    // Refresh to update status chips and button enabled/disabled states.
     setTimeout(() => refresh(true), 500);
   } catch (e) {
     console.error('toggleProxy error:', e);
     logHtml(`<b>Proxy ${action} error:</b> ${e}`, 'red');
   } finally {
-    btn.disabled = false;
-    btn.textContent = prev;
+    controls.forEach((b) => { b.disabled = false; });
   }
 }
 window.toggleProxy = toggleProxy;

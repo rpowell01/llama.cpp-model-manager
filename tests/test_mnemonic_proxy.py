@@ -36,7 +36,9 @@ class TestMnemonicProxyConfigGeneration:
             assert config['engine'] == 'llama.cpp'
             # v0.3.24+: window is auto-discovered from engine, not in config
             assert 'window' not in config
-            assert config['upstream'] == 'http://127.0.0.1:9931'
+            # upstream and mcp_port are webapp-managed (CLI args), not written to config.json
+            assert 'upstream' not in config
+            assert 'mcp_port' not in config
             assert config['slot_dir'] == '/tmp/slots'
             assert config['mask_anchor'] is True
             assert config['autosave'] is True
@@ -95,7 +97,8 @@ class TestMnemonicProxyConfigGeneration:
             assert config['engine'] == 'llama.cpp'
             # v0.3.24+: window is auto-discovered from engine, not in config
             assert 'window' not in config
-            assert config['upstream'] == 'http://127.0.0.1:9931'
+            # upstream is passed as CLI arg, not written to config.json
+            assert 'upstream' not in config
     
     def test_generate_config_with_mcp(self):
         """Test config generation with MCP enabled."""
@@ -109,7 +112,9 @@ class TestMnemonicProxyConfigGeneration:
             manager = MnemonicProxyManager('test-model', 9931, mcp_enabled=True, mcp_port=8133)
             config = manager.generate_config()
             
-            assert config['mcp_port'] == 8133
+            # mcp_port is managed by webapp (passed to mnemonic-mcp CLI), not in config.json
+            assert 'mcp_port' not in config
+            assert manager.mcp_port == 8133
     
     def test_generate_config_custom_override(self):
         """Test config generation with custom override."""
@@ -352,7 +357,8 @@ class TestMnemonicProxyConfigPrecedence:
 
         # derived from the live model config, not the stale override
         assert config['slot_dir'] == 'data/qwen3-30b-a3b-instruct-2507-q4-k-s'
-        assert config['upstream'] == 'http://127.0.0.1:8123'
+        # upstream is webapp-managed (CLI arg), not written to config.json
+        assert 'upstream' not in config
         # unrelated override keys still apply
         assert config['mask_anchor'] is False
 

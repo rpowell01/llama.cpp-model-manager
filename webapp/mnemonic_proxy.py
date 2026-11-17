@@ -58,7 +58,9 @@ MCP_START_TIMEOUT = float(os.getenv("MNEMONIC_MCP_START_TIMEOUT", "15"))
 
 # Config keys that are always derived from the live model configuration and must
 # never be clobbered by a stale config_override (e.g. copy-pasted between models).
-_DERIVED_CONFIG_KEYS = ("upstream", "slot_dir")
+# These are either passed as CLI args (upstream) or managed by the webapp
+# (mcp_port) and must not be written into mnemonic-proxy's config.json.
+_DERIVED_CONFIG_KEYS = ("upstream", "slot_dir", "mcp_port")
 
 
 def _needs_zstd_shim() -> bool:
@@ -395,11 +397,12 @@ class MnemonicProxyManager:
             tokenizer = convert_path_for_binary(Path(tokenizer))
 
         # Build minimal config - v0.3.24+ auto-discovers window from engine for llama.cpp
-        # Only write what the proxy cannot discover
+        # Only write what the proxy cannot discover. Note: `upstream` and
+        # `mcp_port` are webapp-managed values (passed as CLI args to the
+        # mnemonic-proxy / mnemonic-mcp binaries) and must NOT be written into
+        # mnemonic-proxy's config.json.
         config = {
             "engine": engine,
-            # upstream always follows the live llama_port
-            "upstream": f"http://127.0.0.1:{self.llama_port}",
         }
 
         # Add slot_dir if available (required for saved state to work)
@@ -411,8 +414,13 @@ class MnemonicProxyManager:
             config["tokenizer"] = tokenizer
 
         # Warn about ignored stale overrides so models.json can be cleaned up
+        derived_values = {
+            "upstream": f"http://127.0.0.1:{self.llama_port}",
+            "slot_dir": slot_dir,
+            "mcp_port": self.mcp_port,
+        }
         for key, value in stale.items():
-            derived = config.get(key)
+            derived = derived_values.get(key)
             if value != derived:
                 log.warning(
                     f"Ignoring stale config_override[{key}]={value!r} for "
@@ -422,11 +430,7 @@ class MnemonicProxyManager:
         # Merge config_override (allows overriding any setting including window)
         if override:
             config.update(override)
-        
-        # MCP server config
-        if self.mcp_enabled:
-            config["mcp_port"] = self.mcp_port
-        
+
         log.info(f"Generated mnemonic-proxy config for {self.model_name}: {config}")
         return config
     
