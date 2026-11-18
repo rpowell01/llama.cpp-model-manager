@@ -1505,7 +1505,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       'warmup_max_tokens': 10,
       
       // Slot KV Cache Persistence
-      'slot_save_path': `./data/${modelName}`,
+      'slot_save_path': `./data/${modelName}/slots`,
       'cache_reuse': 32768,
       'keep': 32768,
       'swa_full': false,
@@ -1540,7 +1540,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       'mnemonic_proxy.enabled': false,
       'mnemonic_proxy.port': 8096,
       'mnemonic_proxy.data_dir': `./data/${modelName}`,
-      'mnemonic_proxy.slot_dir': `./data/${modelName}`,
+      'mnemonic_proxy.slot_dir': `./data/${modelName}/slots`,
       'mnemonic_proxy.tokenizer_path': '',
       // mnemonic_proxy.config_override will be fetched from API
       'mnemonic_proxy.mcp_enabled': false,

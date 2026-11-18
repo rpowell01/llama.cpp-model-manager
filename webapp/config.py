@@ -215,7 +215,7 @@ DEFAULTS: dict[str, Any] = {
     "warmup_message": "// TODO: add two numbers def add(a, b):",
     "warmup_max_tokens": 10,
     # Slot KV Cache Persistence
-    "slot_save_path": "./data/<model name>",
+    "slot_save_path": "./data/<model name>/slots",
     "cache_reuse": 32768,
     "keep": 32768,
     "log_verbosity": 4,
@@ -247,7 +247,7 @@ DEFAULTS: dict[str, Any] = {
         "enabled": False,
         "port": 8096,
         "data_dir": "",
-        "slot_dir": "./data/<model name>",
+        "slot_dir": "./data/<model name>/slots",
         "tokenizer_path": "",
         "mcp_enabled": False,
         "mcp_port": 8133,

@@ -1,11 +1,9 @@
 {
   "engine": "llama.cpp",
-  "upstream": "http://127.0.0.1:9931",
-  "autorestore": true,
-  "autorestore_min_gain": 8192,
   "autosave": true,
-  "autosave_idle_s": 60,
-  "autosave_min_tokens": 4096,
+  "autosave_idle_s": 30,
+  "autosave_keep": 8,
+  "autosave_max_gb": 10,
   "mask_anchor": true,
   "mask_reasoning": true,
   "mask_tool_args": true,
@@ -16,8 +14,10 @@
   "recall_struct": true,
   "recall_flex": true,
   "recall_multi": true,
-  "auto_recall": true,
+  "auto_recall": false,
   "tools_paging": true,
+  "tools_paging_native_split": true,
+  "tools_paging_native_split_build": "",
   "engine_tokenize": true,
   "mask_trigger": 14000,
   "mask_target": 8000,
@@ -28,8 +28,7 @@
   "kv_archive_idle_s": 600,
   "kv_archive_min_age_s": 1800,
   "kv_archive_level": 3,
-  "kv_archive_threads": 4,
+  "kv_archive_threads": 2,
   "kv_archive_poll_s": 60,
-  "kv_archive_min_bytes": 67108864,
-  "window_estimate_slack": 0.15
+  "kv_archive_min_bytes": 67108864
 }
