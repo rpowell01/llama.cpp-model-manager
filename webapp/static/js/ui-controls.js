@@ -220,6 +220,12 @@ function startProxyBadgeAutoRefresh() {
       const modelName = tile.dataset.model;
       if (!modelName) continue;
       
+      // Only fetch journal for models where proxy is actually RUNNING (chip has class "ok")
+      const proxyChip = tile.querySelector('.proxy-status .chip');
+      if (!proxyChip || !proxyChip.classList.contains('ok')) {
+        continue; // Proxy is not running, skip journal fetch
+      }
+      
       const badgeContainer = tile.querySelector('.proxy-health-badge-container');
       if (badgeContainer) {
         await updateProxyHealthBadge(modelName, badgeContainer);
