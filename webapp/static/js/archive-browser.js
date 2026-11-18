@@ -651,20 +651,6 @@ let _restoring = false;
     } else {
       virtualLists.conversations.setItems(currentData.conversations, currentConversationId);
     }
-    
-    // Ensure sticky header row exists (recreate if destroyed by loading placeholder)
-    if (!listEl.querySelector('.archive-conversation-header')) {
-      const header = document.createElement('div');
-      header.className = 'archive-conversation-header';
-      header.innerHTML = `
-        <div>ID / Title</div>
-        <div>Time Range</div>
-        <div>Msgs/Tokens/Segs</div>
-        <div>Preview</div>
-      `;
-      // Insert header at the beginning of the container (before spacers)
-      listEl.insertBefore(header, listEl.firstChild);
-    }
   }
 
   // Select conversation (highlight row) - called from VirtualList click handler
@@ -677,7 +663,7 @@ let _restoring = false;
     if (virtualLists.conversations) {
       const index = currentData.conversations.findIndex(c => c.id === convId);
       if (index >= 0) {
-        virtualLists.conversations.setSelectedIndex(index, false); // false = don't trigger callback again
+        virtualLists.conversations.setSelectedIndex(index);
       }
     }
     
@@ -879,9 +865,8 @@ let _restoring = false;
         }
       });
     } else {
-      // Pass currently selected event ID to preserve selection across re-renders
-      const selectedEventId = virtualLists.journal.getSelectedItem()?.id;
-      virtualLists.journal.setItems(currentData.journal, selectedEventId);
+      // setItems now auto-preserves selection when selectedId is not passed
+      virtualLists.journal.setItems(currentData.journal);
     }
   }
 
@@ -896,7 +881,7 @@ let _restoring = false;
     if (virtualLists.journal) {
       const index = currentData.journal.findIndex(e => e.id === eventId);
       if (index >= 0) {
-        virtualLists.journal.setSelectedIndex(index, false);
+        virtualLists.journal.setSelectedIndex(index);
       }
     }
     
@@ -1025,9 +1010,8 @@ let _restoring = false;
         }
       });
     } else {
-      // Pass currently selected piece ID to preserve selection across re-renders
-      const selectedPieceId = virtualLists.search.getSelectedItem()?.id;
-      virtualLists.search.setItems(currentData.search, selectedPieceId);
+      // setItems now auto-preserves selection when selectedId is not passed
+      virtualLists.search.setItems(currentData.search);
     }
   }
 
@@ -1043,7 +1027,7 @@ let _restoring = false;
     if (virtualLists.search) {
       const index = currentData.search.findIndex(p => p.id === pieceId);
       if (index >= 0) {
-        virtualLists.search.setSelectedIndex(index, false);
+        virtualLists.search.setSelectedIndex(index);
       }
     }
     
@@ -1156,9 +1140,8 @@ let _restoring = false;
         }
       });
     } else {
-      // Pass currently selected piece ID to preserve selection across re-renders
-      const selectedPieceId = virtualLists.fileHistory.getSelectedItem()?.id;
-      virtualLists.fileHistory.setItems(currentData.fileHistory, selectedPieceId);
+      // setItems now auto-preserves selection when selectedId is not passed
+      virtualLists.fileHistory.setItems(currentData.fileHistory);
     }
   }
 
@@ -1174,7 +1157,7 @@ let _restoring = false;
     if (virtualLists.fileHistory) {
       const index = currentData.fileHistory.findIndex(p => p.id === pieceId);
       if (index >= 0) {
-        virtualLists.fileHistory.setSelectedIndex(index, false);
+        virtualLists.fileHistory.setSelectedIndex(index);
       }
     }
     
@@ -1541,7 +1524,7 @@ let _restoring = false;
      * @param {Function} options.renderItem - Function(item, index) => HTML string
      * @param {number} [options.itemHeight=50] - Estimated height of each item in pixels
      * @param {number} [options.buffer=5] - Number of items to render above/below viewport
-     * @param {Function} [options.onItemClick] - Click handler: (item, index, event)
+     * @param {Function} [options.onItemClick] - Click handler: (item, index)
      * @param {string} [options.selectedId] - ID of currently selected item (for restoration)
      * @param {Function} [options.getItemId] - Function(item) => unique ID string
      */
@@ -1563,11 +1546,13 @@ let _restoring = false;
       this._scrollHandler = this._onScroll.bind(this);
       this._resizeHandler = this._onResize.bind(this);
       this._itemHeightMeasured = false;
+      this._rafPending = false;
       
       // Placeholder elements for maintaining scroll height
       this.topSpacer = null;
       this.bottomSpacer = null;
       this.contentWrapper = null;
+      this._resizeObserver = null;
       
       this._init();
     }
@@ -1589,7 +1574,15 @@ let _restoring = false;
       
       // Attach listeners
       this.container.addEventListener('scroll', this._scrollHandler, { passive: true });
-      window.addEventListener('resize', this._resizeHandler, { passive: true });
+      
+      // Use ResizeObserver for container size changes (more precise than window resize)
+      if (typeof ResizeObserver !== 'undefined') {
+        this._resizeObserver = new ResizeObserver(this._resizeHandler);
+        this._resizeObserver.observe(this.container);
+      } else {
+        // Fallback for older browsers
+        window.addEventListener('resize', this._resizeHandler, { passive: true });
+      }
       
       // Handle selection restoration (scroll to item on initial load)
       if (this.selectedId) {
@@ -1622,7 +1615,10 @@ let _restoring = false;
     
     _measure() {
       if (!this.container) return;
-      this.containerHeight = this.container.clientHeight;
+      const height = this.container.clientHeight;
+      // Guard against zero-height measurement when container is hidden
+      if (height === 0) return;
+      this.containerHeight = height;
       // Ensure we have a reasonable item height
       if (this.itemHeight <= 0) this.itemHeight = 50;
     }
@@ -1630,10 +1626,23 @@ let _restoring = false;
     _onScroll() {
       if (!this.container) return;
       this.scrollTop = this.container.scrollTop;
-      this._renderVisible();
+      
+      // Throttle with requestAnimationFrame - only schedule render if not already pending
+      if (!this._rafPending) {
+        this._rafPending = true;
+        requestAnimationFrame(() => {
+          this._rafPending = false;
+          this._renderVisible();
+        });
+      }
     }
     
     _onResize() {
+      // Guard against zero-height measurement when container is hidden
+      if (!this.container) return;
+      const height = this.container.clientHeight;
+      if (height === 0) return; // Container not visible, skip measurement
+      
       this._measure();
       this._renderVisible();
     }
@@ -1689,7 +1698,7 @@ let _restoring = false;
           
           // Add click handler
           if (this.onItemClick) {
-            child.addEventListener('click', (e) => this._handleClick(item, i, e));
+            child.addEventListener('click', () => this._handleClick(item, i));
             child.style.cursor = 'pointer';
           }
           
@@ -1744,20 +1753,20 @@ let _restoring = false;
       }
     }
     
-    _handleClick(item, index, event) {
+    _handleClick(item, index) {
       // Update visual selection without triggering callback (click handler will do that)
-      this.setSelectedIndex(index, false);
+      this.setSelectedIndex(index);
       
       // Call click handler (which will handle URL state, breadcrumbs, etc.)
       if (this.onItemClick) {
-        this.onItemClick(item, index, event);
+        this.onItemClick(item, index);
       }
     }
     
     _restoreSelectionById(id, restoreScroll = false) {
       const index = this.items.findIndex(item => this.getItemId(item) === id);
       if (index >= 0) {
-        this.setSelectedIndex(index, false);
+        this.setSelectedIndex(index);
         if (restoreScroll) {
           this.scrollToIndex(index);
         }
@@ -1766,11 +1775,17 @@ let _restoring = false;
     
     /**
      * Update the items array and re-render
+     * @param {*} selectedId - If undefined, preserves current selection. If null, clears selection. If string, sets new selection.
      * @param {boolean} [restoreScroll=false] - If true, scroll to selected item (for initial/deep-link restore)
      */
-    setItems(items, selectedId = null, restoreScroll = false) {
+    setItems(items, selectedId = undefined, restoreScroll = false) {
       this.items = items || [];
-      this.selectedId = selectedId;
+      
+      // Preserve current selection if selectedId not explicitly passed (undefined)
+      // Explicit null clears selection; explicit string sets new selection
+      if (selectedId !== undefined) {
+        this.selectedId = selectedId;
+      }
       this.selectedIndex = -1;
       this.renderedRange = { start: 0, end: 0 };
       
@@ -1794,7 +1809,7 @@ let _restoring = false;
       this._measure();
       this._renderVisible();
       
-      // Restore selection if provided
+      // Restore selection if we have one
       if (this.selectedId) {
         this._restoreSelectionById(this.selectedId, restoreScroll);
       }
@@ -1803,7 +1818,7 @@ let _restoring = false;
     /**
      * Set selected index and update visual selection
      */
-    setSelectedIndex(index, triggerCallback = true) {
+    setSelectedIndex(index) {
       if (index < 0 || index >= this.items.length) {
         this.selectedIndex = -1;
         this.selectedId = null;
@@ -1845,30 +1860,19 @@ let _restoring = false;
     }
     
     /**
-     * Get currently selected item
-     */
-    getSelectedItem() {
-      if (this.selectedIndex >= 0 && this.selectedIndex < this.items.length) {
-        return this.items[this.selectedIndex];
-      }
-      return null;
-    }
-    
-    /**
-     * Get selected index
-     */
-    getSelectedIndex() {
-      return this.selectedIndex;
-    }
-    
-    /**
      * Clean up event listeners
      */
     destroy() {
       if (this.container) {
         this.container.removeEventListener('scroll', this._scrollHandler);
       }
-      window.removeEventListener('resize', this._resizeHandler);
+      // Clean up ResizeObserver
+      if (this._resizeObserver) {
+        this._resizeObserver.disconnect();
+        this._resizeObserver = null;
+      } else {
+        window.removeEventListener('resize', this._resizeHandler);
+      }
       this.container = null;
       this.contentWrapper = null;
       this.topSpacer = null;
@@ -1878,7 +1882,7 @@ let _restoring = false;
   }
 
   // Open modal
-  function openModal(modelName = null) {
+  function openModal(modelName = null, conversationId = null) {
     if (!elements.modal) return;
     
     cacheElements();
@@ -1907,6 +1911,11 @@ let _restoring = false;
         elements.modelSelect.value = modelName;
         currentModel = modelName;
         loadCurrentView();
+        
+        // If conversationId provided, navigate to that conversation
+        if (conversationId) {
+          navigateToConversation(conversationId);
+        }
       }
       // If no modelName and no URL state, wait for user to select a model
       
@@ -1917,6 +1926,43 @@ let _restoring = false;
     // Register cleanup with ModalManager
     if (window.ModalManager) {
       window.ModalManager.register('archive-browser-modal', cleanup);
+    }
+  }
+
+  // Navigate to a specific conversation
+  async function navigateToConversation(conversationId) {
+    if (!currentModel || !conversationId) return;
+    
+    // First load conversations to find the conversation
+    const pg = pagination.conversations;
+    const listEl = elements.lists.conversations;
+    
+    if (!listEl) return;
+    
+    try {
+      // Load the conversation detail directly
+      currentConversationId = conversationId;
+      updateBreadcrumbs();
+      updateURLState();
+      
+      // Switch to conversations view if not already there
+      if (currentView !== 'conversations') {
+        showView('conversations');
+      }
+      
+      // Load conversation detail
+      await loadConversationDetail(conversationId);
+      
+      // Highlight the conversation in the list
+      if (virtualLists.conversations) {
+        const index = currentData.conversations.findIndex(c => c.id === conversationId);
+        if (index >= 0) {
+          virtualLists.conversations.setSelectedIndex(index, false);
+          virtualLists.conversations.scrollToIndex(index);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to navigate to conversation:', e);
     }
   }
 
@@ -1977,7 +2023,8 @@ let _restoring = false;
   window.ArchiveBrowser = {
     open: openModal,
     close: closeModal,
-    loadModelList: loadModelList
+    loadModelList: loadModelList,
+    navigateToConversation: navigateToConversation
   };
 
   // Initialize when DOM is ready

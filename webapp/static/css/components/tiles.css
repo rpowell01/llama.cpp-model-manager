@@ -262,3 +262,64 @@
 .proxy-status .actions-btn.goto {
   background: var(--blue);
 }
+
+/* Proxy health badge */
+.proxy-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid;
+  transition: all 0.2s ease;
+}
+
+.proxy-health-badge-container {
+  display: inline-flex;
+  align-items: center;
+}
+
+.proxy-health-badge.error {
+  background: var(--red)20;
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.proxy-health-badge.guard {
+  background: var(--orange)20;
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.proxy-health-badge.low_reuse {
+  background: var(--orange)20;
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.proxy-health-badge.archive_ok {
+  background: var(--green)20;
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.proxy-health-badge.idle {
+  background: var(--surface2);
+  border-color: var(--surface3);
+  color: var(--text2);
+}
+
+/* Animation for badge updates */
+@keyframes badge-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.proxy-health-badge.updated {
+  animation: badge-pulse 0.3s ease-out;
+}

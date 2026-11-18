@@ -41,7 +41,6 @@ from webapp.routes.lifecycle import lifecycle_bp
 from webapp.routes.models import models_bp
 from webapp.routes.status import status_bp
 from webapp.routes.system import system_bp
-from webapp.routes.archive import archive_bp
 
 
 def _get_wsl_ips() -> list[str]:
@@ -176,8 +175,6 @@ def main() -> None:
     log.info("status_bp registered")
     app.register_blueprint(system_bp)
     log.info("system_bp registered")
-    app.register_blueprint(archive_bp)
-    log.info("archive_bp registered")
     log.info("All blueprints registered")
 
     # Load models cache (skip in remote mode)

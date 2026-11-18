@@ -59,6 +59,226 @@ function heNum(num) {
   return he(Number(num).toLocaleString());
 }
 
+/**
+ * Proxy health badge types and their display properties
+ */
+const PROXY_HEALTH_BADGES = {
+  error: { label: 'Error', color: 'var(--red)', bg: 'var(--red)20', border: 'var(--red)', icon: '❌' },
+  guard: { label: 'Guard Active', color: 'var(--orange)', bg: 'var(--orange)20', border: 'var(--orange)', icon: '🛡️' },
+  low_reuse: { label: 'Low Reuse', color: 'var(--orange)', bg: 'var(--orange)20', border: 'var(--orange)', icon: '🎭' },
+  archive_ok: { label: 'Archive OK', color: 'var(--green)', bg: 'var(--green)20', border: 'var(--green)', icon: '💾' },
+  idle: { label: 'Idle', color: 'var(--text2)', bg: 'var(--surface2)', border: 'var(--surface3)', icon: '⏸️' },
+};
+
+/**
+ * Fetch recent journal events for a model from the archive API.
+ * @param {string} model - Model name
+ * @param {number} limit - Number of events to fetch (default: 50)
+ * @returns {Promise<Array>} Array of journal events
+ */
+async function fetchProxyJournalEvents(model, limit = 50) {
+  try {
+    const resp = await fetch(`/api/proxy/archive/journal/${encodeURIComponent(model)}?limit=${limit}`);
+    const data = await resp.json();
+    if (data.error) {
+      console.warn(`Journal fetch error for ${model}:`, data.error);
+      return [];
+    }
+    return data.events || [];
+  } catch (e) {
+    console.warn(`Failed to fetch journal for ${model}:`, e);
+    return [];
+  }
+}
+
+/**
+ * Compute proxy health badge state from journal events.
+ * Priority order: error > guard > low_reuse > archive_ok > idle
+ * @param {Array} events - Journal events (most recent first or last)
+ * @returns {Object} Badge state: { type, label, color, bg, border, icon }
+ */
+function computeProxyHealthBadge(events) {
+  if (!events || events.length === 0) {
+    return PROXY_HEALTH_BADGES.idle;
+  }
+
+  // Analyze last 50 events (most recent)
+  const recentEvents = events.slice(-50);
+
+  // 1. Check for errors (highest priority)
+  const hasError = recentEvents.some(e => 
+    e.event === 'error' || 
+    e.event === 'proxy_error' || 
+    e.event === 'client_disconnected'
+  );
+  if (hasError) {
+    return PROXY_HEALTH_BADGES.error;
+  }
+
+  // 2. Check for guard/window_guard events
+  const hasGuard = recentEvents.some(e => 
+    e.event === 'guard' || 
+    e.event === 'window_guard'
+  );
+  if (hasGuard) {
+    return PROXY_HEALTH_BADGES.guard;
+  }
+
+  // 3. Check for low mask reuse (mask_reuse gap)
+  const requestEvents = recentEvents.filter(e => 
+    e.event === 'request' && e.virtual_tokens && e.prompt_tokens
+  );
+  if (requestEvents.length > 0) {
+    const gaps = requestEvents.map(e => {
+      const virtual = e.virtual_tokens || 0;
+      const active = e.prompt_tokens || 0;
+      return virtual > 0 ? ((virtual - active) / virtual) * 100 : 0;
+    });
+    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    if (avgGap > 50) { // More than 50% gap = low reuse
+      return PROXY_HEALTH_BADGES.low_reuse;
+    }
+  }
+
+  // 4. Check for successful kv_archive
+  const hasArchiveSuccess = recentEvents.some(e => 
+    (e.event === 'kv_archive' || e.event === 'archive_save') && e.success !== false
+  );
+  if (hasArchiveSuccess) {
+    return PROXY_HEALTH_BADGES.archive_ok;
+  }
+
+  // 5. Default to idle
+  return PROXY_HEALTH_BADGES.idle;
+}
+
+/**
+ * Render proxy health badge HTML for a model.
+ * @param {Object} modelData - Model data row (with mnemonic_proxy info)
+ * @param {Array} journalEvents - Optional pre-fetched journal events
+ * @returns {string} HTML for the badge
+ */
+function renderProxyHealthBadge(modelData, journalEvents = null) {
+  const proxy = modelData.mnemonic_proxy || {};
+  if (!proxy.enabled) {
+    return ''; // No badge if proxy not enabled
+  }
+
+  const badge = journalEvents ? computeProxyHealthBadge(journalEvents) : PROXY_HEALTH_BADGES.idle;
+  
+  return `
+    <span class="proxy-health-badge" 
+          style="display: inline-flex; align-items: center; gap: 0.25rem; 
+                 padding: 0.15rem 0.5rem; border-radius: 4px; 
+                 font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+                 background: ${badge.bg}; border: 1px solid ${badge.border}; color: ${badge.color};
+                 white-space: nowrap;"
+          title="Proxy health: ${badge.label}${journalEvents ? ` (from ${journalEvents.length} events)` : ' (no events)'}">
+      ${badge.icon} ${badge.label}
+    </span>
+  `;
+}
+
+/**
+ * Fetch and update proxy health badge for a specific model tile.
+ * @param {string} modelName - Model name
+ * @param {HTMLElement} badgeContainer - Container element to update
+ */
+async function updateProxyHealthBadge(modelName, badgeContainer) {
+  if (!badgeContainer) return;
+  
+  const events = await fetchProxyJournalEvents(modelName, 50);
+  const badge = computeProxyHealthBadge(events);
+  
+  badgeContainer.innerHTML = `
+    <span class="proxy-health-badge" 
+          style="display: inline-flex; align-items: center; gap: 0.25rem; 
+                 padding: 0.15rem 0.5rem; border-radius: 4px; 
+                 font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+                 background: ${badge.bg}; border: 1px solid ${badge.border}; color: ${badge.color};
+                 white-space: nowrap;"
+          title="Proxy health: ${badge.label} (from ${events.length} events)">
+      ${badge.icon} ${badge.label}
+    </span>
+  `;
+}
+
+// Store active badge update intervals for cleanup
+const proxyBadgeIntervals = new Map();
+
+/**
+ * Start auto-refresh for proxy health badges on all visible tiles.
+ * Runs every 5 seconds.
+ */
+function startProxyBadgeAutoRefresh() {
+  // Clear any existing intervals
+  stopProxyBadgeAutoRefresh();
+  
+  const interval = setInterval(async () => {
+    const tiles = document.querySelectorAll('.tile[data-model]');
+    for (const tile of tiles) {
+      const modelName = tile.dataset.model;
+      if (!modelName) continue;
+      
+      const badgeContainer = tile.querySelector('.proxy-health-badge-container');
+      if (badgeContainer) {
+        await updateProxyHealthBadge(modelName, badgeContainer);
+      }
+    }
+  }, 5000);
+  
+  proxyBadgeIntervals.set('global', interval);
+}
+
+/**
+ * Stop all proxy badge auto-refresh intervals.
+ */
+function stopProxyBadgeAutoRefresh() {
+  for (const [key, interval] of proxyBadgeIntervals) {
+    clearInterval(interval);
+  }
+  proxyBadgeIntervals.clear();
+}
+
+// Expose globally for use in model-manager.js
+window.startProxyBadgeAutoRefresh = startProxyBadgeAutoRefresh;
+window.stopProxyBadgeAutoRefresh = stopProxyBadgeAutoRefresh;
+window.fetchProxyJournalEvents = fetchProxyJournalEvents;
+window.computeProxyHealthBadge = computeProxyHealthBadge;
+window.renderProxyHealthBadge = renderProxyHealthBadge;
+window.updateProxyHealthBadge = updateProxyHealthBadge;
+
+/**
+ * Fetch and update proxy health badges for all visible tiles with enabled proxy.
+ * Called after renderTiles completes.
+ */
+async function updateAllProxyHealthBadges() {
+  const tiles = document.querySelectorAll('.tile[data-model]');
+  for (const tile of tiles) {
+    const modelName = tile.dataset.model;
+    if (!modelName) continue;
+    
+    const proxy = tile.querySelector('.proxy-status');
+    if (!proxy) continue; // No proxy enabled for this model
+    
+    // Only fetch journal for models where proxy is actually RUNNING (chip has class "ok")
+    const proxyChip = tile.querySelector('.proxy-status .chip');
+    if (!proxyChip || !proxyChip.classList.contains('ok')) {
+      continue; // Proxy is not running, skip journal fetch
+    }
+    
+    const badgeContainer = tile.querySelector('.proxy-health-badge-container');
+    if (badgeContainer) {
+      await updateProxyHealthBadge(modelName, badgeContainer);
+    }
+  }
+  
+  // Start auto-refresh if not already running
+  startProxyBadgeAutoRefresh();
+}
+
+window.updateAllProxyHealthBadges = updateAllProxyHealthBadges;
+
 // Context and YaRN values are persisted in token counts. Keep dropdown option
 // values in the same unit so a saved value is not interpreted as kilobytes when
 // the properties panel is rendered again.
@@ -278,9 +498,25 @@ function renderTiles(rows, dlMap, query) {
         // When running: Start disabled, Stop enabled. When stopped: Start enabled, Stop disabled.
         const canStartProxy = running && !proxyRunning;
         const canStopProxy = running && proxyRunning;
+        
+        // Initial health badge (idle) - will be updated asynchronously
+        const initialBadge = PROXY_HEALTH_BADGES.idle;
+        const badgeHtml = `
+          <span class="proxy-health-badge" 
+                style="display: inline-flex; align-items: center; gap: 0.25rem; 
+                       padding: 0.15rem 0.5rem; border-radius: 4px; 
+                       font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+                       background: ${initialBadge.bg}; border: 1px solid ${initialBadge.border}; color: ${initialBadge.color};
+                       white-space: nowrap;"
+                title="Proxy health: ${initialBadge.label} (loading...)">
+            ${initialBadge.icon} ${initialBadge.label}
+          </span>
+        `;
+        
         proxyHtml = `
           <div class="proxy-status" style="margin-top: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
             <span class="chip ${proxyStatusClass}" title="Mnemonic-proxy on port ${proxyPort}${proxyMcpStatus}">${proxyStatusText} :${proxyPort}${proxyMcpStatus}</span>
+            <span class="proxy-health-badge-container">${badgeHtml}</span>
             <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true)" title="Start mnemonic-proxy" ${canStartProxy ? "" : "disabled"}>▶ Start</button>
             <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false)" title="Stop mnemonic-proxy" ${canStopProxy ? "" : "disabled"}>■ Stop</button>
             <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
@@ -470,8 +706,7 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         "')\">\u274C Delete</button>" +
         (r.mnemonic_proxy && r.mnemonic_proxy.enabled ? 
-          ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' +
-          ' <button class="archive-btn" onclick="event.stopPropagation(); window.ArchiveBrowser?.open(\'' + jsEscape(r.model) + '\')" title="Open Archive Browser for this model">📚 Archive</button>' : '') +
+          ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' : '') +
         "</div>" +
         "</div>"
       );
@@ -482,6 +717,9 @@ function renderTiles(rows, dlMap, query) {
 
   // Bind context menu to proxy status chips for Archive Browser access
   bindProxyStatusContextMenus();
+
+  // Fetch and update proxy health badges for all tiles with enabled proxy
+  updateAllProxyHealthBadges();
 }
 
 /**
@@ -1231,6 +1469,17 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     addEditable("Enable MCP Server", "mnemonic_proxy.mcp_enabled", mp.mcp_enabled !== undefined ? mp.mcp_enabled : false, "checkbox");
     addEditable("MCP Port", "mnemonic_proxy.mcp_port", mp.mcp_port !== undefined ? mp.mcp_port : 8133, "number", 1, 1);
+    
+    // Open in Archive button (only show if proxy is enabled)
+    const proxyEnabled = mp.enabled === true;
+    html += `<div class="panel-item" id="archive-browser-btn-container" style="${proxyEnabled ? '' : 'display: none;'}">
+      <span class="label"></span>
+      <span class="value">
+        <button type="button" class="btn-goto" id="open-archive-browser-${modelSafeId}" style="padding: 0.5rem 1rem;" title="Open Archive Browser for this model">
+          📚 Open in Archive Browser
+        </button>
+      </span>
+    </div>`;
     
     html += `</div></div>`;
 
@@ -2053,6 +2302,28 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       if (mmprojOffloadInput) currentData.mmproj_offload = mmprojOffloadInput.checked;
       openKiloCodeModal(currentData, modelName);
     });
+  }
+
+  // Attach Open in Archive Browser button listener
+  const openArchiveBtn = document.getElementById(`open-archive-browser-${modelSafeId}`);
+  if (openArchiveBtn) {
+    openArchiveBtn.addEventListener("click", () => {
+      if (window.ArchiveBrowser) {
+        window.ArchiveBrowser.open(modelName);
+      }
+    });
+  }
+
+  // Toggle Archive Browser button visibility based on proxy enabled checkbox
+  const proxyEnabledCheckbox = content.querySelector('.meta-input[data-field="mnemonic_proxy.enabled"]');
+  const archiveBtnContainer = document.getElementById(`archive-browser-btn-container`);
+  if (proxyEnabledCheckbox && archiveBtnContainer) {
+    const toggleArchiveBtn = () => {
+      archiveBtnContainer.style.display = proxyEnabledCheckbox.checked ? '' : 'none';
+    };
+    proxyEnabledCheckbox.addEventListener('change', toggleArchiveBtn);
+    // Initial state
+    toggleArchiveBtn();
   }
 
   // Attach optimize settings button listener (Empirical Benchmarks)
@@ -4075,6 +4346,28 @@ async function showProxyMetrics(model) {
     
     contentEl.innerHTML = html;
     
+    // Update summary badge in modal header
+    const summaryBadgeEl = document.getElementById('proxy-metrics-summary-badge');
+    if (summaryBadgeEl && healthSummary) {
+      // Compute overall badge from health summary
+      let badge = PROXY_HEALTH_BADGES.idle;
+      if (healthSummary.recentErrors > 0) {
+        badge = PROXY_HEALTH_BADGES.error;
+      } else if (healthSummary.guardPressure > 0) {
+        badge = PROXY_HEALTH_BADGES.guard;
+      } else if (healthSummary.maskReuseGap !== null && healthSummary.maskReuseGap > 50) {
+        badge = PROXY_HEALTH_BADGES.low_reuse;
+      } else if (healthSummary.lastKvArchive && healthSummary.lastKvArchive.success) {
+        badge = PROXY_HEALTH_BADGES.archive_ok;
+      }
+      
+      summaryBadgeEl.innerHTML = `${badge.icon} ${badge.label}`;
+      summaryBadgeEl.style.background = badge.bg;
+      summaryBadgeEl.style.border = `1px solid ${badge.border}`;
+      summaryBadgeEl.style.color = badge.color;
+      summaryBadgeEl.title = `Proxy health: ${badge.label}`;
+    }
+    
     // Add tab click listeners
     contentEl.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -4148,7 +4441,10 @@ async function showProxyMetrics(model) {
     <div id="proxy-metrics-modal" class="modal-overlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1500; align-items: center; justify-content: center;" aria-hidden="false">
       <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 1100px; width: 95%; max-height: 85vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-          <h3 style="margin: 0; color: var(--text);">Mnemonic-Proxy Metrics: ${he(model)}</h3>
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <h3 style="margin: 0; color: var(--text);">Mnemonic-Proxy Metrics: ${he(model)}</h3>
+            <span id="proxy-metrics-summary-badge" class="proxy-health-badge" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; white-space: nowrap;">Loading...</span>
+          </div>
           <button id="proxy-metrics-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
         </div>
         <div style="flex: 1; overflow: auto;" id="proxy-metrics-content">

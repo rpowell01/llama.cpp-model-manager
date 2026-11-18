@@ -308,10 +308,15 @@ function renderChatInModal(modelName) {
             <div class="panel-item"><span class="label">Combined</span><span class="value" id="chat-pg-${modelSafeId}">${he(pgVal)}</span></div>
           </div>
         </div>
-        <!-- Chat header with title and clear button -->
+        <!-- Chat header with title, archive button, and clear button -->
         <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <h3 style="margin: 0;">Chat</h3>
-          <button id="chat-modal-clear" class="btn-chat-clear">Clear Conversation</button>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button id="chat-open-archive-${modelSafeId}" class="btn-goto" style="padding: 0.375rem 0.75rem; font-size: 0.85rem;" title="Open Archive Browser for this conversation">
+              📚 Open in Archive
+            </button>
+            <button id="chat-modal-clear" class="btn-chat-clear">Clear Conversation</button>
+          </div>
         </div>
         <div class="chat-messages" id="chat-messages-${modelSafeId}"></div>
         <div class="chat-input-area">
@@ -334,6 +339,16 @@ function renderChatInModal(modelName) {
   const sendBtn = document.getElementById(`chat-send-${modelSafeId}`);
   if (sendBtn) {
     sendBtn.onclick = () => sendChatMessage(modelName);
+  }
+
+  // Attach Open in Archive button handler
+  const openArchiveBtn = document.getElementById(`chat-open-archive-${modelSafeId}`);
+  if (openArchiveBtn) {
+    openArchiveBtn.addEventListener("click", () => {
+      if (window.ArchiveBrowser) {
+        window.ArchiveBrowser.open(modelName);
+      }
+    });
   }
 
   // Attach textarea Enter-to-send (Shift+Enter for newline)
