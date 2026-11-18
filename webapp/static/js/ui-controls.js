@@ -48,6 +48,17 @@ function loadTilePrefs() {
 
 let tilePrefs = loadTilePrefs();
 
+/**
+ * Format a number with locale formatting, then escape for HTML output.
+ * Uses the global `he` from core.js for escaping.
+ * @param {number|null|undefined} num - Number to format and escape
+ * @returns {string} HTML-escaped formatted number, or 'N/A' for null/undefined
+ */
+function heNum(num) {
+  if (num === null || num === undefined) return 'N/A';
+  return he(Number(num).toLocaleString());
+}
+
 // Context and YaRN values are persisted in token counts. Keep dropdown option
 // values in the same unit so a saved value is not interpreted as kilobytes when
 // the properties panel is rendered again.
@@ -3503,23 +3514,6 @@ async function showProxyMetrics(model) {
   let journalEvents = null;
   let healthSummary = null;
   let journalFetchError = null;
-  
-  // Helper to escape HTML
-  function he(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/"/g, '"')
-      .replace(/'/g, '&apos;');
-  }
-  
-  // Helper to format number then escape
-  function heNum(num) {
-    if (num === null || num === undefined) return 'N/A';
-    return he(Number(num).toLocaleString());
-  }
   
   async function fetchAllData() {
     try {

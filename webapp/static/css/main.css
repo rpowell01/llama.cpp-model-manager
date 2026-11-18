@@ -29,7 +29,7 @@
 @import url("components/modals.css");
 
 /* 10. Archive Browser components */
-@import url("components/archive-browser.css");
+@import url("components/archive-browser.css?v=20261118a");
 
 /* 11. Responsive adjustments */
 @import url("responsive.css");

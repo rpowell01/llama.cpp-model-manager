@@ -20,6 +20,22 @@
     search: { offset: 0, limit: 50, total: 0, query: '', mode: 'default', queries: [] },
     fileHistory: { offset: 0, limit: 50, total: 0, path: '' }
   };
+
+  // VirtualList instances for each view
+  let virtualLists = {
+    conversations: null,
+    journal: null,
+    search: null,
+    fileHistory: null
+  };
+
+  // Store current data arrays for virtualization
+  let currentData = {
+    conversations: [],
+    journal: [],
+    search: [],
+    fileHistory: []
+  };
   
   // Debounce timer for search
   let searchDebounceTimer = null;
@@ -568,25 +584,29 @@ let _restoring = false;
     }
   }
 
-  // Render conversations list
+  // Render conversations list using VirtualList (div-based layout for proper virtualization)
   function renderConversations(conversations) {
     const listEl = elements.lists.conversations;
     if (!listEl) return;
     
-    if (conversations.length === 0) {
+    // Store data for virtualization
+    currentData.conversations = conversations || [];
+    
+    if (currentData.conversations.length === 0) {
       listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">💬</div><div>No conversations found</div></div>';
+      // Clean up existing virtual list
+      if (virtualLists.conversations) {
+        virtualLists.conversations.destroy();
+        virtualLists.conversations = null;
+      }
       return;
     }
     
-    let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">';
-    html += '<thead><tr style="text-align: left; color: var(--text2);">';
-    html += '<th style="padding: 0.25rem; width: 40%;">ID / Title</th>';
-    html += '<th style="padding: 0.25rem; width: 20%;">Time Range</th>';
-    html += '<th style="padding: 0.25rem; width: 15%;">Msgs/Tokens/Segs</th>';
-    html += '<th style="padding: 0.25rem; width: 25%;">Preview</th>';
-    html += '</tr></thead><tbody>';
+    // Item height estimate for conversation items (matches contain-intrinsic-size: 52px)
+    const ITEM_HEIGHT = 52;
     
-    conversations.forEach(conv => {
+    // Render item function for VirtualList
+    function renderConversationItem(conv, index) {
       const id = conv.id || '';
       const title = conv.title || '(untitled)';
       const created = conv.created_at || '';
@@ -601,45 +621,65 @@ let _restoring = false;
         preview = conv.preview.substring(0, 80);
       }
       
-      html += `<tr class="archive-conversation-row" data-conv-id="${he(id)}">`;
-      html += `<td><div class="conv-id">${he(id.substring(0, 20))}…</div><div class="conv-title" title="${he(title)}">${he(title)}</div></td>`;
-      html += `<td class="conv-time">${he(formatTimeRange(created, updated))}</td>`;
-      html += `<td class="conv-stats">${msgCount} / ${tokenCount.toLocaleString()} / ${segCount}</td>`;
-      html += `<td class="conv-preview" title="${he(preview)}">${he(preview)}</td>`;
-      html += '</tr>';
-    });
+      let html = `<div class="archive-conversation-item" data-conv-id="${he(id)}">`;
+      html += `<div class="conv-row">`;
+      html += `<div class="conv-col conv-col-id"><div class="conv-id">${he(id.substring(0, 20))}…</div><div class="conv-title" title="${he(title)}">${he(title)}</div></div>`;
+      html += `<div class="conv-col conv-col-time">${he(formatTimeRange(created, updated))}</div>`;
+      html += `<div class="conv-col conv-col-stats">${msgCount} / ${tokenCount.toLocaleString()} / ${segCount}</div>`;
+      html += `<div class="conv-col conv-col-preview" title="${he(preview)}">${he(preview)}</div>`;
+      html += `</div>`;
+      html += `</div>`;
+      return html;
+    }
     
-    html += '</tbody></table>';
-    listEl.innerHTML = html;
+    // Initialize or update VirtualList
+    if (!virtualLists.conversations) {
+      virtualLists.conversations = new VirtualList({
+        container: listEl,
+        items: currentData.conversations,
+        renderItem: renderConversationItem,
+        itemHeight: ITEM_HEIGHT,
+        buffer: 5,
+        getItemId: (conv) => conv.id || '',
+        selectedId: currentConversationId,
+        onItemClick: (conv, index) => {
+          const convId = conv.id;
+          selectConversation(convId);
+          loadConversationDetail(convId);
+        }
+      });
+    } else {
+      virtualLists.conversations.setItems(currentData.conversations, currentConversationId);
+    }
     
-    // Add click handlers
-    listEl.querySelectorAll('.archive-conversation-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const convId = row.dataset.convId;
-        // Single click: select and open session detail (per requirement)
-        selectConversation(convId);
-        loadConversationDetail(convId);
-      });
-      
-      // Double-click also opens detail (kept for consistency)
-      row.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        const convId = row.dataset.convId;
-        loadConversationDetail(convId);
-      });
-    });
+    // Ensure sticky header row exists (recreate if destroyed by loading placeholder)
+    if (!listEl.querySelector('.archive-conversation-header')) {
+      const header = document.createElement('div');
+      header.className = 'archive-conversation-header';
+      header.innerHTML = `
+        <div>ID / Title</div>
+        <div>Time Range</div>
+        <div>Msgs/Tokens/Segs</div>
+        <div>Preview</div>
+      `;
+      // Insert header at the beginning of the container (before spacers)
+      listEl.insertBefore(header, listEl.firstChild);
+    }
   }
 
-  // Select conversation (highlight row)
+  // Select conversation (highlight row) - called from VirtualList click handler
   function selectConversation(convId) {
-    // Update selection visual
-    document.querySelectorAll('.archive-conversation-row').forEach(row => {
-      row.classList.toggle('selected', row.dataset.convId === convId);
-    });
-    
     currentConversationId = convId;
     updateBreadcrumbs();
     updateURLState();
+    
+    // Update VirtualList selection if it exists
+    if (virtualLists.conversations) {
+      const index = currentData.conversations.findIndex(c => c.id === convId);
+      if (index >= 0) {
+        virtualLists.conversations.setSelectedIndex(index, false); // false = don't trigger callback again
+      }
+    }
     
     // Load journal for this conversation
     if (currentView === 'journal') {
@@ -781,25 +821,36 @@ let _restoring = false;
     }
   }
 
-  // Render journal list
+  // Render journal list using VirtualList
   function renderJournal(events) {
     const listEl = elements.lists.journal;
     if (!listEl) return;
     
-    if (events.length === 0) {
+    // Store data for virtualization
+    currentData.journal = events || [];
+    
+    if (currentData.journal.length === 0) {
       listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📋</div><div>No journal events found</div></div>';
+      // Clean up existing virtual list
+      if (virtualLists.journal) {
+        virtualLists.journal.destroy();
+        virtualLists.journal = null;
+      }
       return;
     }
     
-    let html = '';
-    events.forEach(event => {
+    // Item height estimate for journal items (accounts for wrapped journal-data content)
+    const ITEM_HEIGHT = 100;
+    
+    // Render item function for VirtualList
+    function renderJournalItem(event, index) {
       const id = event.id || '';
       const eventType = event.event_type || 'unknown';
       const timestamp = formatTimestamp(event.timestamp);
       const convId = event.conversation_id || '';
       const data = event.data ? JSON.stringify(event.data).substring(0, 200) : '{}';
       
-      html += `<div class="archive-journal-item" data-event-id="${he(id)}" data-conv-id="${he(convId)}">`;
+      let html = `<div class="archive-journal-item" data-event-id="${he(id)}" data-conv-id="${he(convId)}">`;
       html += `<div class="journal-header">`;
       html += `<span class="journal-event-type ${he(eventType)}">${he(eventType)}</span>`;
       html += `<span class="journal-timestamp">${he(timestamp)}</span>`;
@@ -809,29 +860,44 @@ let _restoring = false;
       }
       html += `<div class="journal-data">${he(data)}${event.data && JSON.stringify(event.data).length > 200 ? '…' : ''}</div>`;
       html += `</div>`;
-    });
+      return html;
+    }
     
-    listEl.innerHTML = html;
-    
-    // Add click handlers
-    listEl.querySelectorAll('.archive-journal-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const eventId = item.dataset.eventId;
-        const convId = item.dataset.convId;
-        selectJournalEvent(eventId, convId);
+    // Initialize or update VirtualList
+    if (!virtualLists.journal) {
+      virtualLists.journal = new VirtualList({
+        container: listEl,
+        items: currentData.journal,
+        renderItem: renderJournalItem,
+        itemHeight: ITEM_HEIGHT,
+        buffer: 5,
+        getItemId: (event) => event.id || '',
+        onItemClick: (event, index) => {
+          const eventId = event.id;
+          const convId = event.conversation_id;
+          selectJournalEvent(eventId, convId);
+        }
       });
-    });
+    } else {
+      // Pass currently selected event ID to preserve selection across re-renders
+      const selectedEventId = virtualLists.journal.getSelectedItem()?.id;
+      virtualLists.journal.setItems(currentData.journal, selectedEventId);
+    }
   }
 
-  // Select journal event
+  // Select journal event - called from VirtualList click handler
   function selectJournalEvent(eventId, convId) {
-    document.querySelectorAll('.archive-journal-item').forEach(item => {
-      item.classList.toggle('selected', item.dataset.eventId === eventId);
-    });
-    
     if (convId) {
       currentConversationId = convId;
       updateBreadcrumbs();
+    }
+    
+    // Update VirtualList selection if it exists
+    if (virtualLists.journal) {
+      const index = currentData.journal.findIndex(e => e.id === eventId);
+      if (index >= 0) {
+        virtualLists.journal.setSelectedIndex(index, false);
+      }
     }
     
     // Load event detail via recall
@@ -889,18 +955,29 @@ let _restoring = false;
     }
   }
 
-  // Render search results
+  // Render search results using VirtualList
   function renderSearchResults(pieces) {
     const listEl = elements.lists.search;
     if (!listEl) return;
     
-    if (pieces.length === 0) {
+    // Store data for virtualization
+    currentData.search = pieces || [];
+    
+    if (currentData.search.length === 0) {
       listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">🔍</div><div>No results found</div></div>';
+      // Clean up existing virtual list
+      if (virtualLists.search) {
+        virtualLists.search.destroy();
+        virtualLists.search = null;
+      }
       return;
     }
     
-    let html = '';
-    pieces.forEach(piece => {
+    // Item height estimate for search results (accounts for wrapped search-result-content)
+    const ITEM_HEIGHT = 120;
+    
+    // Render item function for VirtualList
+    function renderSearchItem(piece, index) {
       const id = piece.id || '';
       const role = piece.role || 'unknown';
       const segment = piece.segment || 0;
@@ -919,7 +996,7 @@ let _restoring = false;
         });
       }
       
-      html += `<div class="archive-search-result" data-piece-id="${he(id)}" data-conv-id="${he(convId)}">`;
+      let html = `<div class="archive-search-result" data-piece-id="${he(id)}" data-conv-id="${he(convId)}">`;
       html += `<div class="search-result-header">`;
       html += `<span class="search-result-role ${he(role)}">${he(role)}</span>`;
       html += `<span style="font-size: 0.7rem; color: var(--text2); font-family: monospace;">seg:${segment} msg:${msgIndex}</span>`;
@@ -929,31 +1006,46 @@ let _restoring = false;
       html += `</div>`;
       html += `<div class="search-result-content">${displayContent}${content.length > 150 ? '…' : ''}</div>`;
       html += `</div>`;
-    });
+      return html;
+    }
     
-    listEl.innerHTML = html;
-    
-    // Add click handlers
-    listEl.querySelectorAll('.archive-search-result').forEach(item => {
-      item.addEventListener('click', () => {
-        const pieceId = item.dataset.pieceId;
-        const convId = item.dataset.convId;
-        selectSearchResult(pieceId, convId);
+    // Initialize or update VirtualList
+    if (!virtualLists.search) {
+      virtualLists.search = new VirtualList({
+        container: listEl,
+        items: currentData.search,
+        renderItem: renderSearchItem,
+        itemHeight: ITEM_HEIGHT,
+        buffer: 5,
+        getItemId: (piece) => piece.id || '',
+        onItemClick: (piece, index) => {
+          const pieceId = piece.id;
+          const convId = piece.conversation_id;
+          selectSearchResult(pieceId, convId);
+        }
       });
-    });
+    } else {
+      // Pass currently selected piece ID to preserve selection across re-renders
+      const selectedPieceId = virtualLists.search.getSelectedItem()?.id;
+      virtualLists.search.setItems(currentData.search, selectedPieceId);
+    }
   }
 
-  // Select search result
+  // Select search result - called from VirtualList click handler
   function selectSearchResult(pieceId, convId) {
-    document.querySelectorAll('.archive-search-result').forEach(item => {
-      item.classList.toggle('selected', item.dataset.pieceId === pieceId);
-    });
-    
     if (convId) {
       currentConversationId = convId;
     }
     currentPieceId = pieceId;
     updateBreadcrumbs();
+    
+    // Update VirtualList selection if it exists
+    if (virtualLists.search) {
+      const index = currentData.search.findIndex(p => p.id === pieceId);
+      if (index >= 0) {
+        virtualLists.search.setSelectedIndex(index, false);
+      }
+    }
     
     loadPieceDetail(pieceId);
     updateURLState();
@@ -999,18 +1091,29 @@ let _restoring = false;
     }
   }
 
-  // Render file history
+  // Render file history using VirtualList
   function renderFileHistory(pieces) {
     const listEl = elements.lists.fileHistory;
     if (!listEl) return;
     
-    if (pieces.length === 0) {
+    // Store data for virtualization
+    currentData.fileHistory = pieces || [];
+    
+    if (currentData.fileHistory.length === 0) {
       listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📁</div><div>No history found for this file</div></div>';
+      // Clean up existing virtual list
+      if (virtualLists.fileHistory) {
+        virtualLists.fileHistory.destroy();
+        virtualLists.fileHistory = null;
+      }
       return;
     }
     
-    let html = '';
-    pieces.forEach(piece => {
+    // Item height estimate for file history items
+    const ITEM_HEIGHT = 72;
+    
+    // Render item function for VirtualList
+    function renderFileHistoryItem(piece, index) {
       const id = piece.id || '';
       const role = piece.role || 'unknown';
       const timestamp = formatTimestamp(piece.created_at);
@@ -1027,38 +1130,53 @@ let _restoring = false;
         } catch {}
       }
       
-      html += `<div class="archive-file-history-item" data-piece-id="${he(id)}" data-conv-id="${he(convId)}">`;
+      let html = `<div class="archive-file-history-item" data-piece-id="${he(id)}" data-conv-id="${he(convId)}">`;
       html += `<div class="file-history-header">`;
       html += `<span class="file-history-operation">${he(operation)}</span>`;
       html += `<span class="file-history-timestamp">${he(timestamp)}</span>`;
       html += `</div>`;
       html += `<div class="file-history-conversation">Segment: ${segment}, Message: ${msgIndex} | Conv: ${he(convId.substring(0, 16))}…</div>`;
       html += `</div>`;
-    });
+      return html;
+    }
     
-    listEl.innerHTML = html;
-    
-    // Add click handlers
-    listEl.querySelectorAll('.archive-file-history-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const pieceId = item.dataset.pieceId;
-        const convId = item.dataset.convId;
-        selectFileHistoryItem(pieceId, convId);
+    // Initialize or update VirtualList
+    if (!virtualLists.fileHistory) {
+      virtualLists.fileHistory = new VirtualList({
+        container: listEl,
+        items: currentData.fileHistory,
+        renderItem: renderFileHistoryItem,
+        itemHeight: ITEM_HEIGHT,
+        buffer: 5,
+        getItemId: (piece) => piece.id || '',
+        onItemClick: (piece, index) => {
+          const pieceId = piece.id;
+          const convId = piece.conversation_id;
+          selectFileHistoryItem(pieceId, convId);
+        }
       });
-    });
+    } else {
+      // Pass currently selected piece ID to preserve selection across re-renders
+      const selectedPieceId = virtualLists.fileHistory.getSelectedItem()?.id;
+      virtualLists.fileHistory.setItems(currentData.fileHistory, selectedPieceId);
+    }
   }
 
-  // Select file history item
+  // Select file history item - called from VirtualList click handler
   function selectFileHistoryItem(pieceId, convId) {
-    document.querySelectorAll('.archive-file-history-item').forEach(item => {
-      item.classList.toggle('selected', item.dataset.pieceId === pieceId);
-    });
-    
     if (convId) {
       currentConversationId = convId;
     }
     currentPieceId = pieceId;
     updateBreadcrumbs();
+    
+    // Update VirtualList selection if it exists
+    if (virtualLists.fileHistory) {
+      const index = currentData.fileHistory.findIndex(p => p.id === pieceId);
+      if (index >= 0) {
+        virtualLists.fileHistory.setSelectedIndex(index, false);
+      }
+    }
     
     loadPieceDetail(pieceId);
     updateURLState();
@@ -1411,6 +1529,354 @@ let _restoring = false;
     };
   }
 
+  // ============================================================
+  // VirtualList - List virtualization/windowing for long lists
+  // ============================================================
+  
+  class VirtualList {
+    /**
+     * @param {Object} options
+     * @param {HTMLElement} options.container - The scrollable container element
+     * @param {Array} options.items - Array of data items to render
+     * @param {Function} options.renderItem - Function(item, index) => HTML string
+     * @param {number} [options.itemHeight=50] - Estimated height of each item in pixels
+     * @param {number} [options.buffer=5] - Number of items to render above/below viewport
+     * @param {Function} [options.onItemClick] - Click handler: (item, index, event)
+     * @param {string} [options.selectedId] - ID of currently selected item (for restoration)
+     * @param {Function} [options.getItemId] - Function(item) => unique ID string
+     */
+    constructor(options) {
+      this.container = options.container;
+      this.items = options.items || [];
+      this.renderItem = options.renderItem;
+      this.itemHeight = options.itemHeight || 50;
+      this.buffer = options.buffer || 5;
+      this.onItemClick = options.onItemClick;
+      this.getItemId = options.getItemId || (item => item.id || '');
+      
+      // State
+      this.selectedIndex = -1;
+      this.selectedId = options.selectedId || null;
+      this.scrollTop = 0;
+      this.containerHeight = 0;
+      this.renderedRange = { start: 0, end: 0 };
+      this._scrollHandler = this._onScroll.bind(this);
+      this._resizeHandler = this._onResize.bind(this);
+      this._itemHeightMeasured = false;
+      
+      // Placeholder elements for maintaining scroll height
+      this.topSpacer = null;
+      this.bottomSpacer = null;
+      this.contentWrapper = null;
+      
+      this._init();
+    }
+    
+    _init() {
+      if (!this.container) return;
+      
+      // Store original overflow style
+      this.container.style.overflowY = 'auto';
+      
+      // Create content wrapper and spacers
+      this._createStructure();
+      
+      // Initial measurements
+      this._measure();
+      
+      // Initial render
+      this._renderVisible();
+      
+      // Attach listeners
+      this.container.addEventListener('scroll', this._scrollHandler, { passive: true });
+      window.addEventListener('resize', this._resizeHandler, { passive: true });
+      
+      // Handle selection restoration (scroll to item on initial load)
+      if (this.selectedId) {
+        this._restoreSelectionById(this.selectedId, true);
+      }
+    }
+    
+    _createStructure() {
+      // Clear container
+      this.container.innerHTML = '';
+      
+      // For div-based lists: create spacer + content wrapper + spacer structure
+      this.topSpacer = document.createElement('div');
+      this.topSpacer.style.height = '0px';
+      this.topSpacer.style.overflow = 'hidden';
+      this.topSpacer.setAttribute('aria-hidden', 'true');
+      
+      this.contentWrapper = document.createElement('div');
+      this.contentWrapper.style.contain = 'content';
+      
+      this.bottomSpacer = document.createElement('div');
+      this.bottomSpacer.style.height = '0px';
+      this.bottomSpacer.style.overflow = 'hidden';
+      this.bottomSpacer.setAttribute('aria-hidden', 'true');
+      
+      this.container.appendChild(this.topSpacer);
+      this.container.appendChild(this.contentWrapper);
+      this.container.appendChild(this.bottomSpacer);
+    }
+    
+    _measure() {
+      if (!this.container) return;
+      this.containerHeight = this.container.clientHeight;
+      // Ensure we have a reasonable item height
+      if (this.itemHeight <= 0) this.itemHeight = 50;
+    }
+    
+    _onScroll() {
+      if (!this.container) return;
+      this.scrollTop = this.container.scrollTop;
+      this._renderVisible();
+    }
+    
+    _onResize() {
+      this._measure();
+      this._renderVisible();
+    }
+    
+    _calculateVisibleRange() {
+      const visibleStart = Math.floor(this.scrollTop / this.itemHeight);
+      const visibleCount = Math.ceil(this.containerHeight / this.itemHeight);
+      const start = Math.max(0, visibleStart - this.buffer);
+      const end = Math.min(this.items.length, visibleStart + visibleCount + this.buffer);
+      // Clamp start to valid range (handles case where scrollTop is stale after data change)
+      const clampedStart = Math.min(start, Math.max(0, this.items.length - (end - start)));
+      return { start: clampedStart, end };
+    }
+    
+    _renderVisible() {
+      if (!this.contentWrapper || this.items.length === 0) return;
+      
+      const range = this._calculateVisibleRange();
+      
+      // Skip if range hasn't changed significantly
+      if (range.start === this.renderedRange.start && range.end === this.renderedRange.end) {
+        return;
+      }
+      
+      this.renderedRange = range;
+      
+      // Update spacers
+      if (this.topSpacer && this.bottomSpacer) {
+        this.topSpacer.style.height = `${range.start * this.itemHeight}px`;
+        this.bottomSpacer.style.height = `${(this.items.length - range.end) * this.itemHeight}px`;
+      }
+      
+      // Render items
+      const fragment = document.createDocumentFragment();
+      
+      for (let i = range.start; i < range.end; i++) {
+        const item = this.items[i];
+        const html = this.renderItem(item, i);
+        
+        // For div-based items
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        const child = div.firstElementChild;
+        if (child) {
+          child.dataset.virtualIndex = i;
+          const itemId = this.getItemId(item);
+          if (itemId) child.dataset.itemId = itemId;
+          
+          // Apply selection styling
+          if (i === this.selectedIndex) {
+            child.classList.add('selected');
+          }
+          
+          // Add click handler
+          if (this.onItemClick) {
+            child.addEventListener('click', (e) => this._handleClick(item, i, e));
+            child.style.cursor = 'pointer';
+          }
+          
+          fragment.appendChild(child);
+        }
+      }
+      
+      // Replace content
+      this.contentWrapper.innerHTML = '';
+      this.contentWrapper.appendChild(fragment);
+      
+      // Measure actual item heights after first render to improve scrollbar accuracy
+      if (!this._itemHeightMeasured && this.contentWrapper.children.length > 0) {
+        this._measureItemHeights();
+      }
+    }
+    
+    _measureItemHeights() {
+      if (this.contentWrapper.children.length === 0) return;
+      
+      // Measure a few items to get average height
+      const children = Array.from(this.contentWrapper.children);
+      const sampleSize = Math.min(5, children.length);
+      let totalHeight = 0;
+      let measuredCount = 0;
+      
+      for (let i = 0; i < sampleSize; i++) {
+        const child = children[i];
+        const rect = child.getBoundingClientRect();
+        if (rect.height > 0) {
+          totalHeight += rect.height;
+          measuredCount++;
+        }
+      }
+      
+      if (measuredCount > 0) {
+        const avgHeight = totalHeight / measuredCount;
+        // Set flag unconditionally after first measurement to avoid re-measuring
+        this._itemHeightMeasured = true;
+        // Only update if significantly different (avoid thrashing)
+        if (Math.abs(avgHeight - this.itemHeight) > 5) {
+          this.itemHeight = avgHeight;
+          // Update spacer heights with new itemHeight
+          if (this.topSpacer && this.bottomSpacer) {
+            const range = this._calculateVisibleRange();
+            this.topSpacer.style.height = `${range.start * this.itemHeight}px`;
+            this.bottomSpacer.style.height = `${(this.items.length - range.end) * this.itemHeight}px`;
+          }
+          // Re-render to ensure visible items match new heights
+          this._renderVisible();
+        }
+      }
+    }
+    
+    _handleClick(item, index, event) {
+      // Update visual selection without triggering callback (click handler will do that)
+      this.setSelectedIndex(index, false);
+      
+      // Call click handler (which will handle URL state, breadcrumbs, etc.)
+      if (this.onItemClick) {
+        this.onItemClick(item, index, event);
+      }
+    }
+    
+    _restoreSelectionById(id, restoreScroll = false) {
+      const index = this.items.findIndex(item => this.getItemId(item) === id);
+      if (index >= 0) {
+        this.setSelectedIndex(index, false);
+        if (restoreScroll) {
+          this.scrollToIndex(index);
+        }
+      }
+    }
+    
+    /**
+     * Update the items array and re-render
+     * @param {boolean} [restoreScroll=false] - If true, scroll to selected item (for initial/deep-link restore)
+     */
+    setItems(items, selectedId = null, restoreScroll = false) {
+      this.items = items || [];
+      this.selectedId = selectedId;
+      this.selectedIndex = -1;
+      this.renderedRange = { start: 0, end: 0 };
+      
+      // Reset scroll position when data changes (fixes blank list when scrolled)
+      if (this.container) {
+        this.container.scrollTop = 0;
+        this.scrollTop = 0;
+      }
+      
+      // Rebuild structure if it was destroyed by loading placeholder
+      if (!this.contentWrapper || !this.contentWrapper.isConnected) {
+        this._createStructure();
+      }
+      
+      // Update spacer heights for new total
+      if (this.topSpacer && this.bottomSpacer) {
+        this.topSpacer.style.height = '0px';
+        this.bottomSpacer.style.height = `${this.items.length * this.itemHeight}px`;
+      }
+      
+      this._measure();
+      this._renderVisible();
+      
+      // Restore selection if provided
+      if (this.selectedId) {
+        this._restoreSelectionById(this.selectedId, restoreScroll);
+      }
+    }
+    
+    /**
+     * Set selected index and update visual selection
+     */
+    setSelectedIndex(index, triggerCallback = true) {
+      if (index < 0 || index >= this.items.length) {
+        this.selectedIndex = -1;
+        this.selectedId = null;
+        this._updateSelectionVisual();
+        return;
+      }
+      
+      this.selectedIndex = index;
+      this.selectedId = this.getItemId(this.items[index]);
+      this._updateSelectionVisual();
+    }
+    
+    _updateSelectionVisual() {
+      // Update all rendered items' selection state
+      const renderedItems = this.contentWrapper.querySelectorAll('[data-virtual-index]');
+      renderedItems.forEach(el => {
+        const virtualIndex = parseInt(el.dataset.virtualIndex, 10);
+        if (virtualIndex === this.selectedIndex) {
+          el.classList.add('selected');
+        } else {
+          el.classList.remove('selected');
+        }
+      });
+    }
+    
+    /**
+     * Scroll to make an item visible
+     */
+    scrollToIndex(index) {
+      if (!this.container || index < 0 || index >= this.items.length) return;
+      
+      const targetScrollTop = index * this.itemHeight;
+      const viewportCenter = targetScrollTop - (this.containerHeight / 2) + (this.itemHeight / 2);
+      const clampedScrollTop = Math.max(0, Math.min(viewportCenter, this.items.length * this.itemHeight - this.containerHeight));
+      
+      this.container.scrollTop = clampedScrollTop;
+      this.scrollTop = clampedScrollTop;
+      this._renderVisible();
+    }
+    
+    /**
+     * Get currently selected item
+     */
+    getSelectedItem() {
+      if (this.selectedIndex >= 0 && this.selectedIndex < this.items.length) {
+        return this.items[this.selectedIndex];
+      }
+      return null;
+    }
+    
+    /**
+     * Get selected index
+     */
+    getSelectedIndex() {
+      return this.selectedIndex;
+    }
+    
+    /**
+     * Clean up event listeners
+     */
+    destroy() {
+      if (this.container) {
+        this.container.removeEventListener('scroll', this._scrollHandler);
+      }
+      window.removeEventListener('resize', this._resizeHandler);
+      this.container = null;
+      this.contentWrapper = null;
+      this.topSpacer = null;
+      this.bottomSpacer = null;
+      this.items = [];
+    }
+  }
+
   // Open modal
   function openModal(modelName = null) {
     if (!elements.modal) return;
@@ -1484,6 +1950,19 @@ let _restoring = false;
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = null;
     }
+    
+    // Destroy VirtualList instances
+    Object.keys(virtualLists).forEach(key => {
+      if (virtualLists[key]) {
+        virtualLists[key].destroy();
+        virtualLists[key] = null;
+      }
+    });
+    
+    // Clear current data
+    Object.keys(currentData).forEach(key => {
+      currentData[key] = [];
+    });
     
     // Reset state
     currentConversationId = null;
