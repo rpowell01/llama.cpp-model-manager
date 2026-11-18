@@ -28,5 +28,8 @@
 /* 9. Modal components */
 @import url("components/modals.css");
 
-/* 10. Responsive adjustments */
+/* 10. Archive Browser components */
+@import url("components/archive-browser.css");
+
+/* 11. Responsive adjustments */
 @import url("responsive.css");

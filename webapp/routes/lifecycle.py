@@ -1385,3 +1385,104 @@ def api_proxy_mcp_status(model):
         return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
     
     return jsonify(proxy_manager.get_mcp_status())
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mnemonic Proxy Archive API Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@lifecycle_bp.route("/api/proxy/archive/conversations/<model>", methods=["GET"])
+def api_proxy_archive_conversations(model):
+    """List conversations from mnemonic-proxy archive for a model.
+    
+    Query parameters:
+    - limit: Maximum number of conversations to return (default 50, max 1000)
+    """
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    limit = request.args.get("limit", 50, type=int)
+    limit = max(1, min(limit, 1000))  # Clamp to 1-1000
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    proxy_port = proxy_manager.proxy_port
+    
+    try:
+        import requests
+        resp = requests.get(
+            f"http://127.0.0.1:{proxy_port}/v1/strata/conversations",
+            params={"limit": limit},
+            timeout=10,
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code == 200:
+            upstream_data = resp.json()
+            # Upstream returns {"conversations": [...], ...} - extract the list
+            conversations = upstream_data.get("conversations", []) if isinstance(upstream_data, dict) else []
+            return jsonify({"model": model, "conversations": conversations})
+        else:
+            return jsonify({"error": f"Failed to fetch conversations: {resp.status_code}", "model": model}), 502
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Archive conversations request timed out", "model": model}), 504
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch conversations: {str(e)}", "model": model}), 502
+
+
+@lifecycle_bp.route("/api/proxy/archive/journal/<model>", methods=["GET"])
+def api_proxy_archive_journal(model):
+    """Fetch recent journal events from mnemonic-proxy for a model.
+    
+    Query parameters:
+    - limit: Maximum number of events to return (default 100, max 1000)
+    - event_type: Filter by event type (e.g., request, mask, guard, compress, error, warn)
+    - conversation_id: Filter by conversation ID
+    """
+    model = model.strip()
+    if not model:
+        return jsonify({"error": "Missing model name"}), 400
+    
+    limit = request.args.get("limit", 100, type=int)
+    limit = max(1, min(limit, 1000))  # Clamp to 1-1000
+    event_type = request.args.get("event_type", "").strip()
+    conversation_id = request.args.get("conversation_id", "").strip()
+    
+    proxy_manager = get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
+    
+    proxy_port = proxy_manager.proxy_port
+    
+    try:
+        import requests
+        params = {"limit": limit}
+        if event_type:
+            params["event_type"] = event_type
+        if conversation_id:
+            params["conversation_id"] = conversation_id
+            
+        resp = requests.get(
+            f"http://127.0.0.1:{proxy_port}/v1/strata/journal",
+            params=params,
+            timeout=10,
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code == 200:
+            upstream_data = resp.json()
+            # Upstream may return an array directly or an envelope {"events": [...]}
+            if isinstance(upstream_data, dict) and "events" in upstream_data:
+                events = upstream_data.get("events", [])
+            elif isinstance(upstream_data, list):
+                events = upstream_data
+            else:
+                events = []
+            return jsonify({"model": model, "events": events})
+        else:
+            return jsonify({"error": f"Failed to fetch journal: {resp.status_code}", "model": model}), 502
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Journal request timed out", "model": model}), 504
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch journal: {str(e)}", "model": model}), 502

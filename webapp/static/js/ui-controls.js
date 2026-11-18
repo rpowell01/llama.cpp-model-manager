@@ -273,6 +273,7 @@ function renderTiles(rows, dlMap, query) {
             <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true)" title="Start mnemonic-proxy" ${canStartProxy ? "" : "disabled"}>▶ Start</button>
             <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false)" title="Stop mnemonic-proxy" ${canStopProxy ? "" : "disabled"}>■ Stop</button>
             <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
+            <button class="actions-btn goto" onclick="event.stopPropagation(); window.ArchiveBrowser?.open('${jsEscape(r.model)}')" title="Open Archive Browser">📚 Archive</button>
           </div>`;
       }
 
@@ -458,7 +459,8 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         "')\">\u274C Delete</button>" +
         (r.mnemonic_proxy && r.mnemonic_proxy.enabled ? 
-          ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' : '') +
+          ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' +
+          ' <button class="archive-btn" onclick="event.stopPropagation(); window.ArchiveBrowser?.open(\'' + jsEscape(r.model) + '\')" title="Open Archive Browser for this model">📚 Archive</button>' : '') +
         "</div>" +
         "</div>"
       );
@@ -466,6 +468,88 @@ function renderTiles(rows, dlMap, query) {
     .join("");
 
   grid.innerHTML = html;
+
+  // Bind context menu to proxy status chips for Archive Browser access
+  bindProxyStatusContextMenus();
+}
+
+/**
+ * Bind context menu to proxy status chips for Archive Browser access
+ */
+function bindProxyStatusContextMenus() {
+  document.querySelectorAll('.proxy-status .chip').forEach(chip => {
+    // Remove any existing context menu handler
+    chip.oncontextmenu = null;
+    
+    chip.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Find the model name from the tile
+      const tile = chip.closest('.tile');
+      if (!tile) return;
+      const modelName = tile.dataset.model;
+      if (!modelName) return;
+      
+      // Remove any existing context menu
+      const existingMenu = document.getElementById('proxy-status-context-menu');
+      if (existingMenu) existingMenu.remove();
+      
+      // Create context menu
+      const menu = document.createElement('div');
+      menu.id = 'proxy-status-context-menu';
+      menu.style.cssText = `
+        position: fixed;
+        top: ${e.clientY}px;
+        left: ${e.clientX}px;
+        background: var(--surface);
+        border: 1px solid var(--surface2);
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 2000;
+        min-width: 180px;
+        padding: 0.25rem 0;
+      `;
+      
+      const openArchiveItem = document.createElement('div');
+      openArchiveItem.textContent = '📚 Open Archive Browser';
+      openArchiveItem.style.cssText = `
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        color: var(--text);
+        font-size: 0.85rem;
+      `;
+      openArchiveItem.addEventListener('mouseenter', () => {
+        openArchiveItem.style.background = 'var(--surface2)';
+      });
+      openArchiveItem.addEventListener('mouseleave', () => {
+        openArchiveItem.style.background = 'transparent';
+      });
+      const closeMenu = (ev) => {
+        if (!menu.contains(ev.target)) {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        }
+      };
+      const closeMenuCleanup = () => {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      };
+      
+      openArchiveItem.addEventListener('click', () => {
+        closeMenuCleanup();
+        if (window.ArchiveBrowser) {
+          window.ArchiveBrowser.open(modelName);
+        }
+      });
+      
+      menu.appendChild(openArchiveItem);
+      document.body.appendChild(menu);
+      
+      // Close menu on click outside (reuse closeMenu from above)
+      setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    });
+  });
 }
 
 /**
@@ -3289,6 +3373,30 @@ function showPerformanceModal() {
     window.startPerformanceGraphAutoRefresh();
   }
 
+  // Add event listener for Open Archive button
+  const openArchiveBtn = document.getElementById('open-archive-from-perf-btn');
+  if (openArchiveBtn) {
+    // Remove any existing listener
+    openArchiveBtn.replaceWith(openArchiveBtn.cloneNode(true));
+    const newBtn = document.getElementById('open-archive-from-perf-btn');
+    if (newBtn) {
+      newBtn.addEventListener('click', () => {
+        const selectedModel = modelSelect.value;
+        if (selectedModel) {
+          ModalManager.close('performance-graph-modal');
+          // Small delay to let the first modal close
+          setTimeout(() => {
+            if (window.ArchiveBrowser) {
+              window.ArchiveBrowser.open(selectedModel);
+            }
+          }, 100);
+        } else {
+          alert('Please select a model first');
+        }
+      });
+    }
+  }
+
   // Wait for modal to be visible, then register cleanup
   setTimeout(() => {
     // Register cleanup for this modal
@@ -3390,9 +3498,30 @@ async function showProxyMetrics(model) {
   let countdownInterval = null;
   let currentModal = null;
   let strataContext = null;
-  let conversationId = null;  // Track conversation ID for Strata context
+  let conversationId = null;
+  let currentTab = 'metrics'; // 'metrics', 'strata', 'journal'
+  let journalEvents = null;
+  let healthSummary = null;
+  let journalFetchError = null;
   
-  async function fetchAndRender() {
+  // Helper to escape HTML
+  function he(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/"/g, '"')
+      .replace(/'/g, '&apos;');
+  }
+  
+  // Helper to format number then escape
+  function heNum(num) {
+    if (num === null || num === undefined) return 'N/A';
+    return he(Number(num).toLocaleString());
+  }
+  
+  async function fetchAllData() {
     try {
       // Build strata-context URL with conversation_id if available
       let strataUrl = `/api/proxy/strata-context/${encodeURIComponent(model)}`;
@@ -3400,6 +3529,7 @@ async function showProxyMetrics(model) {
         strataUrl += `?conversation_id=${encodeURIComponent(conversationId)}`;
       }
       
+      // Fetch metrics and strata first (critical), then journal (non-critical)
       const [metricsRes, strataRes] = await Promise.all([
         fetch(`/api/proxy/metrics/${encodeURIComponent(model)}`),
         fetch(strataUrl)
@@ -3420,7 +3550,26 @@ async function showProxyMetrics(model) {
         conversationId = strataData.strata_context.conversation_id;
       }
       strataContext = strataData.strata_context || null;
-      renderMetrics(metricsData.metrics, metricsData.raw, strataContext);
+      
+      // Fetch journal events (non-critical, handle errors gracefully)
+      journalFetchError = null;
+      try {
+        const journalRes = await fetch(`/api/proxy/archive/journal/${encodeURIComponent(model)}?limit=200`);
+        const journalData = await journalRes.json();
+        if (journalData.error) {
+          journalFetchError = journalData.error;
+          journalEvents = [];
+        } else {
+          journalEvents = journalData.events || [];
+        }
+      } catch (e) {
+        console.warn('Journal fetch failed:', e);
+        journalFetchError = e.message;
+        journalEvents = [];
+      }
+      
+      healthSummary = computeHealthSummary(journalEvents, strataContext);
+      renderCurrentTab(metricsData.metrics, metricsData.raw);
     } catch (e) {
       console.error('showProxyMetrics error:', e);
       if (currentModal) {
@@ -3429,12 +3578,358 @@ async function showProxyMetrics(model) {
     }
   }
   
-  function renderMetrics(metrics, raw, strata) {
-    if (!currentModal) return;
+  function computeHealthSummary(events, strata) {
+    const summary = {
+      maskReuseGap: null,      // % gap between virtual and active tokens (last N events)
+      guardPressure: 0,        // frequency of guard events
+      recentErrors: 0,         // count of error events in recent events
+      lastKvArchive: null,     // last kv_archive outcome
+    };
     
-    const contentEl = document.getElementById('proxy-metrics-content');
-    if (!contentEl) return;
+    if (!events || events.length === 0) return summary;
     
+    // Analyze last 50 events for trends
+    const recentEvents = events.slice(-50);
+    
+    // Mask reuse gap: average of (virtual_tokens - active_tokens) / virtual_tokens for request events
+    const requestEvents = recentEvents.filter(e => e.event === 'request' && e.virtual_tokens && e.prompt_tokens);
+    if (requestEvents.length > 0) {
+      const gaps = requestEvents.map(e => {
+        const virtual = e.virtual_tokens || 0;
+        const active = e.prompt_tokens || 0;
+        return virtual > 0 ? ((virtual - active) / virtual) * 100 : 0;
+      });
+      summary.maskReuseGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    }
+    
+    // Guard pressure: count of guard events
+    summary.guardPressure = recentEvents.filter(e => e.event === 'guard').length;
+    
+    // Recent errors
+    summary.recentErrors = recentEvents.filter(e => e.event === 'error' || e.event === 'error_recover').length;
+    
+    // Last kv_archive outcome
+    const kvArchiveEvents = events.filter(e => e.event === 'kv_archive' || e.event === 'archive_save');
+    if (kvArchiveEvents.length > 0) {
+      const last = kvArchiveEvents[kvArchiveEvents.length - 1];
+      summary.lastKvArchive = {
+        success: last.success !== false,
+        savings: last.bytes_saved || last.savings || 0,
+        duration: last.duration_ms || last.duration || 0,
+        timestamp: last.timestamp || last.time || null
+      };
+    }
+    
+    return summary;
+  }
+  
+  function formatJournalEvent(event) {
+    const evType = event.event;
+    const time = event.timestamp ? new Date(event.timestamp * 1000).toLocaleTimeString() : 'N/A';
+    const conv = event.conv ? `${String(event.conv).slice(0, 8)}...` : 'N/A';
+    
+    let icon = '📝';
+    let color = 'var(--text)';
+    let summaryParts = [];
+    let detailParts = [];
+    
+    switch (evType) {
+      case 'request': {
+        icon = '📥';
+        color = 'var(--blue)';
+        const reused = event.reused || 0;
+        const virtual = event.virtual_tokens || 0;
+        const prompt = event.prompt_tokens || 0;
+        const reusePct = virtual > 0 ? ((reused / virtual) * 100).toFixed(1) : 0;
+        summaryParts = [
+          { label: 'Prompt', value: prompt, isNum: true },
+          { label: 'Reused', value: reused, isNum: true, pct: reusePct },
+          { label: 'Virtual', value: virtual, isNum: true }
+        ];
+        if (event.invalidation_cause) {
+          detailParts.push({ label: 'Invalidation', value: event.invalidation_cause });
+        }
+        if (event.seg !== undefined) {
+          detailParts.push({ label: 'Segment', value: event.seg });
+        }
+        if (event.mode) {
+          detailParts.push({ label: 'Mode', value: event.mode });
+        }
+        break;
+      }
+      case 'mask':
+      case 'mask_invalidate': {
+        icon = evType === 'mask' ? '🎭' : '🎭⚡';
+        color = 'var(--purple)';
+        const delta = event.delta || 0;
+        const ratio = event.ratio || 0;
+        const saved = event.tokens_saved || 0;
+        summaryParts = [
+          { label: 'Delta', value: delta, isNum: true },
+          { label: 'Ratio', value: (ratio * 100).toFixed(1) + '%' },
+          { label: 'Saved', value: saved, isNum: true, suffix: 'tokens' }
+        ];
+        if (event.reason) {
+          detailParts.push({ label: 'Reason', value: event.reason });
+        }
+        break;
+      }
+      case 'guard': {
+        icon = '🛡️';
+        color = 'var(--orange)';
+        const action = event.action || 'unknown';
+        const pressure = event.window_pressure || event.pressure || 0;
+        summaryParts = [
+          { label: 'Action', value: action },
+          { label: 'Window Pressure', value: pressure, isNum: true }
+        ];
+        if (event.trigger) {
+          detailParts.push({ label: 'Trigger', value: event.trigger });
+        }
+        break;
+      }
+      case 'compress': {
+        icon = '🗜️';
+        color = 'var(--teal)';
+        const ratio = event.ratio || event.compression_ratio || 0;
+        const saved = event.bytes_saved || event.saved || 0;
+        const duration = event.duration_ms || event.duration || 0;
+        summaryParts = [
+          { label: 'Ratio', value: (ratio * 100).toFixed(1) + '%' },
+          { label: 'Saved', value: saved, isNum: true, suffix: 'bytes' },
+          { label: 'Duration', value: duration, isNum: true, suffix: 'ms' }
+        ];
+        if (event.method) {
+          detailParts.push({ label: 'Method', value: event.method });
+        }
+        break;
+      }
+      case 'error':
+      case 'error_recover': {
+        icon = evType === 'error' ? '❌' : '🔄';
+        color = 'var(--red)';
+        const message = event.message || event.error || 'Unknown error';
+        summaryParts = [{ label: '', value: message }];
+        if (event.code) {
+          detailParts.push({ label: 'Code', value: event.code });
+        }
+        if (event.recovered === true) {
+          summaryParts.push({ label: '', value: '(Recovered)' });
+        }
+        break;
+      }
+      case 'warn':
+      case 'warning': {
+        icon = '⚠️';
+        color = 'var(--warning)';
+        const message = event.message || event.warning || 'Warning';
+        summaryParts = [{ label: '', value: message }];
+        break;
+      }
+      case 'recall':
+      case 'recall_use': {
+        icon = '🔁';
+        color = 'var(--green)';
+        const count = event.count || 1;
+        const tokens = event.tokens || 0;
+        summaryParts = [
+          { label: 'Recalls', value: count, isNum: true },
+          { label: 'Tokens', value: tokens, isNum: true }
+        ];
+        break;
+      }
+      case 'kv_archive':
+      case 'archive_save': {
+        icon = '💾';
+        color = 'var(--info)';
+        const success = event.success !== false;
+        const savings = event.bytes_saved || event.savings || 0;
+        const duration = event.duration_ms || event.duration || 0;
+        summaryParts = [
+          { label: '', value: success ? 'Success' : 'Failed' },
+          { label: 'Saved', value: savings, isNum: true, suffix: 'bytes' },
+          { label: 'Duration', value: duration, isNum: true, suffix: 'ms' }
+        ];
+        break;
+      }
+      default: {
+        icon = '📄';
+        color = 'var(--text2)';
+        summaryParts = [{ label: '', value: JSON.stringify(event).slice(0, 200) }];
+      }
+    }
+    
+    return { icon, color, summaryParts, detailParts, time, conv, type: evType };
+  }
+  
+  function renderHealthBadges() {
+    if (!healthSummary) return '';
+    
+    const badges = [];
+    
+    // Mask Reuse Gap
+    if (healthSummary.maskReuseGap !== null) {
+      const gap = healthSummary.maskReuseGap;
+      const badgeColor = gap < 20 ? 'var(--success)' : gap < 50 ? 'var(--warning)' : 'var(--red)';
+      const badgeLabel = gap < 20 ? 'Good' : gap < 50 ? 'Fair' : 'Poor';
+      badges.push(`
+        <div style="background: ${badgeColor}20; border: 1px solid ${badgeColor}; border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; align-items: center; min-width: 100px;">
+          <div style="font-size: 0.65rem; color: var(--text2); text-transform: uppercase;">Mask Reuse Gap</div>
+          <div style="font-size: 1.25rem; font-weight: 700; color: ${badgeColor}; font-family: monospace;">${gap.toFixed(1)}%</div>
+          <div style="font-size: 0.6rem; color: ${badgeColor}; text-transform: uppercase;">${badgeLabel}</div>
+        </div>
+      `);
+    }
+    
+    // Guard Pressure
+    badges.push(`
+      <div style="background: var(--surface2); border: 1px solid var(--surface3); border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; align-items: center; min-width: 100px;">
+        <div style="font-size: 0.65rem; color: var(--text2); text-transform: uppercase;">Guard Pressure</div>
+        <div style="font-size: 1.25rem; font-weight: 700; color: ${healthSummary.guardPressure > 5 ? 'var(--red)' : healthSummary.guardPressure > 2 ? 'var(--warning)' : 'var(--success)'}; font-family: monospace;">${healthSummary.guardPressure}</div>
+        <div style="font-size: 0.6rem; color: var(--text2); text-transform: uppercase;">Events (last 50)</div>
+      </div>
+    `);
+    
+    // Recent Errors
+    const errorColor = healthSummary.recentErrors > 0 ? 'var(--red)' : 'var(--success)';
+    badges.push(`
+      <div style="background: ${errorColor}20; border: 1px solid ${errorColor}; border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; align-items: center; min-width: 100px;">
+        <div style="font-size: 0.65rem; color: var(--text2); text-transform: uppercase;">Recent Errors</div>
+        <div style="font-size: 1.25rem; font-weight: 700; color: ${errorColor}; font-family: monospace;">${healthSummary.recentErrors}</div>
+        <div style="font-size: 0.6rem; color: var(--text2); text-transform: uppercase;">Events (last 50)</div>
+      </div>
+    `);
+    
+    // Last KV Archive
+    if (healthSummary.lastKvArchive) {
+      const kv = healthSummary.lastKvArchive;
+      const kvColor = kv.success ? 'var(--success)' : 'var(--red)';
+      badges.push(`
+        <div style="background: ${kvColor}20; border: 1px solid ${kvColor}; border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; align-items: center; min-width: 120px;">
+          <div style="font-size: 0.65rem; color: var(--text2); text-transform: uppercase;">Last KV Archive</div>
+          <div style="font-size: 0.85rem; font-weight: 700; color: ${kvColor};">${kv.success ? '✓ Success' : '✗ Failed'}</div>
+          <div style="font-size: 0.6rem; color: var(--text2);">Saved: ${heNum(kv.savings)}B</div>
+        </div>
+      `);
+    } else {
+      badges.push(`
+        <div style="background: var(--surface2); border: 1px dashed var(--surface3); border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; align-items: center; min-width: 120px; color: var(--text2);">
+          <div style="font-size: 0.65rem; text-transform: uppercase;">Last KV Archive</div>
+          <div style="font-size: 0.85rem;">N/A</div>
+          <div style="font-size: 0.6rem;">No archive events</div>
+        </div>
+      `);
+    }
+    
+    return `
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.75rem; background: var(--surface2); border-radius: 8px; border: 1px solid var(--surface3);">
+        <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; width: 100%; margin-bottom: 0.5rem;">Health Summary (from recent journal events)</div>
+        ${badges.join('')}
+      </div>
+    `;
+  }
+  
+  function renderJournalTab() {
+    // Show journal fetch error if any
+    if (journalFetchError) {
+      return `
+        <div style="text-align: center; color: var(--red); padding: 2rem;">
+          <div style="font-weight: 600; margin-bottom: 0.5rem;">⚠ Failed to load journal events</div>
+          <div style="font-size: 0.85rem; color: var(--text2);">${he(journalFetchError)}</div>
+          <button id="journal-refresh-now" class="btn-secondary" style="margin-top: 1rem; padding: 0.4rem 1rem;">🔄 Retry</button>
+        </div>
+      `;
+    }
+    
+    if (!journalEvents || journalEvents.length === 0) {
+      return `
+        <div style="text-align: center; color: var(--text2); padding: 2rem;">
+          No journal events available
+        </div>
+      `;
+    }
+    
+    // Show most recent events first
+    const displayEvents = [...journalEvents].reverse().slice(0, 100);
+    
+    let html = `
+      <div style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+          <span style="font-size: 0.85rem; color: var(--text2);">Showing ${displayEvents.length} of ${journalEvents.length} events</span>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="journal-refresh-now" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">🔄 Refresh</button>
+            <button id="journal-open-archive" class="btn-primary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">📂 Open in Archive Browser</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    html += `
+      <div style="max-height: 60vh; overflow: auto; border: 1px solid var(--surface3); border-radius: 8px; background: var(--surface2);">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+          <thead>
+            <tr style="background: var(--surface3); position: sticky; top: 0; z-index: 1;">
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--surface3); white-space: nowrap;">Time</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--surface3); white-space: nowrap;">Type</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--surface3);">Conversation</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--surface3);">Summary</th>
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--surface3);">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    // Helper to format summary parts for display
+    function formatSummaryParts(parts) {
+      return parts.map(p => {
+        let val = p.value;
+        if (p.isNum && typeof val === 'number') {
+          val = heNum(val);
+        } else {
+          val = he(String(val));
+        }
+        if (p.suffix) val += ' ' + p.suffix;
+        if (p.pct !== undefined) val += ' (' + p.pct + '%)';
+        if (p.label) return `${he(p.label)}: ${val}`;
+        return val;
+      }).join(', ');
+    }
+    
+    // Helper to format detail parts for display
+    function formatDetailParts(parts) {
+      return parts.map(p => `${he(p.label)}: ${he(String(p.value))}`).join(' | ');
+    }
+    
+    for (const event of displayEvents) {
+      const formatted = formatJournalEvent(event);
+      const rowColor = formatted.color;
+      
+      const summaryStr = formatSummaryParts(formatted.summaryParts);
+      const detailsStr = formatDetailParts(formatted.detailParts);
+      
+      html += `
+        <tr style="border-bottom: 1px solid var(--surface3); transition: background 0.1s;">
+          <td style="padding: 0.5rem; font-family: monospace; color: var(--text2); white-space: nowrap;">${he(formatted.time)}</td>
+          <td style="padding: 0.5rem; white-space: nowrap;">
+            <span style="color: ${he(rowColor)}; font-weight: 600;">${he(formatted.icon)} ${he(formatted.type)}</span>
+          </td>
+          <td style="padding: 0.5rem; font-family: monospace; color: var(--text); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${he(formatted.conv)}</td>
+          <td style="padding: 0.5rem; color: var(--text); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${summaryStr}</td>
+          <td style="padding: 0.5rem; color: var(--text2); font-size: 0.7rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${detailsStr}</td>
+        </tr>
+      `;
+    }
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+    
+    return html;
+  }
+  
+  function renderMetricsTab(metrics, raw) {
     // Key metrics to highlight
     const keyMetrics = [
       { key: 'llamacpp:prompt_tokens_total', label: 'Prompt Tokens Total', format: (v) => v.toLocaleString() },
@@ -3458,58 +3953,6 @@ async function showProxyMetrics(model) {
           <button id="proxy-metrics-refresh-now" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Refresh Now</button>
         </div>
     `;
-    
-    // Strata Context Panel (if available)
-    if (strata) {
-      html += `
-        <div style="background: linear-gradient(135deg, var(--surface2), var(--surface3)); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--accent);">
-          <div style="font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-            <span>🧠 Strata Context (Long-Context Engine)</span>
-            <span style="font-size: 0.7rem; background: var(--accent); color: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px;">LIVE</span>
-          </div>
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem;">
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Tokens</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Virtual Tokens</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--accent); font-family: monospace;">${he(strata.virtual_tokens?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Archived Messages</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--warning); font-family: monospace;">${he(strata.archived?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Segments</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--info); font-family: monospace;">${he(strata.segments?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Recalls</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--success); font-family: monospace;">${he(strata.recalls?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Cached Tokens</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.cached_tokens?.toLocaleString() || 'N/A')}</div>
-            </div>
-            <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
-              <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Est.</div>
-              <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens_est?.toLocaleString() || 'N/A')}</div>
-            </div>
-          </div>
-          <div style="margin-top: 0.5rem; font-size: 0.7rem; color: var(--text2);">
-            Conversation: ${he(strata.conversation_id || 'N/A')} | Mode: ${he(strata.mode || 'N/A')} | Segment: ${he(strata.segment || 'N/A')}
-            <button id="strata-reset-conversation" class="btn-secondary" style="margin-left: 1rem; padding: 0.15rem 0.5rem; font-size: 0.65rem;">Reset Conversation</button>
-          </div>
-        </div>
-      `;
-    } else {
-      html += `
-        <div style="background: var(--surface2); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px dashed var(--surface3); text-align: center; color: var(--text2);">
-          Strata context not available - send a chat request to populate
-        </div>
-      `;
-    }
     
     html += `
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
@@ -3539,12 +3982,138 @@ async function showProxyMetrics(model) {
       </div>
     `;
     
+    return html;
+  }
+  
+  function renderStrataTab() {
+    if (!strataContext) {
+      return `
+        <div style="text-align: center; color: var(--text2); padding: 2rem;">
+          Strata context not available - send a chat request to populate
+          <button id="strata-reset-conversation" class="btn-secondary" style="margin-top: 1rem; padding: 0.4rem 1rem;">Reset Conversation</button>
+        </div>
+      `;
+    }
+    
+    const strata = strataContext;
+    
+    return `
+      <div style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+          <span style="font-size: 0.85rem; color: var(--text2);">Auto-refresh: <span id="metrics-refresh-countdown" style="font-weight: bold;">5s</span></span>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="proxy-metrics-refresh-now" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Refresh Now</button>
+            <button id="strata-reset-conversation" class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Reset Conversation</button>
+          </div>
+        </div>
+      </div>
+      <div style="background: linear-gradient(135deg, var(--surface2), var(--surface3)); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--accent);">
+        <div style="font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span>🧠 Strata Context (Long-Context Engine)</span>
+          <span style="font-size: 0.7rem; background: var(--accent); color: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px;">LIVE</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem;">
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Tokens</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Virtual Tokens</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--accent); font-family: monospace;">${he(strata.virtual_tokens?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Archived Messages</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--warning); font-family: monospace;">${he(strata.archived?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Segments</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--info); font-family: monospace;">${he(strata.segments?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Recalls</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--success); font-family: monospace;">${he(strata.recalls?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Cached Tokens</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.cached_tokens?.toLocaleString() || 'N/A')}</div>
+          </div>
+          <div style="background: var(--surface); border-radius: 6px; padding: 0.75rem; text-align: center; border: 1px solid var(--surface3);">
+            <div style="font-size: 0.7rem; color: var(--text2); text-transform: uppercase; margin-bottom: 0.25rem;">Active Est.</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: var(--text); font-family: monospace;">${he(strata.active_tokens_est?.toLocaleString() || 'N/A')}</div>
+          </div>
+        </div>
+        <div style="margin-top: 0.5rem; font-size: 0.7rem; color: var(--text2);">
+          Conversation: ${he(strata.conversation_id || 'N/A')} | Mode: ${he(strata.mode || 'N/A')} | Segment: ${he(strata.segment || 'N/A')}
+        </div>
+      </div>
+    `;
+  }
+  
+  function renderCurrentTab(metrics, raw) {
+    if (!currentModal) return;
+    
+    const contentEl = document.getElementById('proxy-metrics-content');
+    if (!contentEl) return;
+    
+    // Health badges at top (visible across all tabs)
+    let html = renderHealthBadges();
+    
+    // Tab navigation
+    html += `
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--surface3); padding-bottom: 0.5rem; flex-wrap: wrap;">
+        <button class="tab-btn ${currentTab === 'metrics' ? 'active' : ''}" data-tab="metrics" style="padding: 0.5rem 1rem; border: 1px solid var(--surface3); background: ${currentTab === 'metrics' ? 'var(--accent)' : 'var(--surface2)'}; color: ${currentTab === 'metrics' ? 'var(--surface)' : 'var(--text)'}; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">📊 Metrics</button>
+        <button class="tab-btn ${currentTab === 'strata' ? 'active' : ''}" data-tab="strata" style="padding: 0.5rem 1rem; border: 1px solid var(--surface3); background: ${currentTab === 'strata' ? 'var(--accent)' : 'var(--surface2)'}; color: ${currentTab === 'strata' ? 'var(--surface)' : 'var(--text)'}; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">🧠 Strata</button>
+        <button class="tab-btn ${currentTab === 'journal' ? 'active' : ''}" data-tab="journal" style="padding: 0.5rem 1rem; border: 1px solid var(--surface3); background: ${currentTab === 'journal' ? 'var(--accent)' : 'var(--surface2)'}; color: ${currentTab === 'journal' ? 'var(--surface)' : 'var(--text)'}; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">📋 Journal & Events</button>
+      </div>
+    `;
+    
+    switch (currentTab) {
+      case 'metrics':
+        html += renderMetricsTab(metrics, raw);
+        break;
+      case 'strata':
+        html += renderStrataTab();
+        break;
+      case 'journal':
+        html += renderJournalTab();
+        break;
+    }
+    
     contentEl.innerHTML = html;
+    
+    // Add tab click listeners
+    contentEl.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentTab = btn.dataset.tab;
+        renderCurrentTab(metrics, raw);
+      });
+    });
     
     // Add refresh button listener
     const refreshBtn = document.getElementById('proxy-metrics-refresh-now');
     if (refreshBtn) {
-      refreshBtn.addEventListener('click', fetchAndRender);
+      refreshBtn.addEventListener('click', fetchAllData);
+    }
+    
+    // Add journal refresh button listener
+    const journalRefreshBtn = document.getElementById('journal-refresh-now');
+    if (journalRefreshBtn) {
+      journalRefreshBtn.addEventListener('click', fetchAllData);
+    }
+    
+    // Add open archive button listener
+    const openArchiveBtn = document.getElementById('journal-open-archive');
+    if (openArchiveBtn) {
+      openArchiveBtn.addEventListener('click', () => {
+        // Open Archive Browser modal/page with current model/conversation context
+        if (window.openArchiveBrowser) {
+          window.openArchiveBrowser(model, conversationId);
+        } else {
+          // Fallback: navigate to archive page if it exists
+          const url = `/archive?model=${encodeURIComponent(model)}${conversationId ? `&conversation=${encodeURIComponent(conversationId)}` : ''}`;
+          window.open(url, '_blank');
+        }
+      });
     }
     
     // Reset conversation button listener
@@ -3552,27 +4121,28 @@ async function showProxyMetrics(model) {
     if (resetConvBtn) {
       resetConvBtn.addEventListener('click', async () => {
         conversationId = null;
-        await fetchAndRender();
+        await fetchAllData();
       });
     }
   }
   
   function startCountdown() {
     let seconds = 5;
-    const countdownEl = document.getElementById('metrics-refresh-countdown');
-    if (!countdownEl) return;
     
     const interval = setInterval(() => {
       seconds--;
+      // Re-acquire the countdown element each tick since renderCurrentTab() 
+      // replaces the content area and destroys the old element
+      const countdownEl = document.getElementById('metrics-refresh-countdown');
       if (countdownEl && currentModal) {
         countdownEl.textContent = `${seconds}s`;
       } else {
         clearInterval(interval);
         return;
       }
+      // Do NOT call fetchAllData() here - the single setInterval handles fetching
       if (seconds <= 0) {
         seconds = 5;
-        fetchAndRender();
       }
     }, 1000);
     
@@ -3582,8 +4152,8 @@ async function showProxyMetrics(model) {
   // Create modal
   const modalHtml = `
     <div id="proxy-metrics-modal" class="modal-overlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1500; align-items: center; justify-content: center;" aria-hidden="false">
-      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 900px; width: 95%; max-height: 85vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 1100px; width: 95%; max-height: 85vh; overflow: hidden; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
           <h3 style="margin: 0; color: var(--text);">Mnemonic-Proxy Metrics: ${he(model)}</h3>
           <button id="proxy-metrics-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
         </div>
@@ -3624,10 +4194,10 @@ async function showProxyMetrics(model) {
   });
   
   // Initial fetch
-  await fetchAndRender();
+  await fetchAllData();
   
   // Start auto-refresh
-  refreshInterval = setInterval(fetchAndRender, 5000);
+  refreshInterval = setInterval(fetchAllData, 5000);
   countdownInterval = startCountdown();
   
   // Cleanup on modal removal
