@@ -16,6 +16,7 @@ const vm = require("vm");
 const uiControlsPath = path.join(
   __dirname,
   "..",
+  "webapp",
   "static",
   "js",
   "ui-controls.js",

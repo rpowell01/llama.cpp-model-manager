@@ -66,12 +66,22 @@ def _escape_like_wildcards(text: str) -> str:
 def _epoch_to_iso(epoch: Optional[float]) -> str:
     """Convert epoch seconds (float) to ISO-8601 UTC string with microseconds.
     
-    Returns epoch 0 (1970-01-01T00:00:00.000Z) for NULL/None timestamps.
+    Returns epoch 0 (1970-01-01T00:00:00.000Z) for NULL/None timestamps,
+    non-numeric values, or out-of-range timestamps.
     """
     if epoch is None:
         return "1970-01-01T00:00:00.000Z"
-    # epoch is in seconds, datetime.fromtimestamp expects seconds
-    dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    # Coerce to float, fall back to epoch-0 on any error
+    try:
+        epoch_float = float(epoch)
+    except (TypeError, ValueError):
+        return "1970-01-01T00:00:00.000Z"
+    # datetime.fromtimestamp raises OverflowError for out-of-range values
+    # and OSError for values outside platform's supported range
+    try:
+        dt = datetime.fromtimestamp(epoch_float, tz=timezone.utc)
+    except (OverflowError, OSError):
+        return "1970-01-01T00:00:00.000Z"
     # Always include microseconds for consistent string ordering
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -271,10 +281,24 @@ def _query_conversations_from_archive(
     where_clause = ""
     params = []
     if query:
-        # Search in conversation ID or in message content
-        where_clause = "WHERE conv LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM archive a2 WHERE a2.conv = a.conv AND a2.content LIKE ? ESCAPE '\\')"
+        # Use a two-step approach: first find matching convs, then filter
+        # This avoids the correlated EXISTS subquery which is slow on large datasets
         like_query = f"%{_escape_like_wildcards(query)}%"
-        params = [like_query, like_query]
+        # Find conversations where any message content matches the query
+        cursor.execute("""
+            SELECT DISTINCT conv FROM archive
+            WHERE content LIKE ? ESCAPE '\\'
+        """, (like_query,))
+        matching_convs = {row[0] for row in cursor.fetchall()}
+        
+        # Build WHERE clause using IN for the main query
+        conv_placeholders = ",".join(["?"] * len(matching_convs)) if matching_convs else "0=1"
+        where_clause = f"WHERE a.conv IN ({conv_placeholders})"
+        params = list(matching_convs)
+        # Also add conversation ID LIKE search as fallback
+        if not matching_convs:
+            where_clause = "WHERE conv LIKE ? ESCAPE '\\'"
+            params = [like_query]
 
     # Build ORDER BY clause based on sort parameter
     sort_mapping = {
@@ -337,6 +361,38 @@ def _query_conversations_from_archive(
     return conversations, total
 
 
+def _get_archive_table_info(
+    conn: sqlite3.Connection,
+    query: Optional[str] = None,
+    queries: Optional[list[str]] = None,
+) -> tuple[bool, bool, bool, bool, list[str]]:
+    """
+    Get archive table existence flags and build search terms.
+    Returns (has_fts, has_segments, has_fileops, search_terms).
+    """
+    cursor = conn.cursor()
+
+    # Check if FTS table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
+    has_fts = cursor.fetchone() is not None
+
+    # Check if segments table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    # Check if fileops table exists for path filtering
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fileops'")
+    has_fileops = cursor.fetchone() is not None
+
+    search_terms = []
+    if query:
+        search_terms.append(query)
+    if queries:
+        search_terms.extend(queries)
+
+    return has_fts, has_segments, has_fileops, search_terms
+
+
 def _build_pieces_where_clauses(
     conversation_id: Optional[str],
     role: Optional[str],
@@ -347,6 +403,7 @@ def _build_pieces_where_clauses(
     path: Optional[str],
     has_fts: bool,
     has_segments: bool,
+    has_fileops: bool = False,
 ) -> tuple[str, list]:
     """
     Build WHERE clauses and parameters for pieces queries.
@@ -408,10 +465,23 @@ def _build_pieces_where_clauses(
         where_clauses.append(f"({' OR '.join(like_clauses)})")
 
     if path:
-        # Search in metadata/content for file path references
-        where_clauses.append("a.content LIKE ? ESCAPE '\\'")
-        like_path = f"%{_escape_like_wildcards(path)}%"
-        params.append(like_path)
+        if has_fileops:
+            # Use fileops table for path filtering when available
+            where_clauses.append("""
+                EXISTS (
+                    SELECT 1 FROM fileops f
+                    WHERE f.conv = a.conv
+                    AND f.idx = a.idx
+                    AND f.path LIKE ? ESCAPE '\\'
+                )
+            """)
+            like_path = f"%{_escape_like_wildcards(path)}%"
+            params.append(like_path)
+        else:
+            # Fall back to searching archive.content
+            where_clauses.append("a.content LIKE ? ESCAPE '\\'")
+            like_path = f"%{_escape_like_wildcards(path)}%"
+            params.append(like_path)
 
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
     return where_sql, params
@@ -428,6 +498,7 @@ def _query_pieces_from_archive(
     queries: Optional[list[str]] = None,
     order: str = "pertinenza",
     limit: int = 20,
+    offset: int = 0,
     path: Optional[str] = None,
 ) -> list[dict]:
     """
@@ -452,6 +523,10 @@ def _query_pieces_from_archive(
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
     has_segments = cursor.fetchone() is not None
 
+    # Check if fileops table exists for path filtering
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fileops'")
+    has_fileops = cursor.fetchone() is not None
+
     search_terms = []
     if query:
         search_terms.append(query)
@@ -468,19 +543,20 @@ def _query_pieces_from_archive(
         path=path,
         has_fts=has_fts,
         has_segments=has_segments,
+        has_fileops=has_fileops,
     )
 
     # Order by
     if order == "tempo":
-        order_sql = "ORDER BY a.created DESC"
+        order_sql = "ORDER BY a.created DESC, a.idx DESC, a.rid DESC"
     else:
         # Relevance: prioritize exact content matches, then by time
         if search_terms:
             first_escaped = _escape_like_wildcards(search_terms[0])
-            order_sql = f"ORDER BY (CASE WHEN a.content LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END), a.created DESC"
+            order_sql = f"ORDER BY (CASE WHEN a.content LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END), a.created DESC, a.idx DESC, a.rid DESC"
             params.append(f"%{first_escaped}%")
         else:
-            order_sql = "ORDER BY a.created DESC"
+            order_sql = "ORDER BY a.created DESC, a.idx DESC, a.rid DESC"
 
     # Include segment info from segments table if it exists
     if has_segments:
@@ -488,14 +564,8 @@ def _query_pieces_from_archive(
             COALESCE((
                 SELECT s.seg FROM segments s
                 WHERE s.conv = a.conv
-                AND a.idx >= s.cut_idx
-                AND (NOT EXISTS (
-                    SELECT 1 FROM segments s2
-                    WHERE s2.conv = a.conv
-                    AND s2.seg = s.seg + 1
-                    AND a.idx >= s2.cut_idx
-                ))
-                ORDER BY s.seg DESC LIMIT 1
+                AND s.cut_idx <= a.idx
+                ORDER BY s.cut_idx DESC LIMIT 1
             ), 1)
         """
     else:
@@ -508,9 +578,9 @@ def _query_pieces_from_archive(
         FROM archive a
         {where_sql}
         {order_sql}
-        LIMIT ?
+        LIMIT ? OFFSET ?
     """
-    params.append(limit)
+    params.extend([limit, offset])
     cursor.execute(sql, params)
 
     pieces = []
@@ -550,19 +620,7 @@ def _count_pieces_from_archive(
     if not cursor.fetchone():
         return 0
 
-    # Check if FTS table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
-    has_fts = cursor.fetchone() is not None
-
-    # Check if segments table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
-    has_segments = cursor.fetchone() is not None
-
-    search_terms = []
-    if query:
-        search_terms.append(query)
-    if queries:
-        search_terms.extend(queries)
+    has_fts, has_segments, has_fileops, search_terms = _get_archive_table_info(conn, query, queries)
 
     where_sql, params = _build_pieces_where_clauses(
         conversation_id=conversation_id,
@@ -574,6 +632,7 @@ def _count_pieces_from_archive(
         path=path,
         has_fts=has_fts,
         has_segments=has_segments,
+        has_fileops=has_fileops,
     )
 
     sql = f"SELECT COUNT(*) as total FROM archive a {where_sql}"
@@ -600,14 +659,8 @@ def _get_piece_by_id(conn: sqlite3.Connection, piece_id: str) -> Optional[dict]:
             COALESCE((
                 SELECT s.seg FROM segments s
                 WHERE s.conv = a.conv
-                AND a.idx >= s.cut_idx
-                AND (NOT EXISTS (
-                    SELECT 1 FROM segments s2
-                    WHERE s2.conv = a.conv
-                    AND s2.seg = s.seg + 1
-                    AND a.idx >= s2.cut_idx
-                ))
-                ORDER BY s.seg DESC LIMIT 1
+                AND s.cut_idx <= a.idx
+                ORDER BY s.cut_idx DESC LIMIT 1
             ), 1)
         """
     else:
@@ -655,19 +708,7 @@ def _get_oldest_piece(
     if not cursor.fetchone():
         return None
 
-    # Check if FTS table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
-    has_fts = cursor.fetchone() is not None
-
-    # Check if segments table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
-    has_segments = cursor.fetchone() is not None
-
-    search_terms = []
-    if query:
-        search_terms.append(query)
-    if queries:
-        search_terms.extend(queries)
+    has_fts, has_segments, has_fileops, search_terms = _get_archive_table_info(conn, query, queries)
 
     where_sql, params = _build_pieces_where_clauses(
         conversation_id=conversation_id,
@@ -679,6 +720,7 @@ def _get_oldest_piece(
         path=path,
         has_fts=has_fts,
         has_segments=has_segments,
+        has_fileops=has_fileops,
     )
 
     if has_segments:
@@ -686,14 +728,8 @@ def _get_oldest_piece(
             COALESCE((
                 SELECT s.seg FROM segments s
                 WHERE s.conv = a.conv
-                AND a.idx >= s.cut_idx
-                AND (NOT EXISTS (
-                    SELECT 1 FROM segments s2
-                    WHERE s2.conv = a.conv
-                    AND s2.seg = s.seg + 1
-                    AND a.idx >= s2.cut_idx
-                ))
-                ORDER BY s.seg DESC LIMIT 1
+                AND s.cut_idx <= a.idx
+                ORDER BY s.cut_idx DESC LIMIT 1
             ), 1)
         """
     else:
@@ -705,7 +741,7 @@ def _get_oldest_piece(
             {segment_sql} as segment
         FROM archive a
         {where_sql}
-        ORDER BY a.created ASC
+        ORDER BY (a.created IS NULL), a.created ASC, a.idx ASC, a.rid ASC
         LIMIT 1
     """
     cursor.execute(sql, params)
@@ -773,14 +809,17 @@ def api_archive_conversations():
     # Query conversations from archive.sqlite (real schema)
     conversations = []
     total = 0
+    conn = None
     try:
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
         conversations, total = _query_conversations_from_archive(conn, limit, offset, sort, query)
-        conn.close()
     except Exception as e:
         log.error(f"Failed to query conversations for {model}: {e}")
         return jsonify({"error": f"Failed to query conversations: {str(e)}"}), 500
+    finally:
+        if conn:
+            conn.close()
 
     return jsonify({
         "conversations": conversations,
@@ -812,7 +851,10 @@ def api_archive_journal():
 
     limit = _validate_limit(request.args.get("limit", 100, type=int))
     event_filter = request.args.get("event", "").strip() or None
+    event_type_filter = request.args.get("event_type", "").strip() or None
     conversation_id = request.args.get("conversation_id", "").strip() or None
+    from_timestamp = request.args.get("from_timestamp", "").strip() or None
+    to_timestamp = request.args.get("to_timestamp", "").strip() or None
     offset = _validate_offset(request.args.get("offset", 0, type=int))
 
     # Verify model exists
@@ -881,6 +923,16 @@ def api_archive_journal():
                         continue
                     if event_filter and event.get("event") != event_filter:
                         continue
+                    if event_type_filter and event.get("event") != event_type_filter:
+                        continue
+                    if from_timestamp or to_timestamp:
+                        event_ts = event.get("ts")
+                        if event_ts is not None:
+                            event_ts_iso = _epoch_to_iso(event_ts)
+                            if from_timestamp and event_ts_iso < from_timestamp:
+                                continue
+                            if to_timestamp and event_ts_iso > to_timestamp:
+                                continue
 
                     events.append(event)
                     if len(events) >= max_collect:
@@ -890,7 +942,12 @@ def api_archive_journal():
                 try:
                     event = json.loads(buffer.decode("utf-8"))
                     if (not conversation_id or event.get("conv") == conversation_id) and \
-                       (not event_filter or event.get("event") == event_filter):
+                       (not event_filter or event.get("event") == event_filter) and \
+                       (not event_type_filter or event.get("event") == event_type_filter) and \
+                       (not from_timestamp or not to_timestamp or
+                        (event.get("ts") is not None and
+                         (_epoch_to_iso(event.get("ts")) >= from_timestamp if from_timestamp else True) and
+                         (_epoch_to_iso(event.get("ts")) <= to_timestamp if to_timestamp else True))):
                         events.append(event)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
@@ -899,8 +956,22 @@ def api_archive_journal():
         log.error(f"Failed to parse journal for {model}: {e}")
         return jsonify({"error": f"Failed to parse journal: {str(e)}"}), 500
 
-    total = len(events)
-    events = events[offset:offset + limit]
+    # Normalize journal records to match frontend expected shape:
+    # frontend expects: id, event_type, timestamp, conversation_id, data
+    # backend records have: ts, event, conv, + other flat fields
+    normalized = []
+    for event in events:
+        normalized_event = {
+            "id": event.get("rid", event.get("id", "")),
+            "event_type": event.get("event", "unknown"),
+            "timestamp": _epoch_to_iso(event.get("ts")),
+            "conversation_id": event.get("conv", ""),
+            "data": {k: v for k, v in event.items() if k not in ("ts", "event", "conv", "rid", "id")},
+        }
+        normalized.append(normalized_event)
+
+    total = len(normalized)
+    events = normalized[offset:offset + limit]
 
     return jsonify({
         "events": events,
@@ -951,7 +1022,8 @@ def api_archive_recall():
     # Parse and validate query parameters
     query = request.args.get("query", "").strip() or None
     queries_param = request.args.get("queries", "").strip()
-    queries = [q.strip() for q in queries_param.split(",")] if queries_param else None
+    # Filter out empty/whitespace-only terms
+    queries = [q.strip() for q in queries_param.split(",") if q.strip()] if queries_param else None
     id_param = request.args.get("id", "").strip() or None
     path = request.args.get("path", "").strip() or None
     mode = request.args.get("mode", "timeline").strip()
@@ -997,6 +1069,7 @@ def api_archive_recall():
         })
 
     # Query pieces from archive table (real schema)
+    conn = None
     try:
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
@@ -1004,7 +1077,6 @@ def api_archive_recall():
         # If id_param is provided, do a direct lookup
         if id_param:
             piece = _get_piece_by_id(conn, id_param)
-            conn.close()
             if piece:
                 if conversation_id and piece["conversation_id"] != conversation_id:
                     results = []
@@ -1028,7 +1100,6 @@ def api_archive_recall():
                 queries=queries,
                 path=path,
             )
-            conn.close()
             if piece:
                 results = [piece]
                 total = 1
@@ -1048,8 +1119,7 @@ def api_archive_recall():
                 queries=queries,
                 path=path,
             )
-            # Fetch page with offset
-            fetch_limit = limit + offset
+            # Fetch page with offset using SQLite OFFSET clause
             results = _query_pieces_from_archive(
                 conn=conn,
                 conversation_id=conversation_id,
@@ -1060,11 +1130,10 @@ def api_archive_recall():
                 query=query,
                 queries=queries,
                 order=order,
-                limit=fetch_limit,
+                limit=limit,
+                offset=offset,
                 path=path,
             )
-            # Apply offset
-            results = results[offset:]
             conn.close()
 
         return jsonify({
@@ -1114,11 +1183,11 @@ def api_archive_piece(piece_id):
     if not archive_db or not archive_db.exists():
         return jsonify({"error": "No archive database found"}), 404
 
+    conn = None
     try:
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
         piece = _get_piece_by_id(conn, piece_id)
-        conn.close()
 
         if not piece:
             return jsonify({"error": f"Piece not found: {piece_id}"}), 404
@@ -1129,3 +1198,6 @@ def api_archive_piece(piece_id):
     except Exception as e:
         log.error(f"Failed to fetch piece {piece_id} for {model}: {e}")
         return jsonify({"error": f"Failed to fetch piece: {str(e)}"}), 500
+    finally:
+        if conn:
+            conn.close()

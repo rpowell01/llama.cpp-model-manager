@@ -80,8 +80,6 @@ def _needs_zstd_shim() -> bool:
 
 
 def _zstd_shim_usable() -> bool:
-    """The zstd shim is always usable in this environment."""
-    return True
     """
     True if compression_zstd_shim can provide compression.zstd here.
 

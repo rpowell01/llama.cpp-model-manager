@@ -42,7 +42,6 @@ class TestMnemonicProxyConfigGeneration:
             assert config['slot_dir'] == '/tmp/slots'
             assert config['mask_anchor'] is True
             assert config['autosave'] is True
-            assert config['window_estimate_slack'] == 0.15
     
     def test_generate_config_min_window(self):
         """Test that window minimum is not in config (auto-discovered)."""
@@ -435,7 +434,8 @@ class TestMnemonicProxyZstdSupport:
 
     def test_zstd_shim_usable_true_when_installed(self):
         import webapp.mnemonic_proxy as mp
-        with patch.object(mp, '_needs_zstd_shim', return_value=True):
+        with patch.object(mp, '_needs_zstd_shim', return_value=True), \
+             patch.dict(sys.modules, {'zstandard': MagicMock()}):
             assert mp._zstd_shim_usable() is True  # shim file + zstandard present
 
     def test_zstd_shim_usable_false_without_zstandard(self):

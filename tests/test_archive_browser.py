@@ -1,8 +1,10 @@
 """Playwright tests for Archive Browser frontend."""
 import pytest
 import subprocess
+import sys
 import time
 import requests
+from pathlib import Path
 from playwright.sync_api import Page, expect
 
 
@@ -12,10 +14,12 @@ class TestArchiveBrowserFrontend:
     @pytest.fixture(scope="session")
     def test_server(self):
         """Start the standalone test server."""
+        # Derive cwd from test file location (project root)
+        project_root = Path(__file__).resolve().parent.parent
         # Start the server as a subprocess
         server_process = subprocess.Popen(
-            ["python3", "tests/test_archive_server.py"],
-            cwd="/mnt/c/Users/russe/code/llama.cpp-model-manager/.kilo/worktrees/bead-web-mol-6nj.1",
+            [sys.executable, "tests/test_archive_server.py"],
+            cwd=project_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

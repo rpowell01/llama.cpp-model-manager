@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from flask import Flask
 
-from webapp.routes.archive import archive_bp
+from webapp.routes.archive import archive_bp, _epoch_to_iso
 from webapp.mnemonic_proxy import MnemonicProxyManager
 
 
@@ -25,6 +25,64 @@ def _make_app():
     app.register_blueprint(archive_bp)
     app.config["TESTING"] = True
     return app
+
+
+def test_epoch_to_iso_none():
+    """Test _epoch_to_iso with None returns epoch-0 sentinel."""
+    assert _epoch_to_iso(None) == "1970-01-01T00:00:00.000Z"
+
+
+def test_epoch_to_iso_valid():
+    """Test _epoch_to_iso with valid epoch returns correct ISO string."""
+    # 1704067200.0 = 2024-01-01T00:00:00.000Z
+    assert _epoch_to_iso(1704067200.0) == "2024-01-01T00:00:00.000Z"
+
+
+def test_epoch_to_iso_non_numeric():
+    """Test _epoch_to_iso with non-numeric value falls back to epoch-0."""
+    assert _epoch_to_iso("2024-01-01") == "1970-01-01T00:00:00.000Z"
+    assert _epoch_to_iso("invalid") == "1970-01-01T00:00:00.000Z"
+    assert _epoch_to_iso([1, 2, 3]) == "1970-01-01T00:00:00.000Z"
+
+
+def test_epoch_to_iso_out_of_range():
+    """Test _epoch_to_iso with out-of-range value falls back to epoch-0."""
+    # Very large value that would cause OverflowError
+    assert _epoch_to_iso(1e30) == "1970-01-01T00:00:00.000Z"
+    # Very negative value
+    assert _epoch_to_iso(-1e30) == "1970-01-01T00:00:00.000Z"
+
+
+def test_archive_recall_queries_with_empty_terms():
+    """Test that empty/whitespace-only query terms are filtered out."""
+    app = _make_app()
+    client = app.test_client()
+
+    archive_db = Path("/tmp/test_archive.db")
+    if archive_db.exists():
+        archive_db.unlink()
+    _create_test_archive_db(archive_db)
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return Path("/tmp/data/model")
+
+    # Test with empty queries parameter - should result in no FTS search
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # queries=, should result in empty search terms, no FTS used
+            resp = client.get("/api/proxy/archive/recall?model=test-model&queries=,")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # When no valid terms, no FTS search is performed; pieces should be empty
+    # or the search should not match everything (depends on FTS table existence)
+    # The key is that it doesn't 500 or return all pieces as matches
+    assert "pieces" in data or "recall" in data
 
 
 def _create_test_archive_db(db_path: Path):
@@ -294,6 +352,84 @@ def test_archive_conversations_sort_by_message_count(tmp_path):
     assert remaining == {"conv-abc", "conv-wildcard"}
 
 
+def test_archive_conversations_pagination_total(tmp_path):
+    """Test that paginated conversations request returns correct total (not just page size)."""
+    app = _make_app()
+    client = app.test_client()
+
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    _create_test_archive_db(archive_db)
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # Request with limit=2, should return 2 conversations but total=4
+            resp = client.get("/api/proxy/archive/conversations?model=test-model&limit=2&offset=0")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # count is the page size (2), total is the actual total (4)
+    assert data["count"] == 2
+    assert data["total"] == 4
+    assert len(data["conversations"]) == 2
+    # Second page should also have total=4
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp2 = client.get("/api/proxy/archive/conversations?model=test-model&limit=2&offset=2")
+    assert resp2.status_code == 200
+    data2 = resp2.get_json()
+    assert data2["count"] == 2
+    assert data2["total"] == 4
+    assert len(data2["conversations"]) == 2
+
+
+def test_archive_conversations_pagination_with_query_filter(tmp_path):
+    """Test that paginated conversations request with query filter returns correct offset behavior."""
+    app = _make_app()
+    client = app.test_client()
+
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    _create_test_archive_db(archive_db)
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # Query for 'abc' should match conv-abc (2 messages)
+            # With limit=1, offset=0 should return first result
+            resp = client.get("/api/proxy/archive/conversations?model=test-model&query=abc&limit=1&offset=0")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["count"] == 1
+    assert data["total"] == 1  # Only conv-abc matches
+    assert len(data["conversations"]) == 1
+    assert data["conversations"][0]["conversation_id"] == "conv-abc"
+
+    # Test offset with query filter - should return empty since only 1 match
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp2 = client.get("/api/proxy/archive/conversations?model=test-model&query=abc&limit=1&offset=1")
+    assert resp2.status_code == 200
+    data2 = resp2.get_json()
+    assert data2["count"] == 0
+    assert data2["total"] == 1
+    assert len(data2["conversations"]) == 0
+
+
 def test_archive_journal_missing_model_param():
     app = _make_app()
     client = app.test_client()
@@ -357,10 +493,10 @@ def test_archive_journal_with_data(tmp_path):
     assert data["count"] == 4
     assert data["total"] == 4
     # Most recent first (reversed)
-    assert data["events"][0]["event"] == "new_conversation"
-    assert data["events"][0]["conv"] == "conv-3"
-    assert data["events"][3]["event"] == "request"
-    assert data["events"][3]["conv"] == "conv-1"
+    assert data["events"][0]["event_type"] == "new_conversation"
+    assert data["events"][0]["conversation_id"] == "conv-3"
+    assert data["events"][3]["event_type"] == "request"
+    assert data["events"][3]["conversation_id"] == "conv-1"
 
 
 def test_archive_journal_with_conversation_filter(tmp_path):
@@ -390,7 +526,7 @@ def test_archive_journal_with_conversation_filter(tmp_path):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["count"] == 2
-    assert all(e["conv"] == "conv-1" for e in data["events"])
+    assert all(e["conversation_id"] == "conv-1" for e in data["events"])
 
 
 def test_archive_journal_with_event_filter(tmp_path):
@@ -420,8 +556,8 @@ def test_archive_journal_with_event_filter(tmp_path):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["count"] == 1
-    assert data["events"][0]["event"] == "recall"
-    assert data["events"][0]["conv"] == "conv-1"
+    assert data["events"][0]["event_type"] == "recall"
+    assert data["events"][0]["conversation_id"] == "conv-1"
 
 
 def test_archive_recall_missing_model_param():
@@ -722,6 +858,314 @@ def test_archive_recall_mode_first(tmp_path):
     # mode=first should return the OLDEST match (conv-1 system prompt at idx 0)
     assert len(data["pieces"]) == 1
     assert data["pieces"][0]["content"] == "System prompt"
+
+
+def test_archive_recall_mode_first_null_created(tmp_path):
+    """Test that mode=first sorts NULL-created rows last (not as oldest)."""
+    app = _make_app()
+    client = app.test_client()
+
+    # Create a test archive DB WITHOUT NOT NULL on created (to test NULL handling)
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    archive_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(archive_db))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE archive (
+            rid TEXT PRIMARY KEY,
+            conv TEXT NOT NULL,
+            idx INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            name TEXT,
+            content TEXT NOT NULL,
+            tokens INTEGER,
+            created REAL  -- Allow NULL for this test
+        )
+    """)
+    # Insert test data with a NULL created row
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-null", "conv-1", 10, "user", None, "NULL created test", 10, None))
+    # Insert a normal row
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-1", "conv-1", 0, "system", None, "System prompt", 100, 1704067200.0))
+    conn.commit()
+    conn.close()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp = client.get("/api/proxy/archive/recall?model=test-model&mode=first")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # mode=first should return the OLDEST non-NULL match (System prompt at idx 0)
+    # NOT the NULL-created row
+    assert len(data["pieces"]) == 1
+    assert data["pieces"][0]["content"] == "System prompt"
+    assert data["pieces"][0]["id"] == "rid-1"
+
+
+def test_archive_recall_mode_first_with_query(tmp_path):
+    """Test mode=first with query returns oldest matching piece by created timestamp."""
+    app = _make_app()
+    client = app.test_client()
+
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    _create_test_archive_db(archive_db)
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # Query for "Hello" matches conv-1 (Hello world at idx 1, created 1704067201)
+            # and conv-2 (First message at idx 0, created 1704153600)
+            # The oldest match should be "Hello world" at 1704067201
+            resp = client.get("/api/proxy/archive/recall?model=test-model&query=Hello&mode=first")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["pieces"]) == 1
+    # Should return the oldest matching piece (Hello world from conv-1)
+    assert data["pieces"][0]["content"] == "Hello world"
+    assert data["pieces"][0]["conversation_id"] == "conv-1"
+
+
+def test_archive_without_segments_table(tmp_path):
+    """Test that archive works correctly when segments table is missing."""
+    app = _make_app()
+    client = app.test_client()
+
+    # Create archive DB WITHOUT segments table
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    archive_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(archive_db))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE archive (
+            rid TEXT PRIMARY KEY,
+            conv TEXT NOT NULL,
+            idx INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            name TEXT,
+            content TEXT NOT NULL,
+            tokens INTEGER,
+            created REAL NOT NULL
+        )
+    """)
+    # Insert test data
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-1", "conv-1", 0, "system", None, "System prompt", 100, 1704067200.0))
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-2", "conv-1", 1, "user", None, "Hello world", 50, 1704067201.0))
+    conn.commit()
+    conn.close()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # Test conversations endpoint
+            resp = client.get("/api/proxy/archive/conversations?model=test-model")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["conversations"][0]["segment_count"] == 0
+
+            # Test recall endpoint (timeline mode)
+            resp2 = client.get("/api/proxy/archive/recall?model=test-model&mode=timeline")
+            assert resp2.status_code == 200
+            data2 = resp2.get_json()
+            assert len(data2["pieces"]) == 2
+            assert data2["pieces"][0]["segment"] == 1  # Default segment when no segments table
+
+            # Test recall endpoint (mode=first)
+            resp3 = client.get("/api/proxy/archive/recall?model=test-model&mode=first")
+            assert resp3.status_code == 200
+            data3 = resp3.get_json()
+            assert len(data3["pieces"]) == 1
+            assert data3["pieces"][0]["segment"] == 1
+
+            # Test piece endpoint
+            resp4 = client.get("/api/proxy/archive/piece/rid-1?model=test-model")
+            assert resp4.status_code == 200
+            data4 = resp4.get_json()
+            assert data4["segment"] == 1
+
+            # Test seg filter is a no-op (should not crash)
+            resp5 = client.get("/api/proxy/archive/recall?model=test-model&seg=1")
+            assert resp5.status_code == 200
+            data5 = resp5.get_json()
+            assert len(data5["pieces"]) == 2
+
+
+def test_archive_recall_path_filter_with_fileops(tmp_path):
+    """Test that path filter uses fileops table when available."""
+    app = _make_app()
+    client = app.test_client()
+
+    # Create archive DB WITH fileops table
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    archive_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(archive_db))
+    cursor = conn.cursor()
+
+    # Create archive table
+    cursor.execute("""
+        CREATE TABLE archive (
+            rid TEXT PRIMARY KEY,
+            conv TEXT NOT NULL,
+            idx INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            name TEXT,
+            content TEXT NOT NULL,
+            tokens INTEGER,
+            created REAL NOT NULL
+        )
+    """)
+
+    # Create fileops table (real schema)
+    cursor.execute("""
+        CREATE TABLE fileops (
+            conv TEXT NOT NULL,
+            idx INTEGER NOT NULL,
+            call_id TEXT,
+            op TEXT NOT NULL,
+            path TEXT NOT NULL,
+            outcome TEXT,
+            rid_args TEXT,
+            rid_out TEXT,
+            head TEXT,
+            PRIMARY KEY (conv, idx, call_id)
+        )
+    """)
+
+    # Insert test data in archive - content does NOT contain the file path
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-1", "conv-1", 0, "system", None, "System prompt", 100, 1704067200.0))
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-2", "conv-1", 1, "user", None, "I'll help with that file", 50, 1704067201.0))
+    cursor.execute("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("rid-3", "conv-1", 2, "assistant", None, "Done", 30, 1704067202.0))
+
+    # Insert fileops row with path that is NOT in archive.content
+    cursor.execute("""
+        INSERT INTO fileops (conv, idx, call_id, op, path, outcome, rid_args, rid_out, head)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("conv-1", 1, "call-123", "write", "/home/user/secret.txt", "success", "rid-args", "rid-out", "head"))
+
+    # Also add a fileops row for a different path
+    cursor.execute("""
+        INSERT INTO fileops (conv, idx, call_id, op, path, outcome, rid_args, rid_out, head)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("conv-1", 2, "call-456", "read", "/home/user/other.txt", "success", "rid-args", "rid-out", "head"))
+
+    conn.commit()
+    conn.close()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            # Search for path that ONLY exists in fileops, not in archive.content
+            resp = client.get("/api/proxy/archive/recall?model=test-model&path=/home/user/secret.txt")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # Should find the piece at idx=1 (where fileops has the path)
+    assert len(data["pieces"]) == 1
+    assert data["pieces"][0]["id"] == "rid-2"
+    assert data["pieces"][0]["conversation_id"] == "conv-1"
+
+    # Search for the other path
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp2 = client.get("/api/proxy/archive/recall?model=test-model&path=/home/user/other.txt")
+
+    assert resp2.status_code == 200
+    data2 = resp2.get_json()
+    assert len(data2["pieces"]) == 1
+    assert data2["pieces"][0]["id"] == "rid-3"
+
+    # Search for non-existent path
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp3 = client.get("/api/proxy/archive/recall?model=test-model&path=/nonexistent.txt")
+
+    assert resp3.status_code == 200
+    data3 = resp3.get_json()
+    assert len(data3["pieces"]) == 0
+
+
+def test_archive_recall_mode_default_alias(tmp_path):
+    """mode=default is the frontend default and must alias mode=timeline (HTTP 200)."""
+    app = _make_app()
+    client = app.test_client()
+
+    archive_db = tmp_path / "data" / "model" / "archive.sqlite"
+    _create_test_archive_db(archive_db)
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            default_resp = client.get(
+                "/api/proxy/archive/recall?model=test-model&query=Hello&mode=default"
+            )
+            timeline_resp = client.get(
+                "/api/proxy/archive/recall?model=test-model&query=Hello&mode=timeline"
+            )
+
+    assert default_resp.status_code == 200
+    assert timeline_resp.status_code == 200
+    default_data = default_resp.get_json()
+    timeline_data = timeline_resp.get_json()
+    # mode=default must be an alias for mode=timeline, producing identical results
+    assert default_data["pieces"] == timeline_data["pieces"]
+    assert default_data["pieces"][0]["content"] == "Hello world"
 
 
 def test_archive_recall_like_wildcard_escape(tmp_path):

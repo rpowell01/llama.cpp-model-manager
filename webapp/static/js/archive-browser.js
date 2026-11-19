@@ -388,8 +388,12 @@ let _restoring = false;
         if (elements.searchQuery) elements.searchQuery.value = state.searchQuery;
       }
       if (state.searchMode !== undefined) {
-        pagination.search.mode = state.searchMode;
-        if (elements.searchMode) elements.searchMode.value = state.searchMode;
+        // Validate restored search mode against supported values
+        const supportedModes = ["default", "timeline", "first"];
+        pagination.search.mode = supportedModes.includes(state.searchMode)
+          ? state.searchMode
+          : "default";
+        if (elements.searchMode) elements.searchMode.value = pagination.search.mode;
       }
       if (state.journalEventType !== undefined) {
         pagination.journal.eventType = state.journalEventType;
@@ -571,7 +575,7 @@ let _restoring = false;
       if (data.error) throw new Error(data.error || 'Failed to load conversations');
       
       const conversations = data.conversations || [];
-      pg.total = data.count || 0;
+      pg.total = data.total || data.count || 0;
       
       renderConversations(conversations);
       updatePagination('conversations');
@@ -1214,11 +1218,36 @@ let _restoring = false;
     const content = piece.content || '';
     const created = formatTimestamp(piece.created_at);
     const convId = piece.conversation_id || '';
+    const tokens = piece.tokens || 0;
+    const name = piece.name || '';
+    // These fields don't exist in the real archive schema
     const metadata = piece.metadata || {};
     const requestContext = piece.request_context || {};
     const recallUse = piece.recall_use || {};
     const output = piece.output || '';
     const reasoning = piece.reasoning || '';
+    
+    // Determine which tabs have data
+    const hasMetadata = Object.keys(metadata).length > 0;
+    const hasRequestContext = Object.keys(requestContext).length > 0;
+    const hasRecallUse = Object.keys(recallUse).length > 0;
+    const hasOutput = output && output.length > 0;
+    const hasReasoning = reasoning && reasoning.length > 0;
+    
+    // Build tab buttons dynamically based on available data
+    let tabButtons = `
+      <button class="archive-detail-tab active" data-tab="content">Content</button>
+    `;
+    if (hasMetadata) tabButtons += `<button class="archive-detail-tab" data-tab="metadata">Metadata</button>`;
+    if (hasRequestContext) tabButtons += `<button class="archive-detail-tab" data-tab="request">Request Context</button>`;
+    if (hasRecallUse) tabButtons += `<button class="archive-detail-tab" data-tab="recall">Recall Use</button>`;
+    if (hasOutput) tabButtons += `<button class="archive-detail-tab" data-tab="output">Output</button>`;
+    if (hasReasoning) tabButtons += `<button class="archive-detail-tab" data-tab="reasoning">Reasoning</button>`;
+    
+    // If no extra tabs have data, add a Basic Info tab
+    if (!hasMetadata && !hasRequestContext && !hasRecallUse && !hasOutput && !hasReasoning) {
+      tabButtons += `<button class="archive-detail-tab" data-tab="basic">Basic Info</button>`;
+    }
     
     let html = `
       <div class="archive-detail-header">
@@ -1229,12 +1258,7 @@ let _restoring = false;
       </div>
       
       <div class="archive-detail-tabs">
-        <button class="archive-detail-tab active" data-tab="content">Content</button>
-        <button class="archive-detail-tab" data-tab="metadata">Metadata</button>
-        <button class="archive-detail-tab" data-tab="request">Request Context</button>
-        <button class="archive-detail-tab" data-tab="recall">Recall Use</button>
-        <button class="archive-detail-tab" data-tab="output">Output</button>
-        <button class="archive-detail-tab" data-tab="reasoning">Reasoning</button>
+        ${tabButtons}
       </div>
       
       <div class="archive-detail-content">
@@ -1268,49 +1292,100 @@ let _restoring = false;
                 <div class="archive-detail-meta-label">Conversation</div>
                 <div class="archive-detail-meta-value">${he(convId)}</div>
               </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Tokens</div>
+                <div class="archive-detail-meta-value">${tokens}</div>
+              </div>
+              ${name ? `<div class="archive-detail-meta-item"><div class="archive-detail-meta-label">Name</div><div class="archive-detail-meta-value">${he(name)}</div></div>` : ''}
             </div>
           </div>
         </div>
         
+        <!-- Basic Info Tab (shown when no extra tabs have data) -->
+        ${!hasMetadata && !hasRequestContext && !hasRecallUse && !hasOutput && !hasReasoning ? `
+        <div class="archive-tab-panel" data-tab="basic" style="display: none;">
+          <div class="archive-detail-section">
+            <h4>Basic Info</h4>
+            <div class="archive-detail-meta">
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Role</div>
+                <div class="archive-detail-meta-value">${he(role)}</div>
+              </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Segment</div>
+                <div class="archive-detail-meta-value">${segment}</div>
+              </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Message Index</div>
+                <div class="archive-detail-meta-value">${msgIndex}</div>
+              </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Created</div>
+                <div class="archive-detail-meta-value">${he(created)}</div>
+              </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Conversation</div>
+                <div class="archive-detail-meta-value">${he(convId)}</div>
+              </div>
+              <div class="archive-detail-meta-item">
+                <div class="archive-detail-meta-label">Tokens</div>
+                <div class="archive-detail-meta-value">${tokens}</div>
+              </div>
+              ${name ? `<div class="archive-detail-meta-item"><div class="archive-detail-meta-label">Name</div><div class="archive-detail-meta-value">${he(name)}</div></div>` : ''}
+            </div>
+          </div>
+        </div>
+        ` : ''}
+        
         <!-- Metadata Tab -->
+        ${hasMetadata ? `
         <div class="archive-tab-panel" data-tab="metadata" style="display: none;">
           <div class="archive-detail-section">
             <h4>Metadata</h4>
             <pre>${he(JSON.stringify(metadata, null, 2))}</pre>
           </div>
         </div>
+        ` : ''}
         
         <!-- Request Context Tab -->
+        ${hasRequestContext ? `
         <div class="archive-tab-panel" data-tab="request" style="display: none;">
           <div class="archive-detail-section">
             <h4>Request Context</h4>
             <pre>${he(JSON.stringify(requestContext, null, 2))}</pre>
           </div>
         </div>
+        ` : ''}
         
         <!-- Recall Use Tab -->
+        ${hasRecallUse ? `
         <div class="archive-tab-panel" data-tab="recall" style="display: none;">
           <div class="archive-detail-section">
             <h4>Recall Use (Tool Result)</h4>
             <pre>${he(JSON.stringify(recallUse, null, 2))}</pre>
           </div>
         </div>
+        ` : ''}
         
         <!-- Output Tab -->
+        ${hasOutput ? `
         <div class="archive-tab-panel" data-tab="output" style="display: none;">
           <div class="archive-detail-section">
             <h4>Output</h4>
             <pre>${he(output)}</pre>
           </div>
         </div>
+        ` : ''}
         
         <!-- Reasoning Tab -->
+        ${hasReasoning ? `
         <div class="archive-tab-panel" data-tab="reasoning" style="display: none;">
           <div class="archive-detail-section">
             <h4>Reasoning</h4>
             <pre>${he(reasoning)}</pre>
           </div>
         </div>
+        ` : ''}
       </div>
     `;
     

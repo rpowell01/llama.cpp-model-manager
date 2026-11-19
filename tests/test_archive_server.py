@@ -50,6 +50,15 @@ mock_proxy = MockProxyManager()
 
 # Start patches globally
 patches = [
+    patch("webapp.routes.system.get_hardware_info", return_value={
+        "cpu_count_logical": 8,
+        "cpu_count_physical": 4,
+        "memory_total_gb": 16,
+        "memory_available_gb": 8,
+        "gpu_info": [],
+        "platform": "Linux",
+        "platform_version": "5.15.0",
+    }),
     patch("webapp.models.get_models", return_value=test_models),
     patch("webapp.routes.archive._get_model_config", return_value={"port": 9931, "mnemonic_proxy": {"enabled": True, "port": 8096}}),
     patch("webapp.routes.archive.get_proxy_manager", return_value=mock_proxy),
@@ -68,15 +77,6 @@ patches = [
         "filename": "model.gguf",
         "expected_size": 1000000000,
     }]),
-    patch("webapp.routes.system.get_hardware_info", return_value={
-        "cpu_count_logical": 8,
-        "cpu_count_physical": 4,
-        "memory_total_gb": 16,
-        "memory_available_gb": 8,
-        "gpu_info": [],
-        "platform": "Linux",
-        "platform_version": "5.15.0",
-    }),
 ]
 
 for p in patches:
@@ -97,90 +97,6 @@ from webapp.routes.chat import chat_bp
 
 def setup_test_data(tmp_path: Path):
     """Create test archive data."""
-    conversations_data = [
-        {
-            "id": "conv-abc123",
-            "conversation_id": "conv-abc123",
-            "created_at": "2024-01-01T10:00:00",
-            "updated_at": "2024-01-01T11:00:00",
-            "message_count": 5,
-            "token_count": 1000,
-        },
-        {
-            "id": "conv-def456",
-            "conversation_id": "conv-def456",
-            "created_at": "2024-01-02T10:00:00",
-            "updated_at": "2024-01-02T11:30:00",
-            "message_count": 3,
-            "token_count": 500,
-        },
-        {
-            "id": "conv-ghi789",
-            "conversation_id": "conv-ghi789",
-            "created_at": "2024-01-03T10:00:00",
-            "updated_at": "2024-01-03T12:00:00",
-            "message_count": 8,
-            "token_count": 2000,
-        },
-    ]
-
-    pieces_data = [
-        {
-            "id": "piece-1",
-            "conversation_id": "conv-abc123",
-            "role": "user",
-            "content": "Hello, how are you?",
-            "segment": 1,
-            "message_index": 0,
-            "created_at": "2024-01-01T10:00:00",
-        },
-        {
-            "id": "piece-2",
-            "conversation_id": "conv-abc123",
-            "role": "assistant",
-            "content": "I'm doing well, thank you for asking!",
-            "segment": 1,
-            "message_index": 1,
-            "created_at": "2024-01-01T10:00:01",
-        },
-        {
-            "id": "piece-3",
-            "conversation_id": "conv-abc123",
-            "role": "user",
-            "content": "Can you help me with Python?",
-            "segment": 1,
-            "message_index": 2,
-            "created_at": "2024-01-01T10:05:00",
-        },
-        {
-            "id": "piece-4",
-            "conversation_id": "conv-def456",
-            "role": "user",
-            "content": "What is the capital of France?",
-            "segment": 1,
-            "message_index": 0,
-            "created_at": "2024-01-02T10:00:00",
-        },
-        {
-            "id": "piece-5",
-            "conversation_id": "conv-def456",
-            "role": "assistant",
-            "content": "The capital of France is Paris.",
-            "segment": 1,
-            "message_index": 1,
-            "created_at": "2024-01-02T10:00:01",
-        },
-        {
-            "id": "piece-6",
-            "conversation_id": "conv-ghi789",
-            "role": "user",
-            "content": "Search query test content",
-            "segment": 1,
-            "message_index": 0,
-            "created_at": "2024-01-03T10:00:00",
-        },
-    ]
-
     journal_events = [
         {"ts": 1704100800.0, "event": "request", "conv": "conv-abc123", "prompt_tokens": 100},
         {"ts": 1704100801.0, "event": "recall", "conv": "conv-abc123"},
@@ -191,7 +107,7 @@ def setup_test_data(tmp_path: Path):
     # Create archive DB and journal in the expected fixed location
     archive_db = tmp_path / "data" / "model" / "archive.sqlite"
     journal_path = tmp_path / "data" / "model" / "journal.jsonl"
-    _create_test_archive_db(archive_db, conversations_data, pieces_data)
+    _create_test_archive_db(archive_db)
     _write_journal(journal_path, journal_events)
 
     # Set the tmp_path on the mock proxy manager
