@@ -701,9 +701,12 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/journal?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Failed to load journal');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const events = data.events || [];
+      if (payload.error) throw new Error(payload.error || 'Failed to load journal');
+      
+      const events = payload.events || [];
       renderConversationDetail(convId, events);
       setStatus(`Loaded conversation ${convId.substring(0, 12)}…`);
     } catch (e) {
