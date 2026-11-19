@@ -1167,7 +1167,7 @@ let _restoring = false;
       }
       
       virtualLists.fileHistoryFiles = new VirtualList({
-        parentEl: listEl,
+        container: listEl,
         items: currentData.fileHistoryFiles,
         renderItem: renderFileHistoryFile,
         onItemClick: (file) => {
