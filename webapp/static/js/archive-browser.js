@@ -572,10 +572,13 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/conversations?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Failed to load conversations');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const conversations = data.conversations || [];
-      pg.total = data.total || data.count || 0;
+      if (payload.error) throw new Error(payload.error || 'Failed to load conversations');
+      
+      const conversations = payload.conversations || [];
+      pg.total = payload.total || payload.count || 0;
       
       renderConversations(conversations);
       updatePagination('conversations');
@@ -795,10 +798,13 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/journal?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Failed to load journal');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const events = data.events || [];
-      pg.total = data.total || 0;
+      if (payload.error) throw new Error(payload.error || 'Failed to load journal');
+      
+      const events = payload.events || [];
+      pg.total = payload.total || 0;
       
       renderJournal(events);
       updatePagination('journal');
@@ -928,10 +934,13 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Search failed');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const pieces = data.recall?.results || [];
-      pg.total = data.recall?.total || 0;
+      if (payload.error) throw new Error(payload.error || 'Search failed');
+      
+      const pieces = payload.recall?.results || [];
+      pg.total = payload.recall?.total || 0;
       
       renderSearchResults(pieces);
       updatePagination('search');
@@ -1063,10 +1072,13 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Failed to load file history');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const pieces = data.recall?.results || [];
-      pg.total = data.recall?.total || 0;
+      if (payload.error) throw new Error(payload.error || 'Failed to load file history');
+      
+      const pieces = payload.recall?.results || [];
+      pg.total = payload.recall?.total || 0;
       
       renderFileHistory(pieces);
       updatePagination('fileHistory');
@@ -1189,9 +1201,12 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (data.error) throw new Error(data.error || 'Failed to load piece');
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
       
-      const pieces = data.recall?.results || [];
+      if (payload.error) throw new Error(payload.error || 'Failed to load piece');
+      
+      const pieces = payload.recall?.results || [];
       if (pieces.length === 0) {
         throw new Error('Piece not found');
       }
