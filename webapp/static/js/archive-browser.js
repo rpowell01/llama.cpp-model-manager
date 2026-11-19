@@ -184,6 +184,12 @@
     
     // Update right panel visibility based on view
     if (elements.detailPanel) {
+      // Clear the detail panel when switching views (it no longer reflects the new view's data)
+      const detailContent = elements.detailPanel.querySelector('.archive-detail-content');
+      if (detailContent) {
+        detailContent.innerHTML = '<div style="text-align: center; color: var(--text2); padding: 3rem;"><div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📄</div><div>Select an item from the left to view details</div></div>';
+      }
+      
       if (viewName === 'fileHistory') {
         // In fileHistory view, show the detail panel on the right
         // (it will be populated when a file is selected)
@@ -192,6 +198,11 @@
         elements.detailPanel.style.display = 'flex';
       }
     }
+    
+    // Reset breadcrumbs when switching views
+    currentConversationId = null;
+    currentPieceId = null;
+    selectedFilePath = null;
     
     // Load data for the view if we have a model
     if (currentModel) {
