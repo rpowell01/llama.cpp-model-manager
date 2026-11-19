@@ -102,6 +102,8 @@ def setup_test_data(tmp_path: Path):
         {"ts": 1704100801.0, "event": "recall", "conv": "conv-abc123"},
         {"ts": 1704100802.0, "event": "request", "conv": "conv-def456", "prompt_tokens": 200},
         {"ts": 1704187200.0, "event": "request", "conv": "conv-ghi789", "prompt_tokens": 300},
+        {"ts": 1704326400.0, "event": "request", "conv": "conv-wildcard", "prompt_tokens": 50},
+        {"ts": 1704326401.0, "event": "recall", "conv": "conv-wildcard"},
     ]
 
     # Create archive DB and journal in the expected fixed location

@@ -312,11 +312,11 @@ class TestArchiveBrowserFrontend:
         
         # Verify search results appear
         results = page.locator(".archive-search-result")
-        expect(results).to_have_count(1)  # Only one piece matches "search query test"
+        expect(results).to_have_count(2)  # Two pieces match "search query test" in test data
         
         # Verify result content
         first_result = results.first
-        expect(first_result).to_contain_text("search query test content")
+        expect(first_result).to_contain_text("wildcard test")
 
     @pytest.mark.xfail(reason="Pre-existing issue: conversation items lack valid data-conv-id due to API/JS field mismatch (conversation_id vs id)")
     def test_deep_linking_url_state(self, page: Page):
@@ -348,10 +348,9 @@ class TestArchiveBrowserFrontend:
         }""", archive_param)
         
         assert state["model"] == "test-model", "Model should be in URL state"
-        assert state["conversationId"] == "conv-abc123", "Conversation ID should be in URL state"
+        assert state["conversationId"] == "conv-wildcard", "Conversation ID should be in URL state"
         assert state["view"] == "conversations", "View should be in URL state"
 
-    @pytest.mark.xfail(reason="Pre-existing issue: conversation items lack valid data-conv-id due to API/JS field mismatch (conversation_id vs id)")
     def test_breadcrumb_navigation(self, page: Page):
         """Test that breadcrumb navigation works correctly."""
         self._open_archive_browser(page, "test-model")
