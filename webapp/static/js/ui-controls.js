@@ -113,10 +113,10 @@ function computeProxyHealthBadge(events) {
   const recentEvents = events.slice(-50);
 
   // 1. Check for errors (highest priority)
+  // Note: client_disconnected is a normal event, not an error
   const hasError = recentEvents.some(e => 
     e.event === 'error' || 
-    e.event === 'proxy_error' || 
-    e.event === 'client_disconnected'
+    e.event === 'proxy_error'
   );
   if (hasError) {
     return PROXY_HEALTH_BADGES.error;
@@ -495,7 +495,7 @@ function renderTiles(rows, dlMap, query) {
       // Mnemonic-proxy status
       const proxy = r.mnemonic_proxy || {};
       const proxyEnabled = proxy.enabled === true;
-      const proxyRunning = proxy.running === true;
+      const proxyRunning = proxy.running === true && running;
       const proxyPort = proxy.port || 8096;
       const proxyMcpEnabled = proxy.mcp_enabled === true;
       const proxyMcpPort = proxy.mcp_port || 8133;
@@ -509,9 +509,8 @@ function renderTiles(rows, dlMap, query) {
         const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
         // Proxy controls require the underlying model to be running.
         // When running: Start disabled, Stop enabled. When stopped: Start enabled, Stop disabled.
-        // Note: proxyRunning checks proxy.running directly, not combined with model running status
-        const canStartProxy = !proxyRunning;
-        const canStopProxy = proxyRunning;
+        const canStartProxy = running && !proxyRunning;
+        const canStopProxy = running && proxyRunning;
         
         // Initial health badge (idle) - will be updated asynchronously
         const initialBadge = PROXY_HEALTH_BADGES.idle;
