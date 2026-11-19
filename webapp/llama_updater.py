@@ -397,15 +397,22 @@ def update_backends(
                     errors.append(f"Failed to extract Windows {backend} binary")
                     continue
                 
-                # Find the llama-server.exe
+                # Find the llama-server.exe to verify the archive is valid
                 server_bin = _find_binary_in_dir("llama-server.exe", extract_dir)
                 if not server_bin:
                     errors.append(f"llama-server.exe not found in Windows {backend} archive")
                     continue
                 
-                # Copy to user-configured target directory
+                # Copy ALL extracted files to user-configured target directory
+                # (Windows llama.cpp uses a small llama-server.exe loader + DLLs for implementation)
                 target_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(server_bin, target_dir / server_bin.name)
+                for item in extract_dir.rglob('*'):
+                    if item.is_file():
+                        # Preserve directory structure relative to extract_dir
+                        rel_path = item.relative_to(extract_dir)
+                        dest = target_dir / rel_path
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(item, dest)
                 
                 # Store Windows path in config (C:/ format)
                 config_path = _target_dir_to_config_path(platform, backend, target_dir)
