@@ -304,6 +304,45 @@ def update_backends(
     # Step 4: Download and extract binaries for each platform/backend
     tmp_dir = Path(tempfile.mkdtemp(prefix="llama_updater_"))
     
+    # Load existing config to respect user-configured paths
+    existing_config = _load_config()
+    
+    def _config_to_target_dir(platform: str, backend: str, config_path: str) -> Path:
+        """Convert a config path to a target Path for file operations."""
+        if platform == "windows":
+            # Config stores Windows paths like "C:/llama.cpp-vulkan/bin"
+            # Convert to WSL path for file operations: /mnt/c/llama.cpp-vulkan/bin
+            if config_path and config_path.startswith("C:/"):
+                return Path("/mnt" + config_path.replace("C:", "").replace("\\", "/"))
+            elif config_path and config_path.startswith("/mnt/c/"):
+                return Path(config_path)
+            else:
+                # Fallback to default
+                return Path(f"/mnt/c/llama.cpp-{backend}/bin")
+        else:
+            # Linux: use path as-is, or default to ~/llama.cpp-{backend}/bin
+            if config_path and config_path.startswith("/"):
+                return Path(config_path)
+            else:
+                home_dir = Path.home()
+                return home_dir / f"llama.cpp-{backend}" / "bin"
+    
+    def _target_dir_to_config_path(platform: str, backend: str, target_dir: Path) -> str:
+        """Convert a target Path back to config format."""
+        if platform == "windows":
+            # Convert WSL path back to Windows format for config
+            # /mnt/c/llama.cpp-vulkan/bin -> C:/llama.cpp-vulkan/bin
+            path_str = str(target_dir)
+            if path_str.startswith("/mnt/c/"):
+                return "C:/" + path_str[7:]
+            elif path_str.startswith("C:/"):
+                return path_str.replace("\\", "/")
+            else:
+                return f"C:/llama.cpp-{backend}/bin"
+        else:
+            # Linux: store absolute path
+            return str(target_dir)
+    
     try:
         # Map each combination to its platform and backend
         combo_map = {
@@ -329,6 +368,10 @@ def update_backends(
                 continue
             
             filename = asset_found["name"]
+            
+            # Determine target directory from existing config (user-configured path)
+            existing_config_path = existing_config.get(combo, "")
+            target_dir = _config_to_target_dir(platform, backend, existing_config_path)
             
             if platform == "windows":
                 # Windows: zip files
@@ -359,17 +402,12 @@ def update_backends(
                     errors.append(f"llama-server.exe not found in Windows {backend} archive")
                     continue
                 
-                # Copy to target: /mnt/c/llama.cpp-{backend}/bin/ (WSL path)
-                # The config stores C:/llama.cpp-{backend}/bin
-                import os as os_module
-                wsl_target_dir = Path(f"/mnt/c/llama.cpp-{backend}/bin")
-                wsl_target_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Copy the binary to the WSL path
-                shutil.copy2(server_bin, wsl_target_dir / server_bin.name)
+                # Copy to user-configured target directory
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(server_bin, target_dir / server_bin.name)
                 
                 # Store Windows path in config (C:/ format)
-                config_path = f"C:/llama.cpp-{backend}/bin"
+                config_path = _target_dir_to_config_path(platform, backend, target_dir)
                 _set_platform_backend_dir(platform, backend, config_path)
                 updated_combinations.append(combo)
                 
@@ -389,13 +427,12 @@ def update_backends(
                     continue
                 
                 # Extract the tar.gz directly to target directory (like install.sh does with --strip-components=1)
-                home_dir = Path.home()
-                linux_target_dir = home_dir / f"llama.cpp-{backend}" / "bin"
+                # Use user-configured target directory
                 
                 # Clean target directory first (like install.sh does with rm -rf)
-                if linux_target_dir.exists():
-                    shutil.rmtree(linux_target_dir)
-                linux_target_dir.mkdir(parents=True, exist_ok=True)
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                target_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Extract with strip_components=1 equivalent: extract to temp, then move contents
                 extract_dir = tmp_dir / f"linux_extract_{backend}"
@@ -411,14 +448,14 @@ def update_backends(
                     # Archive has a single top-level directory - move its contents (strip_components=1)
                     top_level = extracted_items[0]
                     for item in top_level.iterdir():
-                        shutil.move(str(item), str(linux_target_dir / item.name))
+                        shutil.move(str(item), str(target_dir / item.name))
                 else:
                     # No top-level directory, move everything directly
                     for item in extracted_items:
-                        shutil.move(str(item), str(linux_target_dir / item.name))
+                        shutil.move(str(item), str(target_dir / item.name))
                 
                 # Verify llama-server exists in the target
-                server_bin = linux_target_dir / "llama-server"
+                server_bin = target_dir / "llama-server"
                 if not server_bin.exists():
                     errors.append(f"llama-server binary not found in extracted Linux {backend} archive")
                     continue
@@ -426,13 +463,13 @@ def update_backends(
                 # For SYCL backend, create a wrapper script that sources Intel oneAPI env
                 if backend == "sycl":
                     # Rename original binary
-                    orig_bin = linux_target_dir / "llama-server-orig"
+                    orig_bin = target_dir / "llama-server-orig"
                     if orig_bin.exists():
                         orig_bin.unlink()
                     server_bin.rename(orig_bin)
                     
                     # Create wrapper script
-                    wrapper_path = linux_target_dir / "llama-server-sycl"
+                    wrapper_path = target_dir / "llama-server-sycl"
                     wrapper_content = '''#!/usr/bin/env bash
 # Wrapper script for llama-server with SYCL support
 # Sources Intel oneAPI environment to provide libsvml.so and other required libraries
@@ -457,8 +494,8 @@ exec "$(dirname "$0")/llama-server-orig" "$@"
                     log.info(f"Created SYCL wrapper for {backend} backend")
                 
                 # Store the Linux path in config (as absolute path)
-                linux_config_path = str(linux_target_dir)
-                _set_platform_backend_dir(platform, backend, linux_config_path)
+                config_path = _target_dir_to_config_path(platform, backend, target_dir)
+                _set_platform_backend_dir(platform, backend, config_path)
                 updated_combinations.append(combo)
         
         # Step 5: Save the updated config, recording the release tag that is
