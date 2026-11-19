@@ -637,6 +637,70 @@ function renderTiles(rows, dlMap, query) {
           "</div>"
         : "";
 
+      // Build three-section tile layout:
+      // Section 1: Model properties, status, action buttons
+      // Section 2: Mnemonic Proxy / MCP properties, status, action buttons
+      // Section 3: Ratings and Comments
+      const section1 = `
+        <div class="tile-section tile-section-model">
+          <div class="tile-section-header">Model</div>
+          <div class="tile-section-content">
+            <b>${jsEscape(r.model)}</b>
+            ${isSpec
+              ? '<span class="chip spec" title="Speculative decoding model - used only as a draft model, not as a primary model">⚡ spec</span>'
+              : ""}
+            ${statusChip}
+          </div>
+          <div class="tile-section-content">
+            <code title="${jsEscape(r.model_path)}">${jsEscape(r.model_path ? r.model_path.split("/").pop() : r.filename)}</code>
+            <div>${fmtGb(r.file_size_gb)} · ${r.status || "-"}${r.pid ? " · pid " + r.pid : ""}</div>
+            ${portCell}
+          </div>
+        </div>`;
+
+      const section2 = proxyEnabled ? `
+        <div class="tile-section tile-section-proxy">
+          <div class="tile-section-header">Mnemonic Proxy</div>
+          <div class="tile-section-content">
+            <div class="proxy-status" style="margin-top: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+              <span class="chip ${proxyStatusClass}" title="Mnemonic-proxy on port ${proxyPort}${proxyMcpStatus}">${proxyStatusText} :${proxyPort}${proxyMcpStatus}</span>
+              ${badgeHtml}
+              <button class="actions-btn run" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', true)" title="Start mnemonic-proxy" ${canStartProxy ? "" : "disabled"}>▶ Start</button>
+              <button class="actions-btn stop" onclick="event.stopPropagation(); toggleProxy('${jsEscape(r.model)}', false)" title="Stop mnemonic-proxy" ${canStopProxy ? "" : "disabled"}>■ Stop</button>
+              <button class="actions-btn goto" onclick="event.stopPropagation(); showProxyMetrics('${jsEscape(r.model)}')" title="View proxy metrics">📊 Metrics</button>
+              <button class="actions-btn goto" onclick="event.stopPropagation(); window.ArchiveBrowser?.open('${jsEscape(r.model)}')" title="Open Archive Browser">📚 Archive</button>
+            </div>
+          </div>
+        </div>` : '';
+
+      const section3 = `
+        <div class="tile-section tile-section-ratings">
+          <div class="tile-section-header">Ratings</div>
+          <div class="tile-section-content">
+            <div class="rating-row speed">
+              <span class="rating-label">Speed</span>
+              <span class="rating-stars">
+                <span class="star ${(r.rating_speed || 0) >= 1 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_speed || 0) >= 2 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_speed || 0) >= 3 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_speed || 0) >= 4 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_speed || 0) >= 5 ? 'filled' : ''}">★</span>
+              </span>
+            </div>
+            <div class="rating-row coding">
+              <span class="rating-label">Coding</span>
+              <span class="rating-stars">
+                <span class="star ${(r.rating_coding || 0) >= 1 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_coding || 0) >= 2 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_coding || 0) >= 3 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_coding || 0) >= 4 ? 'filled' : ''}">★</span>
+                <span class="star ${(r.rating_coding || 0) >= 5 ? 'filled' : ''}">★</span>
+              </span>
+            </div>
+          </div>
+          ${r.comment ? `<div class="tile-comment">${he(r.comment)}</div>` : ""}
+        </div>`;
+
       return (
         '<div class="tile ' +
         (running ? "running" : "") +
@@ -645,79 +709,35 @@ function renderTiles(rows, dlMap, query) {
         jsEscape(r.model) +
         '" onclick="selectModel(\'' +
         jsEscape(r.model) +
-        "\')\"" +
+        '\')"' +
         (running && r.port ? 
           ' onmouseenter="showMetricsTooltip(this, \'' + jsEscape(r.model) + '\', ' + r.port + ')"' +
           ' onmouseleave="hideMetricsTooltip(this)"' : '') +
         '>' +
-        '<div class="tile-header"><b>' +
-        jsEscape(r.model) +
-        "</b>" +
-        (isSpec
-          ? '<span class="chip spec" title="Speculative decoding model - used only as a draft model, not as a primary model">⚡ spec</span>'
-          : "") +
-        statusChip +
-        "</div>" +
-        '<div class="tile-body"><code title="' +
-        jsEscape(r.model_path) +
-        '">' +
-        jsEscape(r.model_path ? r.model_path.split("/").pop() : r.filename) +
-        "</code>" +
-        "<div>" +
-        fmtGb(r.file_size_gb) +
-        " · " +
-        (r.status || "-") +
-        (r.pid ? " · pid " + r.pid : "") +
-        "</div>" +
-        "<div>" +
-        portCell +
-        "</div>" +
-        proxyHtml +
-        "</div>" +
-        `<div class="tile-rating">
-          <div class="rating-row speed">
-            <span class="rating-label">Speed</span>
-            <span class="rating-stars">
-              <span class="star ${(r.rating_speed || 0) >= 1 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_speed || 0) >= 2 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_speed || 0) >= 3 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_speed || 0) >= 4 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_speed || 0) >= 5 ? 'filled' : ''}">★</span>
-            </span>
-          </div>
-          <div class="rating-row coding">
-            <span class="rating-label">Coding</span>
-            <span class="rating-stars">
-              <span class="star ${(r.rating_coding || 0) >= 1 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_coding || 0) >= 2 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_coding || 0) >= 3 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_coding || 0) >= 4 ? 'filled' : ''}">★</span>
-              <span class="star ${(r.rating_coding || 0) >= 5 ? 'filled' : ''}">★</span>
-            </span>
-          </div>
-        </div>` +
-        (r.comment ? `<div class="tile-comment">${he(r.comment)}</div>` : "") +
+        section1 +
+        section2 +
+        section3 +
         '<div class="tile-actions actions">' +
         dlHtml +
         ' <button class="run" onclick="act(\'' +
         jsEscape(r.model) +
-        "', 'start')\" " +
+        '\', \'start\')" ' +
         (canStart ? "" : "disabled") +
-        ">\u25B6 Start</button>" +
+        '>\u25B6 Start</button>' +
         ' <button class="stop" onclick="act(\'' +
         jsEscape(r.model) +
-        "', 'stop')\" " +
+        '\', \'stop\')" ' +
         (canStop ? "" : "disabled") +
-        ">\u25A0 Stop</button>" +
+        '>\u25A0 Stop</button>' +
         ' <button class="chat" onclick="window.open(\'http://127.0.0.1:' + r.port + '?model=\' + encodeURIComponent(\'' + jsEscape(r.model) + '\'), \'_blank\')" ' +
         (canStop ? "" : "disabled") +
         ' title="Chat with model">Chat</button>' +
         ' <button class="add" onclick="downloadModel(\'' +
         jsEscape(r.model) +
-        "', true)\">\u2795 Add Variant</button>" +
+        '\', true)">\u2795 Add Variant</button>' +
         ' <button class="del" onclick="promptDeleteModel(\'' +
         jsEscape(r.model) +
-        "')\">\u274C Delete</button>" +
+        '\')">\u274C Delete</button>' +
         (r.mnemonic_proxy && r.mnemonic_proxy.enabled ? 
           ' <button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' : '') +
         "</div>" +

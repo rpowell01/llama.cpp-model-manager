@@ -17,6 +17,17 @@
   .tile-actions {
     font-size: 0.82rem;
   }
+
+  /* Single-column tile layout on small screens */
+  .tile .tile-section {
+    border: none;
+    margin-bottom: 0.5rem;
+  }
+  .tile .tile-section-model,
+  .tile .tile-section-proxy,
+  .tile .tile-section-ratings {
+    padding: 0.5rem 0;
+  }
 }
 
 /* Medium to large screens: content area grid changes */
@@ -24,4 +35,29 @@
   #content-area.has-panel {
     grid-template-columns: 1fr;
   }
+}
+
+/* Tile three-section layout */
+.tile .tile-section {
+  border-bottom: 1px solid var(--surface2);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+.tile .tile-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.tile .tile-section-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+}
+.tile .tile-section-content {
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
