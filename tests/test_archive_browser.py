@@ -179,8 +179,8 @@ class TestArchiveBrowserFrontend:
             try {
                 const resp = await fetch('/api/proxy/archive/conversations?model=test-model&limit=1');
                 const data = await resp.json();
-                if (data.success && data.data.conversations.length > 0) {
-                    return data.data.conversations[0].conversation_id || data.data.conversations[0].id;
+                if (data.conversations && data.conversations.length > 0) {
+                    return data.conversations[0].conversation_id || data.conversations[0].id;
                 }
                 return null;
             } catch (e) {

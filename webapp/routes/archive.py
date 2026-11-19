@@ -232,11 +232,9 @@ def api_archive_conversations():
     archive_db = _find_archive_db(proxy_manager)
     if not archive_db or not archive_db.exists():
         return jsonify({
-            "success": True,
-            "data": {
-                "conversations": [],
-                "total": 0,
-            },
+            "conversations": [],
+            "count": 0,
+            "total": 0,
             "model": model,
             "offset": offset,
             "limit": limit,
@@ -258,7 +256,7 @@ def api_archive_conversations():
         """)
         if not cursor.fetchone():
             conn.close()
-            return jsonify({"conversations": [], "count": 0, "total": 0, "model": model, "offset": offset, "limit": limit})
+            return jsonify({"conversations": [], "count": 0, "total": 0, "model": model, "offset": offset, "limit": limit, "sort": sort})
 
         # Build ORDER BY clause based on sort parameter
         sort_mapping = {
@@ -323,11 +321,9 @@ def api_archive_conversations():
         return jsonify({"error": f"Failed to query conversations: {str(e)}"}), 500
 
     return jsonify({
-        "success": True,
-        "data": {
-            "conversations": conversations,
-            "total": len(conversations),
-        },
+        "conversations": conversations,
+        "count": len(conversations),
+        "total": len(conversations),
         "model": model,
         "offset": offset,
         "limit": limit,
@@ -371,11 +367,9 @@ def api_archive_journal():
     journal_path = _find_journal_file(proxy_manager)
     if not journal_path or not journal_path.exists():
         return jsonify({
-            "success": True,
-            "data": {
-                "events": [],
-                "total": 0,
-            },
+            "events": [],
+            "count": 0,
+            "total": 0,
             "model": model,
             "offset": offset,
             "limit": limit,
@@ -393,11 +387,9 @@ def api_archive_journal():
             file_size = f.tell()
             if file_size == 0:
                 return jsonify({
-                    "success": True,
-                    "data": {
-                        "events": [],
-                        "total": 0,
-                    },
+                    "events": [],
+                    "count": 0,
+                    "total": 0,
                     "model": model,
                     "offset": offset,
                     "limit": limit,
@@ -459,11 +451,9 @@ def api_archive_journal():
     events = events[offset:offset + limit]
 
     return jsonify({
-        "success": True,
-        "data": {
-            "events": events,
-            "total": total,
-        },
+        "events": events,
+        "count": total,
+        "total": total,
         "model": model,
         "offset": offset,
         "limit": limit,
@@ -549,6 +539,10 @@ def api_archive_recall():
         return jsonify({
             "pieces": [],
             "total": 0,
+            "recall": {
+                "results": [],
+                "total": 0,
+            },
             "model": model,
             "message": "No archive database found",
         })
@@ -719,6 +713,10 @@ def api_archive_recall():
         return jsonify({
             "pieces": results,
             "total": total,
+            "recall": {
+                "results": results,
+                "total": total,
+            },
             "query": query,
             "queries": queries,
             "mode": mode,

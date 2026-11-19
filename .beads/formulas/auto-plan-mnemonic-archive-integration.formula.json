@@ -1,0 +1,135 @@
+{
+  "formula": "auto-plan-mnemonic-archive-integration",
+  "description": "Auto-generated plan: Integrate mnemonic-archive MCP server data (conversations, journal events, recall/search) into the webapp UI with backend APIs, extended Metrics dialog, dedicated Archive Browser, Strata/Chat cross-linking, and optional status badges",
+  "type": "workflow",
+  "version": 1,
+  "steps": [
+    {
+      "id": "task-epic",
+      "title": "Integrate mnemonic-archive data into webapp UI",
+      "description": "Epic: Integrate mnemonic-archive MCP server data (conversations, journal events, recall/search) into the webapp UI. This includes: (1) backend API endpoints for archive access, (2) extended Metrics dialog with Journal/Events view and derived signals, (3) dedicated Archive Browser modal with conversations, search, session map, file history, and piece inspector, (3) Strata/Chat cross-linking to Archive, (4) optional status/health badges. All tasks must follow the mandatory code review gate and environment isolation instructions.\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 0,
+      "tags": [
+        "epic",
+        "backend",
+        "frontend"
+      ],
+      "estimates": {
+        "total": 48,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api",
+        "task-metrics-dialog-ext",
+        "task-archive-browser",
+        "task-strata-crosslink",
+        "task-status-badges",
+        "task-tests"
+      ]
+    },
+    {
+      "id": "task-backend-api",
+      "title": "Add mnemonic-archive backend API endpoints",
+      "description": "Implement REST API endpoints under  for mnemonic-archive data access. Endpoints needed:\n-  - list conversations (with ,  filters)\n-  - fetch journal events (with , ,  filters)\n-  - search/recall with full mnemonic-archive semantics (/, uid=1000(russ) gid=1000(russ) groups=1000(russ),4(adm),24(cdrom),27(sudo),30(dip),44(video),46(plugdev),100(users),991(render),1001(docker), , , , , /, , )\n\nImplementation details:\n- Add new route file  with blueprint \n- Register blueprint in \n- Use  to find per-model  and \n- Reuse logic from  (candidate journal paths, journal parsing)\n- Scope all endpoints to authenticated/authorized model context (reuse existing auth patterns)\n- Return JSON with consistent structure: \n- Handle missing archive gracefully (404 or empty results)\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 0,
+      "tags": [
+        "backend",
+        "api"
+      ],
+      "estimates": {
+        "total": 12,
+        "unit": "hours"
+      },
+      "needs": []
+    },
+    {
+      "id": "task-metrics-dialog-ext",
+      "title": "Extend Metrics dialog with Journal/Events view and derived signals",
+      "description": "Extend the existing \"Mnemonic-Proxy Metrics\" modal ( in ) to include a Journal/Events section.\n\nImplementation:\n- Add a collapsible/tab section in  called \"Journal & Events\" or \"Diagnostic Events\"\n- Fetch recent journal events via new  endpoint\n- Parse and display key event types with human-readable summaries:\n  -  -> show reuse %, invalidation cause, prompt/virtual tokens\n  - / -> show mask delta, ratio, tokens saved\n  -  -> show guard action, window pressure\n  -  -> show compression ratio, bytes saved, duration\n  - / -> error details\n  - / -> warnings\n- Add derived health summary cards (badges) at top:\n  - Mask reuse gap trend (last N events)\n  - Window guard pressure (frequency)\n  - Recent errors count\n  - Last kv_archive outcome (success/savings)\n- Add \"Open in Archive\" button that opens the Archive Browser (task-archive-browser) with current model/conversation context\n- Preserve existing auto-refresh (5s) and manual refresh button\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 1,
+      "tags": [
+        "frontend",
+        "ui"
+      ],
+      "estimates": {
+        "total": 8,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api"
+      ]
+    },
+    {
+      "id": "task-archive-browser",
+      "title": "Create dedicated Archive Browser modal/page",
+      "description": "Create a dedicated Archive Browser modal/page ( in  or new file ) launched from Metrics dialog header, model tile, or proxy controls.\n\nFeatures required:\n- **Conversations list** (): searchable, sortable table with columns (id, time range, msgs/tokens/segments, preview). Click row to open session.\n- **Session map/detail** (): render segment/turn timeline; click to expand ranges with /.\n- **Search** (): text search with , , / filters; highlight matches; paginate results.\n- **File history** ( with ): show timeline of operations on a file path across sessions.\n- **Piece inspector**: click a search result or tree node to open detail panel showing full piece (uid=1000(russ) gid=1000(russ) groups=1000(russ),4(adm),24(cdrom),27(sudo),30(dip),44(video),46(plugdev),100(users),991(render),1001(docker) + ), with  context,  (tool result),  tabs.\n- **Navigation**: breadcrumbs, back/forward, URL-deep-linkable state (e.g. ).\n- **Launch points**: \n  - Button in Metrics dialog header: 'Open Archive'\n  - Button on model tile (next to Metrics/Logs)\n  - Context menu on proxy status chip\n- Styling: consistent with existing modal/theme (dark mode, responsive, accessible)\n- Performance: paginate/limit API calls (/), debounce search (300ms), virtualize long lists\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 1,
+      "tags": [
+        "frontend",
+        "ui"
+      ],
+      "estimates": {
+        "total": 16,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api"
+      ]
+    },
+    {
+      "id": "task-strata-crosslink",
+      "title": "Add Strata/Chat cross-linking to Archive Browser",
+      "description": "Add \"Open in Archive\" cross-links from existing Strata Context panel and Chat interface to the Archive Browser.\n\nImplementation:\n- In Strata Context panel (inside Metrics dialog, rendered in  when  exists): add a button/link 'Open in Archive' next to conversation_id display. Click opens Archive Browser (task-archive-browser) deep-linked to that conversation: .\n- In Chat interface ( or wherever chat messages render): add a subtle 'Archive' link/icon near each message or in chat header that opens Archive Browser scoped to the current conversation.\n- In Strata Context panel in Metrics: make conversation_id a clickable link that opens Archive Browser.\n- Update  to accept optional  parameter and auto-navigate to that conversation in the Archive Browser (scroll to/select in conversations list, auto-expand session map).\n- Ensure deep-links are URL-shareable: update URL hash/state when navigating in Archive Browser so direct links work.\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 2,
+      "tags": [
+        "frontend",
+        "ui"
+      ],
+      "estimates": {
+        "total": 6,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api",
+        "task-archive-browser"
+      ]
+    },
+    {
+      "id": "task-status-badges",
+      "title": "Add proxy status/health badges from journal signals",
+      "description": "Surface key journal-derived health signals as badges/summary on model tiles and in Metrics dialog header.\n\nImplementation:\n- In  (model tile rendering) and : fetch last N journal events ()\n- Compute and display badges:\n  - RED \"Error\" if recent  or  (last 10 events)\n  - YELLOW \"Guard Active\" if  frequency > threshold in last N events\n  - ORANGE \"Low Reuse\" if  gap > threshold (reuse % < 50% in recent events)\n  - GREEN \"Archive OK\" if last  event shows success with >0% compression\n  - WHITE \"Idle\" if no recent events\n- Display as colored badges/chips on model tile (next to proxy status chip) and in Metrics dialog header\n- Tooltip on hover shows details (timestamp, event type, key values)\n- Auto-refresh with existing 5s poll interval\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 3,
+      "tags": [
+        "frontend",
+        "ui"
+      ],
+      "estimates": {
+        "total": 4,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api"
+      ]
+    },
+    {
+      "id": "task-tests",
+      "title": "Add integration tests for archive endpoints and UI components",
+      "description": "Add comprehensive tests for the new archive functionality.\n\nBackend tests (pytest):\n- : \n  - Test  with various filters (limit, query)\n  - Test  with filters (event, conversation_id)\n  - Test  with all modes (query, id, path, neighbors, tree)\n  - Test error cases: missing model, missing archive, invalid parameters\n  - Test pagination/offset handling\n  - Use fixtures to create temp archive.sqlite/journal.jsonl with sample data\n\nFrontend tests (Jest or pytest with Playwright):\n- :\n  - Test Archive Browser opens from Metrics dialog and model tile\n  - Test conversations list loads and paginates\n  - Test search with various filters\n  - Test session map navigation\n  - Test piece inspector tabs\n  - Test deep-linking (direct URL to conversation)\n- Add fixture in  to create temp archive.sqlite with sample data\n\nUpdate CI if needed (likely already runs pytest).\n\n### Mandatory Code Review Gate\n\nBefore completing this bead, check for changes first:\n\n\n**Only if** the above shows any file modifications (non-empty diff, not just up to date message), then you MUST invoke the bd-code-reviewer sub-agent. You must continue fixing issues and re-invoking the bd-code-reviewer until the response is exactly: APPROVED. Re-invoke for any non-APPROVED response, including invalid responses or errors. (Do not commit and push changes until code review is APPROVED).\n\n**IMPORTANT**: Before invoking the bd-code-reviewer, provide a full git diff of your changes:\n\nInclude the complete diff output in your invocation.\n\nIf there are **no file changes to review**, skip this gate and proceed directly to closing the bead.\n\n### Environment Isolation\n\nYou are executing in an isolated git worktree. Verify your environment:\ntrue returns . MUST confine ALL file operations to the current working directory and subdirectories. DO NOT modify files outside this environment, including the main branch or other worktrees.",
+      "priority": 2,
+      "tags": [
+        "testing"
+      ],
+      "estimates": {
+        "total": 8,
+        "unit": "hours"
+      },
+      "needs": [
+        "task-backend-api",
+        "task-metrics-dialog-ext",
+        "task-archive-browser",
+        "task-strata-crosslink",
+        "task-status-badges"
+      ]
+    }
+  ]
+}
