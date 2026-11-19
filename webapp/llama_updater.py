@@ -313,7 +313,8 @@ def update_backends(
             # Config stores Windows paths like "C:/llama.cpp-vulkan/bin"
             # Convert to WSL path for file operations: /mnt/c/llama.cpp-vulkan/bin
             if config_path and config_path.startswith("C:/"):
-                return Path("/mnt" + config_path.replace("C:", "").replace("\\", "/"))
+                # Replace "C:" with "/mnt/c" to get proper WSL path
+                return Path("/mnt/c" + config_path[2:].replace("\\", "/"))
             elif config_path and config_path.startswith("/mnt/c/"):
                 return Path(config_path)
             else:
