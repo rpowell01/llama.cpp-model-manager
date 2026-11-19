@@ -78,13 +78,20 @@ const PROXY_HEALTH_BADGES = {
  */
 async function fetchProxyJournalEvents(model, limit = 50) {
   try {
-    const resp = await fetch(`/api/proxy/archive/journal/${encodeURIComponent(model)}?limit=${limit}`);
+    const resp = await fetch(`/api/proxy/archive/journal?model=${encodeURIComponent(model)}&limit=${limit}`);
     const data = await resp.json();
-    if (data.error) {
-      console.warn(`Journal fetch error for ${model}:`, data.error);
+    
+    // Handle wrapped response format {success: true, data: {...}}
+    const payload = (data && data.success && data.data) ? data.data : data;
+    
+    if (payload.error) {
+      console.warn(`Journal fetch error for ${model}:`, payload.error);
       return [];
     }
-    return data.events || [];
+    
+    // Transform events: API returns event_type, but code expects event
+    const events = (payload.events || []).map(e => ({ ...e, event: e.event_type }));
+    return events;
   } catch (e) {
     console.warn(`Failed to fetch journal for ${model}:`, e);
     return [];
@@ -488,7 +495,7 @@ function renderTiles(rows, dlMap, query) {
       // Mnemonic-proxy status
       const proxy = r.mnemonic_proxy || {};
       const proxyEnabled = proxy.enabled === true;
-      const proxyRunning = proxy.running === true && running;
+      const proxyRunning = proxy.running === true;
       const proxyPort = proxy.port || 8096;
       const proxyMcpEnabled = proxy.mcp_enabled === true;
       const proxyMcpPort = proxy.mcp_port || 8133;
@@ -502,8 +509,9 @@ function renderTiles(rows, dlMap, query) {
         const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
         // Proxy controls require the underlying model to be running.
         // When running: Start disabled, Stop enabled. When stopped: Start enabled, Stop disabled.
-        const canStartProxy = running && !proxyRunning;
-        const canStopProxy = running && proxyRunning;
+        // Note: proxyRunning checks proxy.running directly, not combined with model running status
+        const canStartProxy = !proxyRunning;
+        const canStopProxy = proxyRunning;
         
         // Initial health badge (idle) - will be updated asynchronously
         const initialBadge = PROXY_HEALTH_BADGES.idle;
@@ -3825,13 +3833,18 @@ async function showProxyMetrics(model) {
       // Fetch journal events (non-critical, handle errors gracefully)
       journalFetchError = null;
       try {
-        const journalRes = await fetch(`/api/proxy/archive/journal/${encodeURIComponent(model)}?limit=200`);
+        const journalRes = await fetch(`/api/proxy/archive/journal?model=${encodeURIComponent(model)}&limit=200`);
         const journalData = await journalRes.json();
-        if (journalData.error) {
-          journalFetchError = journalData.error;
+        
+        // Handle wrapped response format {success: true, data: {...}}
+        const payload = (journalData && journalData.success && journalData.data) ? journalData.data : journalData;
+        
+        if (payload.error) {
+          journalFetchError = payload.error;
           journalEvents = [];
         } else {
-          journalEvents = journalData.events || [];
+          // Transform events: API returns event_type, but code expects event
+          journalEvents = (payload.events || []).map(e => ({ ...e, event: e.event_type }));
         }
       } catch (e) {
         console.warn('Journal fetch failed:', e);
@@ -3862,31 +3875,39 @@ async function showProxyMetrics(model) {
     // Analyze last 50 events for trends
     const recentEvents = events.slice(-50);
     
+    // Helper to get data object from event
+    const getData = (e) => e.data || {};
+    
     // Mask reuse gap: average of (virtual_tokens - active_tokens) / virtual_tokens for request events
-    const requestEvents = recentEvents.filter(e => e.event === 'request' && e.virtual_tokens && e.prompt_tokens);
+    // Data is in e.data object
+    const requestEvents = recentEvents.filter(e => e.event === 'request' && getData(e).virtual_tokens && getData(e).prompt_tokens);
     if (requestEvents.length > 0) {
       const gaps = requestEvents.map(e => {
-        const virtual = e.virtual_tokens || 0;
-        const active = e.prompt_tokens || 0;
+        const d = getData(e);
+        const virtual = d.virtual_tokens || 0;
+        const active = d.prompt_tokens || 0;
         return virtual > 0 ? ((virtual - active) / virtual) * 100 : 0;
       });
       summary.maskReuseGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
     }
     
-    // Guard pressure: count of guard events
-    summary.guardPressure = recentEvents.filter(e => e.event === 'guard').length;
+    // Guard pressure: count of window_guard events (API uses window_guard, not guard)
+    summary.guardPressure = recentEvents.filter(e => e.event === 'window_guard').length;
     
-    // Recent errors
-    summary.recentErrors = recentEvents.filter(e => e.event === 'error' || e.event === 'error_recover').length;
+    // Recent errors: check for error events in data or event type
+    summary.recentErrors = recentEvents.filter(e => 
+      e.event === 'error' || e.event === 'error_recover' || getData(e).error
+    ).length;
     
-    // Last kv_archive outcome
+    // Last kv_archive outcome: check for kv_archive or archive_save events
     const kvArchiveEvents = events.filter(e => e.event === 'kv_archive' || e.event === 'archive_save');
     if (kvArchiveEvents.length > 0) {
       const last = kvArchiveEvents[kvArchiveEvents.length - 1];
+      const d = getData(last);
       summary.lastKvArchive = {
-        success: last.success !== false,
-        savings: last.bytes_saved || last.savings || 0,
-        duration: last.duration_ms || last.duration || 0,
+        success: last.success !== false && d.success !== false,
+        savings: d.bytes_saved || d.savings || 0,
+        duration: d.duration_ms || d.duration || 0,
         timestamp: last.timestamp || last.time || null
       };
     }
@@ -3899,6 +3920,10 @@ async function showProxyMetrics(model) {
     const time = event.timestamp ? new Date(event.timestamp * 1000).toLocaleTimeString() : 'N/A';
     const conv = event.conv ? `${String(event.conv).slice(0, 8)}...` : 'N/A';
     
+    // Helper to get data from event.data object with fallback to event itself
+    const d = event.data || {};
+    const get = (key, fallback) => d[key] !== undefined ? d[key] : (event[key] !== undefined ? event[key] : fallback);
+    
     let icon = '📝';
     let color = 'var(--text)';
     let summaryParts = [];
@@ -3908,23 +3933,23 @@ async function showProxyMetrics(model) {
       case 'request': {
         icon = '📥';
         color = 'var(--blue)';
-        const reused = event.reused || 0;
-        const virtual = event.virtual_tokens || 0;
-        const prompt = event.prompt_tokens || 0;
+        const reused = get('reused', 0);
+        const virtual = get('virtual_tokens', 0);
+        const prompt = get('prompt_tokens', 0);
         const reusePct = virtual > 0 ? ((reused / virtual) * 100).toFixed(1) : 0;
         summaryParts = [
           { label: 'Prompt', value: prompt, isNum: true },
           { label: 'Reused', value: reused, isNum: true, pct: reusePct },
           { label: 'Virtual', value: virtual, isNum: true }
         ];
-        if (event.invalidation_cause) {
-          detailParts.push({ label: 'Invalidation', value: event.invalidation_cause });
+        if (get('invalidation_cause')) {
+          detailParts.push({ label: 'Invalidation', value: get('invalidation_cause') });
         }
-        if (event.seg !== undefined) {
-          detailParts.push({ label: 'Segment', value: event.seg });
+        if (get('seg') !== undefined) {
+          detailParts.push({ label: 'Segment', value: get('seg') });
         }
-        if (event.mode) {
-          detailParts.push({ label: 'Mode', value: event.mode });
+        if (get('mode')) {
+          detailParts.push({ label: 'Mode', value: get('mode') });
         }
         break;
       }
@@ -3932,46 +3957,47 @@ async function showProxyMetrics(model) {
       case 'mask_invalidate': {
         icon = evType === 'mask' ? '🎭' : '🎭⚡';
         color = 'var(--purple)';
-        const delta = event.delta || 0;
-        const ratio = event.ratio || 0;
-        const saved = event.tokens_saved || 0;
+        const delta = get('delta', 0);
+        const ratio = get('ratio', 0);
+        const saved = get('tokens_saved', 0);
         summaryParts = [
           { label: 'Delta', value: delta, isNum: true },
           { label: 'Ratio', value: (ratio * 100).toFixed(1) + '%' },
           { label: 'Saved', value: saved, isNum: true, suffix: 'tokens' }
         ];
-        if (event.reason) {
-          detailParts.push({ label: 'Reason', value: event.reason });
+        if (get('reason')) {
+          detailParts.push({ label: 'Reason', value: get('reason') });
         }
         break;
       }
+      case 'window_guard':
       case 'guard': {
         icon = '🛡️';
         color = 'var(--orange)';
-        const action = event.action || 'unknown';
-        const pressure = event.window_pressure || event.pressure || 0;
+        const action = get('action', 'unknown');
+        const pressure = get('window_pressure', get('pressure', 0));
         summaryParts = [
           { label: 'Action', value: action },
           { label: 'Window Pressure', value: pressure, isNum: true }
         ];
-        if (event.trigger) {
-          detailParts.push({ label: 'Trigger', value: event.trigger });
+        if (get('trigger')) {
+          detailParts.push({ label: 'Trigger', value: get('trigger') });
         }
         break;
       }
       case 'compress': {
         icon = '🗜️';
         color = 'var(--teal)';
-        const ratio = event.ratio || event.compression_ratio || 0;
-        const saved = event.bytes_saved || event.saved || 0;
-        const duration = event.duration_ms || event.duration || 0;
+        const ratio = get('ratio', get('compression_ratio', 0));
+        const saved = get('bytes_saved', get('saved', 0));
+        const duration = get('duration_ms', get('duration', 0));
         summaryParts = [
           { label: 'Ratio', value: (ratio * 100).toFixed(1) + '%' },
           { label: 'Saved', value: saved, isNum: true, suffix: 'bytes' },
           { label: 'Duration', value: duration, isNum: true, suffix: 'ms' }
         ];
-        if (event.method) {
-          detailParts.push({ label: 'Method', value: event.method });
+        if (get('method')) {
+          detailParts.push({ label: 'Method', value: get('method') });
         }
         break;
       }
@@ -3979,12 +4005,12 @@ async function showProxyMetrics(model) {
       case 'error_recover': {
         icon = evType === 'error' ? '❌' : '🔄';
         color = 'var(--red)';
-        const message = event.message || event.error || 'Unknown error';
+        const message = get('message', get('error', 'Unknown error'));
         summaryParts = [{ label: '', value: message }];
-        if (event.code) {
-          detailParts.push({ label: 'Code', value: event.code });
+        if (get('code')) {
+          detailParts.push({ label: 'Code', value: get('code') });
         }
-        if (event.recovered === true) {
+        if (get('recovered') === true) {
           summaryParts.push({ label: '', value: '(Recovered)' });
         }
         break;
@@ -3993,7 +4019,7 @@ async function showProxyMetrics(model) {
       case 'warning': {
         icon = '⚠️';
         color = 'var(--warning)';
-        const message = event.message || event.warning || 'Warning';
+        const message = get('message', get('warning', 'Warning'));
         summaryParts = [{ label: '', value: message }];
         break;
       }
@@ -4001,8 +4027,8 @@ async function showProxyMetrics(model) {
       case 'recall_use': {
         icon = '🔁';
         color = 'var(--green)';
-        const count = event.count || 1;
-        const tokens = event.tokens || 0;
+        const count = get('count', 1);
+        const tokens = get('tokens', 0);
         summaryParts = [
           { label: 'Recalls', value: count, isNum: true },
           { label: 'Tokens', value: tokens, isNum: true }
@@ -4013,9 +4039,9 @@ async function showProxyMetrics(model) {
       case 'archive_save': {
         icon = '💾';
         color = 'var(--info)';
-        const success = event.success !== false;
-        const savings = event.bytes_saved || event.savings || 0;
-        const duration = event.duration_ms || event.duration || 0;
+        const success = get('success', true) !== false;
+        const savings = get('bytes_saved', get('savings', 0));
+        const duration = get('duration_ms', get('duration', 0));
         summaryParts = [
           { label: '', value: success ? 'Success' : 'Failed' },
           { label: 'Saved', value: savings, isNum: true, suffix: 'bytes' },

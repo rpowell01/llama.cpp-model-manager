@@ -888,6 +888,18 @@ let _restoring = false;
     if (convId) {
       currentConversationId = convId;
       updateBreadcrumbs();
+      
+      // Load conversation detail which shows the timeline with journal events
+      loadConversationDetail(convId);
+    } else if (eventId) {
+      // If no conversation but has event ID, try to load piece detail
+      loadPieceDetail(eventId);
+    } else {
+      // No conversation_id and no event_id - show the full event data in detail panel
+      const event = currentData.journal.find(e => e.id === eventId);
+      if (event) {
+        renderJournalEventDetail(event);
+      }
     }
     
     // Update VirtualList selection if it exists
@@ -898,9 +910,38 @@ let _restoring = false;
       }
     }
     
-    // Load event detail via recall
-    loadPieceDetail(eventId);
     updateURLState();
+  }
+
+  // Render full journal event detail in the detail panel
+  function renderJournalEventDetail(event) {
+    const detailEl = elements.detailPanel;
+    if (!detailEl) return;
+    
+    const eventType = event.event_type || 'unknown';
+    const timestamp = formatTimestamp(event.timestamp);
+    const convId = event.conversation_id || '';
+    const data = event.data || {};
+    
+    let html = `<div class="archive-piece-detail">`;
+    html += `<div class="piece-header">`;
+    html += `<span class="piece-role ${he(eventType)}">${he(eventType)}</span>`;
+    html += `<span class="piece-time">${he(timestamp)}</span>`;
+    html += `</div>`;
+    
+    if (convId) {
+      html += `<div class="piece-conversation">`;
+      html += `<span class="label">Conversation:</span> `;
+      html += `<span class="value" style="font-family: monospace;">${he(convId)}</span>`;
+      html += `</div>`;
+    }
+    
+    html += `<div class="piece-content">`;
+    html += `<pre class="json-content">${he(JSON.stringify(data, null, 2))}</pre>`;
+    html += `</div>`;
+    html += `</div>`;
+    
+    detailEl.innerHTML = html;
   }
 
   // Load search
