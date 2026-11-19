@@ -1116,11 +1116,14 @@ let _restoring = false;
   async function loadFileHistoryFiles() {
     if (!currentModel) return;
     
-    const listEl = elements.lists.fileHistory;
-    const paginationEl = elements.pagination.fileHistory;
+    const listEl = elements.lists?.fileHistory;
+    const paginationEl = elements.pagination?.fileHistory;
     const countEl = elements.fileHistoryCount;
     
-    if (!listEl) return;
+    if (!listEl) {
+      console.error('loadFileHistoryFiles: listEl not found, elements.lists:', elements.lists);
+      return;
+    }
     
     listEl.innerHTML = '<div class="archive-loading">Loading file list…</div>';
     setStatus('Loading file list…');
@@ -1135,7 +1138,10 @@ let _restoring = false;
       if (payload.error) throw new Error(payload.error || 'Failed to load file list');
       
       const files = payload.files || [];
-      paginationEl.total = payload.total || files.length;
+      // Safely update pagination total
+      if (paginationEl) {
+        paginationEl.total = payload.total || files.length;
+      }
       
       currentData.fileHistoryFiles = files || [];
       
@@ -1174,7 +1180,10 @@ let _restoring = false;
       setStatus(`Loaded ${files.length} files from archive`);
     } catch (e) {
       console.error('Failed to load file list:', e);
-      listEl.innerHTML = `<div class="archive-error">Error: ${he(e.message)}</div>`;
+      // Safely update innerHTML if listEl exists
+      if (listEl) {
+        listEl.innerHTML = `<div class="archive-error">Error: ${he(e.message)}</div>`;
+      }
       setStatus('Error loading file list');
     }
   }
