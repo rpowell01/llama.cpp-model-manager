@@ -509,24 +509,16 @@
             <button type="button" id="archive-file-history-next" class="btn-secondary" disabled style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Next →</button>
           </div>
         </div>
-        
-        <!-- File History Detail Panel (right side) -->
-        <div id="archive-file-history-detail" class="archive-view-panel" style="display: none; flex: 1; overflow-y: auto; padding: 1rem; background: var(--surface);">
-          <div style="text-align: center; color: var(--text2); padding: 3rem;">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📄</div>
-            <div>Select a file from the list to view its history</div>
-          </div>
-          <div id="archive-file-history-detail-content" style="margin-top: 1rem;">
-          </div>
-        </div>
       </div>
       
       <!-- Right Panel: Detail/Inspector -->
       <div class="archive-browser-right" style="flex: 0 0 55%; min-width: 400px; overflow: hidden; display: flex; flex-direction: column;">
         <div id="archive-detail-panel" style="flex: 1; overflow-y: auto; padding: 1rem;">
-          <div style="text-align: center; color: var(--text2); padding: 3rem;">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📄</div>
-            <div>Select an item from the left to view details</div>
+          <div class="archive-detail-content">
+            <div style="text-align: center; color: var(--text2); padding: 3rem;">
+              <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📄</div>
+              <div>Select an item from the left to view details</div>
+            </div>
           </div>
         </div>
         <div id="archive-detail-loading" style="display: none; padding: 1rem; text-align: center; color: var(--text2);">Loading details…</div>

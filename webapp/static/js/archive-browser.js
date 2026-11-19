@@ -564,10 +564,7 @@ let _restoring = false;
       case 'fileHistory':
         // In the new two-pane layout, load the file list first
         loadFileHistoryFiles();
-        // Initially hide the detail panel until a file is selected
-        if (elements.fileHistoryDetail) {
-          elements.fileHistoryDetail.style.display = 'none';
-        }
+        // The detail panel will show "Select a file..." initially, populated when a file is clicked
         break;
     }
   }
@@ -1159,9 +1156,11 @@ let _restoring = false;
       function renderFileHistoryFile(file, index) {
         const path = file.path || 'Unknown path';
         const occurrences = file.occurrences || 0;
+        // Show filename (basename) instead of truncated beginning
+        const fileName = path.split('/').pop() || path;
         
-        return `<div class="archive-file-list-item" data-file-path="${he(path)}" data-file-index="${index}">
-          <span class="file-list-path">${he(path.substring(0, 50))}…</span>
+        return `<div class="archive-file-list-item" data-file-path="${he(path)}" data-file-index="${index}" title="${he(path)}">
+          <span class="file-list-path">${he(fileName)}</span>
           <span class="file-list-occurrences">${occurrences} occurrences</span>
         </div>`;
       }
@@ -1211,15 +1210,21 @@ let _restoring = false;
     const listEl = elements.lists.fileHistory;
     const paginationEl = elements.pagination.fileHistory;
     const countEl = elements.fileHistoryCount;
-    const detailEl = elements.fileHistoryDetail;
-    const detailContentEl = elements.fileHistoryDetailContent;
     
-    if (!listEl || !detailEl || !detailContentEl) return;
+    if (!listEl) return;
+    
+    // Use the existing right panel detail panel (archive-detail-panel)
+    // and repurpose it for file history detail
+    const detailEl = elements.detailPanel;
+    const detailContentEl = elements.detailPanel ? elements.detailPanel.querySelector('.archive-detail-content') : null;
+    
+    if (!detailEl || !detailContentEl) return;
     
     // Show loading state in detail panel
     detailContentEl.innerHTML = '<div class="archive-loading">Loading file history…</div>';
-    detailEl.style.display = 'block';
+    detailEl.style.display = 'flex';
     
+    // Hide the breadcrumbs for file history detail (or adjust as needed)
     setStatus(`Loading file history for ${path.substring(0, 30)}…`);
     
     try {
@@ -1235,10 +1240,10 @@ let _restoring = false;
       const pieces = payload.recall?.results || [];
       paginationEl.total = payload.recall?.total || pieces.length;
       
-      // Render the file history detail
-      renderFileHistoryDetail(pieces);
+      // Render the file history detail in the right panel
+      renderFileHistoryDetail(pieces, path);
       
-      // Update count
+      // Update count in the left pane file list count element
       if (countEl) {
         countEl.textContent = `${pieces.length} entries`;
       }
@@ -1251,10 +1256,13 @@ let _restoring = false;
     }
   }
 
-  // Render file history detail
-  function renderFileHistoryDetail(pieces) {
-    const detailContentEl = elements.fileHistoryDetailContent;
+  // Render file history detail in the right panel
+  function renderFileHistoryDetail(pieces, filePath) {
+    const detailContentEl = elements.detailPanel ? elements.detailPanel.querySelector('.archive-detail-content') : null;
     if (!detailContentEl) return;
+    
+    // Extract filename from path for display
+    const fileName = filePath ? filePath.split('/').pop() || filePath : 'Unknown file';
     
     if (pieces.length === 0) {
       detailContentEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📁</div><div>No history found for this file</div></div>';
@@ -1263,7 +1271,7 @@ let _restoring = false;
     
     let html = `<div class="archive-file-history-detail">`;
     html += `<div class="file-history-detail-header">`;
-    html += `<span class="file-history-detail-path">${he(pieces[0]?.path || 'Unknown')}</span>`;
+    html += `<span class="file-history-detail-path">${he(fileName)}</span>`;
     html += `</div>`;
     html += `<div class="file-history-detail-list">`;
     
