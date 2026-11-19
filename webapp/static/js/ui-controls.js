@@ -4314,7 +4314,7 @@ async function showProxyMetrics(model) {
           </div>
         </div>
         <div style="margin-top: 0.5rem; font-size: 0.7rem; color: var(--text2);">
-          Conversation: ${he(strata.conversation_id || 'N/A')} | Mode: ${he(strata.mode || 'N/A')} | Segment: ${he(strata.segment || 'N/A')}
+          Conversation: ${strata.conversation_id ? `<a href="#" class="strata-conversation-link" data-conversation-id="${he(strata.conversation_id)}" style="color: var(--accent); text-decoration: underline; cursor: pointer;">${he(strata.conversation_id)}</a>` : 'N/A'} | Mode: ${he(strata.mode || 'N/A')} | Segment: ${he(strata.segment || 'N/A')}
         </div>
       </div>
     `;
@@ -4399,8 +4399,8 @@ async function showProxyMetrics(model) {
     if (openArchiveBtn) {
       openArchiveBtn.addEventListener('click', () => {
         // Open Archive Browser modal/page with current model/conversation context
-        if (window.openArchiveBrowser) {
-          window.openArchiveBrowser(model, conversationId);
+        if (window.ArchiveBrowser) {
+          window.ArchiveBrowser.open(model, conversationId);
         } else {
           // Fallback: navigate to archive page if it exists
           const url = `/archive?model=${encodeURIComponent(model)}${conversationId ? `&conversation=${encodeURIComponent(conversationId)}` : ''}`;
@@ -4417,6 +4417,17 @@ async function showProxyMetrics(model) {
         await fetchAllData();
       });
     }
+
+    // Strata conversation link click handler
+    contentEl.querySelectorAll('.strata-conversation-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const convId = link.dataset.conversationId;
+        if (convId && window.ArchiveBrowser) {
+          window.ArchiveBrowser.open(model, convId);
+        }
+      });
+    });
   }
   
   function startCountdown() {
