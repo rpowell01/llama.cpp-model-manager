@@ -363,8 +363,8 @@ def test_archive_recall_no_archive_db(tmp_path):
 
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["recall"]["results"] == []
-    assert data["recall"]["total"] == 0
+    assert data["pieces"] == []
+    assert data["total"] == 0
 
 
 def test_archive_recall_with_id(tmp_path):
@@ -393,9 +393,9 @@ def test_archive_recall_with_id(tmp_path):
 
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["recall"]["total"] == 1
-    assert data["recall"]["results"][0]["id"] == "piece-1"
-    assert data["recall"]["results"][0]["content"] == "Hello"
+    assert data["total"] == 1
+    assert data["pieces"][0]["id"] == "piece-1"
+    assert data["pieces"][0]["content"] == "Hello"
 
 
 def test_archive_recall_with_query(tmp_path):
@@ -425,8 +425,8 @@ def test_archive_recall_with_query(tmp_path):
 
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["recall"]["total"] == 1
-    assert data["recall"]["results"][0]["content"] == "Hello world"
+    assert data["total"] == 1
+    assert data["pieces"][0]["content"] == "Hello world"
 
 
 def test_archive_recall_invalid_mode():
@@ -598,15 +598,12 @@ def test_archive_recall_negative_seg():
     assert resp.status_code == 200
 
 
-def test_archive_recall_mode_first():
+def test_archive_recall_mode_first(tmp_path):
     """Test mode=first returns oldest match."""
     app = _make_app()
     client = app.test_client()
 
-    archive_db = Path("/tmp/test_archive.sqlite")
-    # Clean up if exists
-    if archive_db.exists():
-        archive_db.unlink()
+    archive_db = tmp_path / "test_archive.sqlite"
 
     conversations_data = []
     pieces_data = [
@@ -622,7 +619,7 @@ def test_archive_recall_mode_first():
         _pid = 12345
 
         def _resolve_data_dir(self):
-            return Path("/tmp/data/model")
+            return tmp_path
 
     with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
         with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
@@ -632,18 +629,16 @@ def test_archive_recall_mode_first():
     assert resp.status_code == 200
     data = resp.get_json()
     # mode=first should return the oldest (first) message
-    assert data["recall"]["total"] == 1
-    assert data["recall"]["results"][0]["content"] == "First message"
+    assert data["total"] == 1
+    assert data["pieces"][0]["content"] == "First message"
 
 
-def test_archive_recall_like_wildcard_escape():
+def test_archive_recall_like_wildcard_escape(tmp_path):
     """Test that LIKE wildcards in query are escaped."""
     app = _make_app()
     client = app.test_client()
 
-    archive_db = Path("/tmp/test_archive.sqlite")
-    if archive_db.exists():
-        archive_db.unlink()
+    archive_db = tmp_path / "test_archive.sqlite"
 
     conversations_data = []
     pieces_data = [
@@ -658,7 +653,7 @@ def test_archive_recall_like_wildcard_escape():
         _pid = 12345
 
         def _resolve_data_dir(self):
-            return Path("/tmp/data/model")
+            return tmp_path
 
     with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
         with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
@@ -669,8 +664,8 @@ def test_archive_recall_like_wildcard_escape():
     assert resp.status_code == 200
     data = resp.get_json()
     # Should match "100% complete" literally, not as wildcard
-    assert data["recall"]["total"] == 1
-    assert data["recall"]["results"][0]["content"] == "100% complete"
+    assert data["total"] == 1
+    assert data["pieces"][0]["content"] == "100% complete"
 
 
 def test_archive_recall_remote_mode():

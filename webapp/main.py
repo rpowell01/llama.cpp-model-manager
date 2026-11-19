@@ -18,7 +18,7 @@ from pathlib import Path
 # (e.g., `python webapp/main.py`).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 
 # Import configuration
 from webapp.config import BASE_DIR, Config, METRICS_EXPORT_INTERVAL_SECONDS, WSL
@@ -176,6 +176,45 @@ def main() -> None:
     app.register_blueprint(system_bp)
     log.info("system_bp registered")
     log.info("All blueprints registered")
+
+    # Add after_request wrapper for archive API envelope format
+    @app.after_request
+    def _wrap_archive_api_response(response):
+        """Wrap archive API responses in {success: true, data: ...} envelope."""
+        # Only apply to archive API routes
+        if not request.path.startswith("/api/proxy/archive/"):
+            return response
+        
+        # Don't wrap if already wrapped (check for success key in JSON)
+        if response.is_json:
+            try:
+                data = response.get_json()
+            except Exception:
+                data = None
+            
+            if isinstance(data, dict) and "success" in data:
+                return response  # Already wrapped
+            
+            # Wrap successful responses
+            if 200 <= response.status_code < 300:
+                wrapped = jsonify({"success": True, "data": data})
+            else:
+                # Wrap error responses
+                error_msg = data.get("error", "Unknown error") if isinstance(data, dict) else "Unknown error"
+                wrapped = jsonify({"success": False, "error": error_msg})
+            
+            # Create new response with wrapped body, preserving status and headers (except Content-Length)
+            # Use Flask's Response class directly, not response.response_class (which doesn't exist on Response objects)
+            from flask import Response as FlaskResponse
+            new_response = FlaskResponse(
+                response=wrapped.get_data(),
+                status=response.status_code,
+                headers=[(k, v) for k, v in response.headers if k.lower() != "content-length"],
+                mimetype=wrapped.mimetype,
+            )
+            return new_response
+        
+        return response
 
     # Load models cache (skip in remote mode)
     if not cfg.is_remote_mode:

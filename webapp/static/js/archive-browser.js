@@ -568,10 +568,10 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/conversations?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Failed to load conversations');
+      if (data.error) throw new Error(data.error || 'Failed to load conversations');
       
-      const conversations = data.data.conversations || [];
-      pg.total = data.data.total || 0;
+      const conversations = data.conversations || [];
+      pg.total = data.count || 0;
       
       renderConversations(conversations);
       updatePagination('conversations');
@@ -694,9 +694,9 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/journal?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Failed to load journal');
+      if (data.error) throw new Error(data.error || 'Failed to load journal');
       
-      const events = data.data.events || [];
+      const events = data.events || [];
       renderConversationDetail(convId, events);
       setStatus(`Loaded conversation ${convId.substring(0, 12)}…`);
     } catch (e) {
@@ -791,10 +791,10 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/journal?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Failed to load journal');
+      if (data.error) throw new Error(data.error || 'Failed to load journal');
       
-      const events = data.data.events || [];
-      pg.total = data.data.total || 0;
+      const events = data.events || [];
+      pg.total = data.total || 0;
       
       renderJournal(events);
       updatePagination('journal');
@@ -924,10 +924,10 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Search failed');
+      if (data.error) throw new Error(data.error || 'Search failed');
       
-      const pieces = data.data.pieces || [];
-      pg.total = data.data.total || 0;
+      const pieces = data.recall?.results || [];
+      pg.total = data.recall?.total || 0;
       
       renderSearchResults(pieces);
       updatePagination('search');
@@ -1059,10 +1059,10 @@ let _restoring = false;
       const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Failed to load file history');
+      if (data.error) throw new Error(data.error || 'Failed to load file history');
       
-      const pieces = data.data.pieces || [];
-      pg.total = data.data.total || 0;
+      const pieces = data.recall?.results || [];
+      pg.total = data.recall?.total || 0;
       
       renderFileHistory(pieces);
       updatePagination('fileHistory');
@@ -1176,12 +1176,23 @@ let _restoring = false;
     setStatus('Loading piece detail…');
     
     try {
-      const resp = await fetch(`/api/proxy/archive/piece/${encodeURIComponent(pieceId)}?model=${encodeURIComponent(currentModel)}`);
+      const params = new URLSearchParams({
+        model: currentModel,
+        id: pieceId,
+        limit: 1
+      });
+      
+      const resp = await fetch(`/api/proxy/archive/recall?${params}`);
       const data = await resp.json();
       
-      if (!data.success) throw new Error(data.error || 'Failed to load piece');
+      if (data.error) throw new Error(data.error || 'Failed to load piece');
       
-      const piece = data.data;
+      const pieces = data.recall?.results || [];
+      if (pieces.length === 0) {
+        throw new Error('Piece not found');
+      }
+      
+      const piece = pieces[0];
       renderPieceDetail(piece);
       setStatus(`Loaded piece ${pieceId.substring(0, 12)}…`);
     } catch (e) {

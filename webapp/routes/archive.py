@@ -203,6 +203,8 @@ def api_archive_conversations():
     Query parameters:
     - model: Model name (required)
     - limit: Maximum number of conversations to return (default: 50, max: 1000)
+    - offset: Number of conversations to skip for pagination (default: 0)
+    - sort: Sort order - 'updated_desc' (default), 'updated_asc', 'created_desc', 'created_asc', 'message_count_desc', 'message_count_asc'
     - query: Search query to filter conversations (optional)
     """
     _validate_local_mode()
@@ -212,6 +214,8 @@ def api_archive_conversations():
         return jsonify({"error": "Missing model parameter"}), 400
 
     limit = _validate_limit(request.args.get("limit", 50, type=int))
+    offset = _validate_offset(request.args.get("offset", 0, type=int))
+    sort = request.args.get("sort", "updated_desc").strip()
     query = request.args.get("query", "").strip() or None
 
     # Verify model exists
@@ -227,10 +231,21 @@ def api_archive_conversations():
     # Find archive database
     archive_db = _find_archive_db(proxy_manager)
     if not archive_db or not archive_db.exists():
-        return jsonify({"conversations": [], "count": 0, "model": model})
+        return jsonify({
+            "success": True,
+            "data": {
+                "conversations": [],
+                "total": 0,
+            },
+            "model": model,
+            "offset": offset,
+            "limit": limit,
+            "sort": sort,
+        })
 
     # Query conversations from archive.sqlite
     conversations = []
+    total = 0
     try:
         import sqlite3
         conn = sqlite3.connect(str(archive_db))
@@ -243,30 +258,47 @@ def api_archive_conversations():
         """)
         if not cursor.fetchone():
             conn.close()
-            return jsonify({"conversations": [], "count": 0, "model": model})
+            return jsonify({"conversations": [], "count": 0, "total": 0, "model": model, "offset": offset, "limit": limit})
 
-        # Build query
+        # Build ORDER BY clause based on sort parameter
+        sort_mapping = {
+            "updated_desc": "updated_at DESC",
+            "updated_asc": "updated_at ASC",
+            "created_desc": "created_at DESC",
+            "created_asc": "created_at ASC",
+            "message_count_desc": "message_count DESC",
+            "message_count_asc": "message_count ASC",
+        }
+        order_by = sort_mapping.get(sort, "updated_at DESC")
+
+        # Build WHERE clause for query filtering
+        where_clause = ""
+        params = []
         if query:
-            sql = """
-                SELECT conversation_id, created_at, updated_at, message_count, token_count, metadata
-                FROM conversations
-                WHERE conversation_id LIKE ? ESCAPE '\\' OR metadata LIKE ? ESCAPE '\\'
-                ORDER BY updated_at DESC
-                LIMIT ?
-            """
+            where_clause = "WHERE conversation_id LIKE ? ESCAPE '\\' OR metadata LIKE ? ESCAPE '\\'"
             like_query = f"%{_escape_like_wildcards(query)}%"
-            cursor.execute(sql, (like_query, like_query, limit))
-        else:
-            sql = """
-                SELECT conversation_id, created_at, updated_at, message_count, token_count, metadata
-                FROM conversations
-                ORDER BY updated_at DESC
-                LIMIT ?
-            """
-            cursor.execute(sql, (limit,))
+            params = [like_query, like_query]
+
+        # Get total count for pagination
+        count_sql = f"SELECT COUNT(*) as total FROM conversations {where_clause}"
+        cursor.execute(count_sql, params)
+        total_row = cursor.fetchone()
+        total = total_row["total"] if total_row else 0
+
+        # Build query with pagination
+        sql = f"""
+            SELECT conversation_id, created_at, updated_at, message_count, token_count, metadata
+            FROM conversations
+            {where_clause}
+            ORDER BY {order_by}
+            LIMIT ? OFFSET ?
+        """
+        params_with_pagination = params + [limit, offset]
+        cursor.execute(sql, params_with_pagination)
 
         for row in cursor.fetchall():
             conv = {
+                "id": row["conversation_id"],  # Frontend expects 'id' field
                 "conversation_id": row["conversation_id"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
@@ -277,6 +309,10 @@ def api_archive_conversations():
             if row["metadata"]:
                 try:
                     conv["metadata"] = json.loads(row["metadata"])
+                    # Extract segment_count from metadata if available
+                    meta = conv["metadata"]
+                    if isinstance(meta, dict) and "segment_count" in meta:
+                        conv["segment_count"] = meta["segment_count"]
                 except json.JSONDecodeError:
                     conv["metadata"] = {}
             conversations.append(conv)
@@ -287,9 +323,15 @@ def api_archive_conversations():
         return jsonify({"error": f"Failed to query conversations: {str(e)}"}), 500
 
     return jsonify({
-        "conversations": conversations,
-        "count": len(conversations),
+        "success": True,
+        "data": {
+            "conversations": conversations,
+            "total": len(conversations),
+        },
         "model": model,
+        "offset": offset,
+        "limit": limit,
+        "sort": sort,
     })
 
 
@@ -328,7 +370,16 @@ def api_archive_journal():
     # Find journal file
     journal_path = _find_journal_file(proxy_manager)
     if not journal_path or not journal_path.exists():
-        return jsonify({"events": [], "count": 0, "model": model})
+        return jsonify({
+            "success": True,
+            "data": {
+                "events": [],
+                "total": 0,
+            },
+            "model": model,
+            "offset": offset,
+            "limit": limit,
+        })
 
     # Parse journal.jsonl - read from end for efficiency
     # We need to collect (offset + limit) matching events from the end
@@ -341,7 +392,16 @@ def api_archive_journal():
             f.seek(0, 2)  # Seek to end
             file_size = f.tell()
             if file_size == 0:
-                return jsonify({"events": [], "count": 0, "total": 0, "model": model, "offset": offset, "limit": limit})
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "events": [],
+                        "total": 0,
+                    },
+                    "model": model,
+                    "offset": offset,
+                    "limit": limit,
+                })
 
             # Read chunks from end
             chunk_size = 8192
@@ -399,9 +459,11 @@ def api_archive_journal():
     events = events[offset:offset + limit]
 
     return jsonify({
-        "events": events,
-        "count": len(events),
-        "total": total,
+        "success": True,
+        "data": {
+            "events": events,
+            "total": total,
+        },
         "model": model,
         "offset": offset,
         "limit": limit,
@@ -485,7 +547,8 @@ def api_archive_recall():
     archive_db = _find_archive_db(proxy_manager)
     if not archive_db or not archive_db.exists():
         return jsonify({
-            "recall": {"results": [], "total": 0},
+            "pieces": [],
+            "total": 0,
             "model": model,
             "message": "No archive database found",
         })
@@ -654,17 +717,104 @@ def api_archive_recall():
         total = len(results)
 
         return jsonify({
-            "recall": {
-                "results": results,
-                "total": total,
-                "query": query,
-                "queries": queries,
-                "mode": mode,
-                "order": order,
-            },
+            "pieces": results,
+            "total": total,
+            "query": query,
+            "queries": queries,
+            "mode": mode,
+            "order": order,
             "model": model,
         })
 
     except Exception as e:
         log.error(f"Failed to recall from archive for {model}: {e}")
         return jsonify({"error": f"Failed to recall from archive: {str(e)}"}), 500
+
+
+@archive_bp.route("/api/proxy/archive/piece/<piece_id>", methods=["GET"])
+def api_archive_piece(piece_id):
+    """Get a single piece by ID from mnemonic-archive.
+
+    Query parameters:
+    - model: Model name (required)
+    """
+    _validate_local_mode()
+
+    model = request.args.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model parameter"}), 400
+
+    # Verify model exists
+    model_config = _get_model_config(model)
+    if not model_config:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    # Get proxy manager
+    proxy_manager = _get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "Failed to create proxy manager"}), 500
+
+    # Find archive database
+    archive_db = _find_archive_db(proxy_manager)
+    if not archive_db or not archive_db.exists():
+        return jsonify({"error": "No archive database found"}), 404
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(archive_db))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Check if pieces table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'
+        """)
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Pieces table not found"}), 404
+
+        # Get column names from pieces table to handle schema variations
+        cursor.execute("PRAGMA table_info(pieces)")
+        columns = {row["name"] for row in cursor.fetchall()}
+
+        # Build SELECT with only existing columns
+        # Skip 'embedding' since it's a BLOB (bytes) not JSON serializable and frontend doesn't use it
+        base_columns = ["id", "conversation_id", "role", "content", "segment", "message_index", "created_at", "metadata"]
+        optional_columns = ["request_context", "recall_use", "output", "reasoning", "embedding"]
+        select_columns = [c for c in base_columns if c in columns] + [c for c in optional_columns if c in columns]
+
+        sql = f"SELECT {', '.join(select_columns)} FROM pieces WHERE id = ?"
+        cursor.execute(sql, (piece_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return jsonify({"error": f"Piece not found: {piece_id}"}), 404
+
+        # Build piece object with all available fields
+        piece = {"model": model}
+        for col in select_columns:
+            value = row[col]
+            if col == "metadata" and value:
+                try:
+                    piece[col] = json.loads(value)
+                except json.JSONDecodeError:
+                    piece[col] = {}
+            elif col in ("request_context", "recall_use", "output", "reasoning") and value:
+                try:
+                    piece[col] = json.loads(value)
+                except json.JSONDecodeError:
+                    piece[col] = value
+            elif col == "embedding" and value:
+                # Embedding is a BLOB - convert to base64 for JSON serialization if needed
+                # Frontend doesn't use it, so we can skip or include as base64
+                import base64
+                piece[col] = base64.b64encode(value).decode("ascii")
+            else:
+                piece[col] = value
+
+        return jsonify(piece)
+
+    except Exception as e:
+        log.error(f"Failed to fetch piece {piece_id} for {model}: {e}")
+        return jsonify({"error": f"Failed to fetch piece: {str(e)}"}), 500
