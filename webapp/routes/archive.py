@@ -1198,6 +1198,102 @@ def api_archive_piece(piece_id):
     except Exception as e:
         log.error(f"Failed to fetch piece {piece_id} for {model}: {e}")
         return jsonify({"error": f"Failed to fetch piece: {str(e)}"}), 500
+
+
+@archive_bp.route("/api/proxy/archive/files", methods=["GET"])
+def api_archive_files():
+    """Get unique file paths from the model's archive database.
+
+    Query parameters:
+    - model: Model name (required)
+    - limit: Maximum number of file paths to return (default: 50, max: 200)
+    """
+    _validate_local_mode()
+
+    model = request.args.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "Missing model parameter"}), 400
+
+    # Verify model exists
+    model_config = _get_model_config(model)
+    if not model_config:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    # Get proxy manager
+    proxy_manager = _get_proxy_manager(model)
+    if not proxy_manager:
+        return jsonify({"error": "Failed to create proxy manager"}), 500
+
+    # Find archive database
+    archive_db = _find_archive_db(proxy_manager)
+    if not archive_db or not archive_db.exists():
+        return jsonify({"files": [], "total": 0})
+
+    limit = _validate_limit(request.args.get("limit", 50, type=int), max_limit=200)
+
+    conn = None
+    try:
+        conn = sqlite3.connect(str(archive_db))
+        conn.row_factory = sqlite3.Row
+
+        # Try to get file paths from fileops table first
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fileops'")
+        if cursor.fetchone():
+            # fileops table exists - get unique paths
+            cursor.execute("""
+                SELECT DISTINCT f.path, COUNT(*) as count
+                FROM fileops f
+                GROUP BY f.path
+                ORDER BY count DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            files = []
+            for row in rows:
+                path = row[0]
+                if path:
+                    files.append({
+                        "path": path,
+                        "occurrences": row[1]
+                    })
+        else:
+            # No fileops table - search archive content for file paths
+            # Use a simple pattern to find paths in content
+            cursor.execute("""
+                SELECT content FROM archive
+                WHERE content LIKE '%/%' OR content LIKE '%.py%' OR content LIKE '%.js%' OR content LIKE '%.sh%' OR content LIKE '%.mjs%'
+                LIMIT 100
+            """)
+            rows = cursor.fetchall()
+            seen = set()
+            files = []
+            for row in rows:
+                content = row[0] or ""
+                # Extract potential file paths (patterns like /path/to/file or file.js)
+                import re
+                matches = re.findall(r'[a-zA-Z]:\\[^<>"{}|\\s]+|\/[a-zA-Z0-9_/.-]+\.[a-zA-Z0-9]+', content)
+                for match in matches:
+                    # Filter to likely file paths
+                    if any(ext in match.lower() for ext in ['.py', '.js', '.ts', '.mjs', '.sh', '.tsv', '.json', '.csv', '.yaml', '.yml', '.md']):
+                        if match not in seen:
+                            seen.add(match)
+                            files.append({"path": match, "occurrences": 1})
+                            if len(files) >= limit:
+                                break
+
+        conn.close()
+
+        # Sort by occurrences (most common first)
+        files.sort(key=lambda x: x.get("occurrences", 0), reverse=True)
+
+        return jsonify({"files": files, "total": len(files)})
+
+    except Exception as e:
+        log.error(f"Failed to get files for {model}: {e}")
+        if conn:
+            conn.close()
+        return jsonify({"error": f"Failed to get files: {str(e)}"}), 500
     finally:
         if conn:
             conn.close()

@@ -18,7 +18,8 @@
     conversations: { offset: 0, limit: 50, total: 0, sort: 'updated_desc', query: '' },
     journal: { offset: 0, limit: 100, total: 0, eventType: '', fromTs: '', toTs: '' },
     search: { offset: 0, limit: 50, total: 0, query: '', mode: 'default', queries: [] },
-    fileHistory: { offset: 0, limit: 50, total: 0, path: '' }
+    fileHistory: { offset: 0, limit: 50, total: 0 },
+    fileHistoryFiles: { offset: 0, limit: 50, total: 0 }
   };
 
   // VirtualList instances for each view
@@ -26,7 +27,8 @@
     conversations: null,
     journal: null,
     search: null,
-    fileHistory: null
+    fileHistory: null,
+    fileHistoryFiles: null
   };
 
   // Store current data arrays for virtualization
@@ -34,8 +36,12 @@
     conversations: [],
     journal: [],
     search: [],
-    fileHistory: []
+    fileHistory: [],
+    fileHistoryFiles: []
   };
+  
+  // Track selected file for file history detail
+  let selectedFilePath = null;
   
   // Debounce timer for search
   let searchDebounceTimer = null;
@@ -119,13 +125,16 @@
     elements.convSearch = document.getElementById('archive-conv-search');
     elements.convSort = document.getElementById('archive-conv-sort');
     elements.journalEventType = document.getElementById('archive-journal-event-type');
+    elements.fileHistoryCount = document.getElementById('archive-file-history-count');
     elements.journalFrom = document.getElementById('archive-journal-from');
     elements.journalTo = document.getElementById('archive-journal-to');
     elements.searchQuery = document.getElementById('archive-search-query');
     elements.searchMode = document.getElementById('archive-search-mode');
     elements.searchBtn = document.getElementById('archive-search-btn');
-    elements.filePath = document.getElementById('archive-file-path');
     elements.fileHistoryBtn = document.getElementById('archive-file-history-btn');
+    elements.fileHistoryRefresh = document.getElementById('archive-file-history-refresh');
+    elements.fileHistoryDetail = document.getElementById('archive-file-history-detail');
+    elements.fileHistoryDetailContent = document.getElementById('archive-file-history-detail-content');
   }
 
   // Set status text
@@ -172,6 +181,17 @@
         control.style.display = key === viewName ? 'flex' : 'none';
       }
     });
+    
+    // Update right panel visibility based on view
+    if (elements.detailPanel) {
+      if (viewName === 'fileHistory') {
+        // In fileHistory view, show the detail panel on the right
+        // (it will be populated when a file is selected)
+        elements.detailPanel.style.display = 'flex';
+      } else {
+        elements.detailPanel.style.display = 'flex';
+      }
+    }
     
     // Load data for the view if we have a model
     if (currentModel) {
@@ -542,7 +562,12 @@ let _restoring = false;
         loadSearch();
         break;
       case 'fileHistory':
-        loadFileHistory();
+        // In the new two-pane layout, load the file list first
+        loadFileHistoryFiles();
+        // Initially hide the detail panel until a file is selected
+        if (elements.fileHistoryDetail) {
+          elements.fileHistoryDetail.style.display = 'none';
+        }
         break;
     }
   }
@@ -870,11 +895,11 @@ let _restoring = false;
         renderItem: renderJournalItem,
         itemHeight: ITEM_HEIGHT,
         buffer: 5,
-        getItemId: (event) => event.id || '',
+        // Journal events don't have unique IDs, use index as identifier
+        getItemId: (event, index) => `journal-${index}`,
         onItemClick: (event, index) => {
-          const eventId = event.id;
           const convId = event.conversation_id;
-          selectJournalEvent(eventId, convId);
+          selectJournalEvent(index, convId);
         }
       });
     } else {
@@ -884,19 +909,17 @@ let _restoring = false;
   }
 
   // Select journal event - called from VirtualList click handler
-  function selectJournalEvent(eventId, convId) {
+  // eventId is actually the index since journal events don't have unique IDs
+  function selectJournalEvent(eventIndex, convId) {
     if (convId) {
       currentConversationId = convId;
       updateBreadcrumbs();
       
       // Load conversation detail which shows the timeline with journal events
       loadConversationDetail(convId);
-    } else if (eventId) {
-      // If no conversation but has event ID, try to load piece detail
-      loadPieceDetail(eventId);
     } else {
-      // No conversation_id and no event_id - show the full event data in detail panel
-      const event = currentData.journal.find(e => e.id === eventId);
+      // No conversation_id - show the full event data in detail panel
+      const event = currentData.journal[eventIndex];
       if (event) {
         renderJournalEventDetail(event);
       }
@@ -904,10 +927,7 @@ let _restoring = false;
     
     // Update VirtualList selection if it exists
     if (virtualLists.journal) {
-      const index = currentData.journal.findIndex(e => e.id === eventId);
-      if (index >= 0) {
-        virtualLists.journal.setSelectedIndex(index);
-      }
+      virtualLists.journal.setSelectedIndex(eventIndex);
     }
     
     updateURLState();
@@ -1092,28 +1112,110 @@ let _restoring = false;
     updateURLState();
   }
 
-  // Load file history
-  async function loadFileHistory() {
-    if (!currentModel || !currentFilePath) return;
+  // Load file history files (list of unique file paths)
+  async function loadFileHistoryFiles() {
+    if (!currentModel) return;
     
-    const pg = pagination.fileHistory;
     const listEl = elements.lists.fileHistory;
     const paginationEl = elements.pagination.fileHistory;
+    const countEl = elements.fileHistoryCount;
     
     if (!listEl) return;
     
-    listEl.innerHTML = '<div class="archive-loading">Loading file history…</div>';
-    setStatus('Loading file history…');
+    listEl.innerHTML = '<div class="archive-loading">Loading file list…</div>';
+    setStatus('Loading file list…');
     
     try {
-      const params = new URLSearchParams({
-        model: currentModel,
-        path: currentFilePath,
-        limit: pg.limit,
-        offset: pg.offset
+      const resp = await fetch(`/api/proxy/archive/files?model=${currentModel}&limit=100`);
+      const data = await resp.json();
+      
+      // Handle wrapped response format {success: true, data: {...}}
+      const payload = (data && data.success && data.data) ? data.data : data;
+      
+      if (payload.error) throw new Error(payload.error || 'Failed to load file list');
+      
+      const files = payload.files || [];
+      paginationEl.total = payload.total || files.length;
+      
+      currentData.fileHistoryFiles = files || [];
+      
+      // Update count
+      if (countEl) {
+        countEl.textContent = `${files.length} files`;
+      }
+      
+      // Render the file list using VirtualList
+      if (virtualLists.fileHistoryFiles) {
+        virtualLists.fileHistoryFiles.destroy();
+      }
+      
+      // Render item function for file list
+      function renderFileHistoryFile(file, index) {
+        const path = file.path || 'Unknown path';
+        const occurrences = file.occurrences || 0;
+        
+        return `<div class="archive-file-list-item" data-file-path="${he(path)}" data-file-index="${index}">
+          <span class="file-list-path">${he(path.substring(0, 50))}…</span>
+          <span class="file-list-occurrences">${occurrences} occurrences</span>
+        </div>`;
+      }
+      
+      virtualLists.fileHistoryFiles = new VirtualList({
+        parentEl: listEl,
+        items: currentData.fileHistoryFiles,
+        renderItem: renderFileHistoryFile,
+        onItemClick: (file) => {
+          selectFileHistoryFile(file);
+        }
       });
       
-      const resp = await fetch(`/api/proxy/archive/recall?${params}`);
+      virtualLists.fileHistoryFiles.setItems(currentData.fileHistoryFiles);
+      
+      setStatus(`Loaded ${files.length} files from archive`);
+    } catch (e) {
+      console.error('Failed to load file list:', e);
+      listEl.innerHTML = `<div class="archive-error">Error: ${he(e.message)}</div>`;
+      setStatus('Error loading file list');
+    }
+  }
+
+  // Select a file from the file history list
+  function selectFileHistoryFile(file) {
+    const path = file.path || '';
+    selectedFilePath = path;
+    
+    // Update VirtualList selection
+    if (virtualLists.fileHistoryFiles) {
+      virtualLists.fileHistoryFiles.setSelectedIndex(
+        currentData.fileHistoryFiles.findIndex(f => f.path === path)
+      );
+    }
+    
+    // Load the file's history and show the detail panel
+    loadFileHistoryDetail(path);
+  }
+
+  // Load file history detail for a specific file
+  async function loadFileHistoryDetail(path) {
+    if (!currentModel || !path) return;
+    
+    const listEl = elements.lists.fileHistory;
+    const paginationEl = elements.pagination.fileHistory;
+    const countEl = elements.fileHistoryCount;
+    const detailEl = elements.fileHistoryDetail;
+    const detailContentEl = elements.fileHistoryDetailContent;
+    
+    if (!listEl || !detailEl || !detailContentEl) return;
+    
+    // Show loading state in detail panel
+    detailContentEl.innerHTML = '<div class="archive-loading">Loading file history…</div>';
+    detailEl.style.display = 'block';
+    
+    setStatus(`Loading file history for ${path.substring(0, 30)}…`);
+    
+    try {
+      // Load file history using the recall API with path filter
+      const resp = await fetch(`/api/proxy/archive/recall?model=${currentModel}&path=${encodeURIComponent(path)}&limit=50`);
       const data = await resp.json();
       
       // Handle wrapped response format {success: true, data: {...}}
@@ -1122,17 +1224,65 @@ let _restoring = false;
       if (payload.error) throw new Error(payload.error || 'Failed to load file history');
       
       const pieces = payload.recall?.results || [];
-      pg.total = payload.recall?.total || 0;
+      paginationEl.total = payload.recall?.total || pieces.length;
       
-      renderFileHistory(pieces);
-      updatePagination('fileHistory');
-      updateCount('fileHistory', pg.total);
-      setStatus(`Loaded ${pieces.length} of ${pg.total} file history entries`);
+      // Render the file history detail
+      renderFileHistoryDetail(pieces);
+      
+      // Update count
+      if (countEl) {
+        countEl.textContent = `${pieces.length} entries`;
+      }
+      
+      setStatus(`Loaded ${pieces.length} file history entries for ${path.substring(0, 30)}…`);
     } catch (e) {
-      console.error('Failed to load file history:', e);
-      listEl.innerHTML = `<div class="archive-error">Error: ${he(e.message)}</div>`;
+      console.error('Failed to load file history detail:', e);
+      detailContentEl.innerHTML = `<div class="archive-error">Error: ${he(e.message)}</div>`;
       setStatus('Error loading file history');
     }
+  }
+
+  // Render file history detail
+  function renderFileHistoryDetail(pieces) {
+    const detailContentEl = elements.fileHistoryDetailContent;
+    if (!detailContentEl) return;
+    
+    if (pieces.length === 0) {
+      detailContentEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📁</div><div>No history found for this file</div></div>';
+      return;
+    }
+    
+    let html = `<div class="archive-file-history-detail">`;
+    html += `<div class="file-history-detail-header">`;
+    html += `<span class="file-history-detail-path">${he(pieces[0]?.path || 'Unknown')}</span>`;
+    html += `</div>`;
+    html += `<div class="file-history-detail-list">`;
+    
+    pieces.forEach((piece, i) => {
+      const id = piece.id || '';
+      const role = piece.role || 'unknown';
+      const timestamp = formatTimestamp(piece.created_at);
+      const convId = piece.conversation_id || '';
+      const segment = piece.segment || 0;
+      const msgIndex = piece.message_index || 0;
+      
+      let operation = role;
+      if (piece.metadata) {
+        try {
+          const meta = typeof piece.metadata === 'string' ? JSON.parse(piece.metadata) : piece.metadata;
+          if (meta.operation) operation = meta.operation;
+        } catch {}
+      }
+      
+      html += `<div class="archive-file-history-detail-item" data-piece-id="${he(id)}" data-conv-id="${he(convId)}">`;
+      html += `<div class="file-history-detail-operation">${he(operation)}</span>`;
+      html += `<span class="file-history-detail-timestamp">${he(timestamp)}</span>`;
+      html += `<span class="file-history-detail-conversation">Segment: ${segment}, Message: ${msgIndex} | Conv: ${he(convId.substring(0, 16))}…</div>`;
+      html += `</div>`;
+    });
+    
+    html += `</div></div>`;
+    detailContentEl.innerHTML = html;
   }
 
   // Render file history using VirtualList
@@ -1144,7 +1294,7 @@ let _restoring = false;
     currentData.fileHistory = pieces || [];
     
     if (currentData.fileHistory.length === 0) {
-      listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📁</div><div>No history found for this file</div></div>';
+      listEl.innerHTML = '<div class="archive-empty"><div class="archive-empty-icon">📁</div><div>No history found for this file</div></div><div class="archive-empty-note">This can happen when the model\'s fileops table is empty. File history tracks read/write operations per model.</div>';
       // Clean up existing virtual list
       if (virtualLists.fileHistory) {
         virtualLists.fileHistory.destroy();
@@ -1604,24 +1754,16 @@ let _restoring = false;
     }
     
     // File history controls
-    if (elements.fileHistoryBtn) {
-      elements.fileHistoryBtn.addEventListener('click', () => {
-        const path = elements.filePath.value.trim();
-        if (path) {
-          currentFilePath = path;
-          pagination.fileHistory.path = path;
-          pagination.fileHistory.offset = 0;
-          loadFileHistory();
-          updateBreadcrumbs();
+    if (elements.fileHistoryRefresh) {
+      elements.fileHistoryRefresh.addEventListener('click', () => {
+        // Refresh the file list
+        pagination.fileHistoryFiles.offset = 0;
+        loadFileHistoryFiles();
+        // Hide detail panel when refreshing
+        if (elements.fileHistoryDetail) {
+          elements.fileHistoryDetail.style.display = 'none';
         }
-      });
-    }
-    
-    if (elements.filePath) {
-      elements.filePath.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          elements.fileHistoryBtn?.click();
-        }
+        selectedFilePath = null;
       });
     }
     

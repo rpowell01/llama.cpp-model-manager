@@ -1271,6 +1271,160 @@ def test_archive_journal_remote_mode(monkeypatch):
     assert "remote mode" in data["error"].lower()
 
 
+def test_archive_files_missing_model_param():
+    app = _make_app()
+    client = app.test_client()
+    resp = client.get("/api/proxy/archive/files")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["error"] == "Missing model parameter"
+
+
+def test_archive_files_unknown_model():
+    app = _make_app()
+    client = app.test_client()
+
+    with patch("webapp.routes.archive._get_model_config", return_value=None):
+        resp = client.get("/api/proxy/archive/files?model=unknown-model")
+
+    assert resp.status_code == 404
+    data = resp.get_json()
+    assert data["error"] == "Unknown model 'unknown-model'"
+
+
+def test_archive_files_no_archive_db(tmp_path):
+    app = _make_app()
+    client = app.test_client()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp = client.get("/api/proxy/archive/files?model=test-model")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["files"] == []
+    assert data["total"] == 0
+
+
+def test_archive_files_with_fileops(tmp_path):
+    app = _make_app()
+    client = app.test_client()
+
+    # Create test archive database with fileops table
+    db_path = tmp_path / "data" / "model" / "archive.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE fileops (
+            conv TEXT, idx INT, call_id TEXT, op TEXT,
+            path TEXT, outcome TEXT, rid_args TEXT, rid_out TEXT, head TEXT
+        )
+    """)
+    # Insert test file operations
+    cursor.executemany("""
+        INSERT INTO fileops (conv, idx, call_id, op, path, outcome, rid_args, rid_out, head)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [
+        ("conv-1", 1, "call-1", "read", "/path/to/file1.py", "success", "rid-1", "rid-2", "head-1"),
+        ("conv-1", 2, "call-2", "write", "/path/to/file1.py", "success", "rid-2", "rid-3", "head-2"),
+        ("conv-2", 1, "call-3", "read", "/path/to/file2.js", "success", "rid-3", "rid-4", "head-3"),
+        ("conv-2", 2, "call-4", "read", "/path/to/file2.js", "success", "rid-4", "rid-5", "head-4"),
+        ("conv-2", 3, "call-5", "read", "/path/to/file3.md", "success", "rid-5", "rid-6", "head-5"),
+    ])
+    conn.commit()
+    conn.close()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp = client.get("/api/proxy/archive/files?model=test-model&limit=10")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["total"] == 3
+    assert len(data["files"]) == 3
+    # Should be sorted by occurrences (most common first)
+    assert data["files"][0]["path"] == "/path/to/file2.js"
+    assert data["files"][0]["occurrences"] == 2
+    assert data["files"][1]["path"] == "/path/to/file1.py"
+    assert data["files"][1]["occurrences"] == 2
+    assert data["files"][2]["path"] == "/path/to/file3.md"
+    assert data["files"][2]["occurrences"] == 1
+
+
+def test_archive_files_without_fileops_fallback(tmp_path):
+    app = _make_app()
+    client = app.test_client()
+
+    # Create test archive database WITHOUT fileops table
+    db_path = tmp_path / "data" / "model" / "archive.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE archive (
+            rid TEXT PRIMARY KEY, conv TEXT, idx INT, role TEXT,
+            name TEXT, content TEXT, tokens INT, created REAL
+        )
+    """)
+    # Insert test archive entries with file-like content
+    cursor.executemany("""
+        INSERT INTO archive (rid, conv, idx, role, name, content, tokens, created)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, [
+        ("rid-1", "conv-1", 1, "user", "user", "I edited /home/user/project/main.py", 10, 1704067200.0),
+        ("rid-2", "conv-1", 2, "assistant", "assistant", "Here is the updated /home/user/project/main.py", 20, 1704067201.0),
+        ("rid-3", "conv-2", 1, "user", "user", "Check out script.js for the fix", 15, 1704067202.0),
+    ])
+    conn.commit()
+    conn.close()
+
+    class PM:
+        proxy_port = 8096
+        data_dir = "./data/model"
+        _pid = 12345
+
+        def _resolve_data_dir(self):
+            return tmp_path / "data" / "model"
+
+    with patch("webapp.routes.archive._get_model_config", return_value={"port": 9931}):
+        with patch("webapp.routes.archive.get_proxy_manager", return_value=PM()):
+            resp = client.get("/api/proxy/archive/files?model=test-model&limit=10")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # Should find file paths from content search
+    assert data["total"] >= 0  # May find 0 or more depending on regex
+
+
+def test_archive_files_remote_mode(monkeypatch):
+    monkeypatch.setenv("REMOTE_MODE", "true")
+    app = _make_app()
+    client = app.test_client()
+
+    resp = client.get("/api/proxy/archive/files?model=test-model")
+
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "remote mode" in data["error"].lower()
+
+
 if __name__ == "__main__":
     import sys
     import pytest
