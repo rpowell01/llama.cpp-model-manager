@@ -845,10 +845,11 @@ class MnemonicProxyManager:
     
     def is_running(self) -> bool:
         """
-        Check if the mnemonic-proxy is running and responsive.
+        Check if the mnemonic-proxy process is running.
 
         Returns:
-            True if running and healthy, False otherwise
+            True if proxy process is alive and port is bound (health state "ok" or "listening"),
+            False if process died or port not bound ("down").
         """
         if not self._pid:
             return False
@@ -857,12 +858,17 @@ class MnemonicProxyManager:
         if not self._process_alive():
             return False
 
-        # Check health endpoint (proxy + upstream engine)
-        return self._health_state() == "ok"
+        # Check health endpoint - proxy is "running" if process alive and port bound
+        # "ok" = proxy + engine healthy, "listening" = proxy up but engine not ready
+        health = self._health_state()
+        return health in ("ok", "listening")
 
     def _check_health(self) -> bool:
-        """Check mnemonic-proxy health via its health endpoint."""
-        return self._health_state() == "ok"
+        """Check mnemonic-proxy health via its health endpoint.
+        
+        Returns True if proxy process is alive and port is bound ("ok" or "listening").
+        """
+        return self._health_state() in ("ok", "listening")
     
     def get_status(self) -> dict[str, Any]:
         """
