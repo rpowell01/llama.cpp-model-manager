@@ -1,8 +1,10 @@
 """Mnemonic Archive API endpoints for conversation history, journal events, and recall."""
 import json
 import os
+import re
 import sqlite3
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -58,7 +60,51 @@ def _validate_positive_int(value: Optional[int], default: Optional[int] = None) 
 
 def _escape_like_wildcards(text: str) -> str:
     """Escape LIKE wildcards (% and _) in user input."""
-    return text.replace("%", "\\%").replace("_", "\\_")
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _epoch_to_iso(epoch: Optional[float]) -> str:
+    """Convert epoch seconds (float) to ISO-8601 UTC string with microseconds.
+    
+    Returns epoch 0 (1970-01-01T00:00:00.000Z) for NULL/None timestamps.
+    """
+    if epoch is None:
+        return "1970-01-01T00:00:00.000Z"
+    # epoch is in seconds, datetime.fromtimestamp expects seconds
+    dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    # Always include microseconds for consistent string ordering
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _tokenize_fts_query(text: str) -> list[str]:
+    """
+    Tokenize text for FTS5 query, matching mnemonic-proxy behavior.
+
+    Extracts word tokens (alphanumeric + underscore), strips quotes,
+    and returns unique non-empty tokens.
+    """
+    # Use regex to find word tokens (matching \w+)
+    tokens = re.findall(r"\w+", text)
+    # Filter empty and deduplicate while preserving order
+    seen = set()
+    result = []
+    for t in tokens:
+        if t and t not in seen:
+            seen.add(t)
+            result.append(t)
+    return result
+
+
+def _build_fts_query(terms: list[str]) -> str:
+    """Build FTS5 MATCH query from search terms - OR of quoted tokens."""
+    all_tokens = []
+    for term in terms:
+        all_tokens.extend(_tokenize_fts_query(term))
+    if not all_tokens:
+        return '""'  # Match nothing
+    # FTS5: quote each token to avoid syntax errors on operators like OR/AND
+    # ctxproxy wraps each token in double quotes
+    return " OR ".join(f'"{t}"' for t in all_tokens)
 
 
 def _candidate_journal_paths(manager) -> list[Path]:
@@ -196,6 +242,489 @@ def _get_proxy_manager(model: str):
     return proxy_manager
 
 
+def _query_conversations_from_archive(
+    conn: sqlite3.Connection,
+    limit: int,
+    offset: int,
+    sort: str,
+    query: Optional[str] = None,
+) -> tuple[list[dict], int]:
+    """
+    Query conversations from the real archive schema.
+
+    The archive table has messages with conv (conversation ID), created (timestamp),
+    tokens, role, content. We aggregate by conv to get conversation metadata.
+    Also includes segment_count from the segments table (if it exists).
+    """
+    cursor = conn.cursor()
+
+    # Check if archive table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive'")
+    if not cursor.fetchone():
+        return [], 0
+
+    # Check if segments table exists for segment_count
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    # Build WHERE clause for query filtering
+    where_clause = ""
+    params = []
+    if query:
+        # Search in conversation ID or in message content
+        where_clause = "WHERE conv LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM archive a2 WHERE a2.conv = a.conv AND a2.content LIKE ? ESCAPE '\\')"
+        like_query = f"%{_escape_like_wildcards(query)}%"
+        params = [like_query, like_query]
+
+    # Build ORDER BY clause based on sort parameter
+    sort_mapping = {
+        "updated_desc": "updated_at DESC",
+        "updated_asc": "updated_at ASC",
+        "created_desc": "created_at DESC",
+        "created_asc": "created_at ASC",
+        "message_count_desc": "message_count DESC",
+        "message_count_asc": "message_count ASC",
+    }
+    order_by = sort_mapping.get(sort, "updated_at DESC")
+
+    # Get total count for pagination - count distinct conversations
+    count_sql = f"""
+        SELECT COUNT(DISTINCT conv) as total
+        FROM archive a
+        {where_clause}
+    """
+    cursor.execute(count_sql, params)
+    total_row = cursor.fetchone()
+    total = total_row["total"] if total_row else 0
+
+    # Build query with pagination - aggregate messages by conversation
+    # Include segment_count from segments table if it exists
+    # Filter out NULL created values in MIN/MAX to avoid NULL results
+    segment_count_sql = (
+        "COALESCE((SELECT COUNT(*) FROM segments s WHERE s.conv = a.conv), 0)"
+        if has_segments else "0"
+    )
+    sql = f"""
+        SELECT
+            a.conv as conversation_id,
+            MIN(a.created) FILTER (WHERE a.created IS NOT NULL) as created_at,
+            MAX(a.created) FILTER (WHERE a.created IS NOT NULL) as updated_at,
+            COUNT(*) as message_count,
+            SUM(a.tokens) as token_count,
+            {segment_count_sql} as segment_count
+        FROM archive a
+        {where_clause}
+        GROUP BY a.conv
+        ORDER BY {order_by}
+        LIMIT ? OFFSET ?
+    """
+    params_with_pagination = params + [limit, offset]
+    cursor.execute(sql, params_with_pagination)
+
+    conversations = []
+    for row in cursor.fetchall():
+        conv = {
+            "id": row["conversation_id"],
+            "conversation_id": row["conversation_id"],
+            "created_at": _epoch_to_iso(row["created_at"]),
+            "updated_at": _epoch_to_iso(row["updated_at"]),
+            "message_count": row["message_count"],
+            "token_count": row["token_count"] or 0,
+            "segment_count": row["segment_count"],
+        }
+        conversations.append(conv)
+
+    return conversations, total
+
+
+def _build_pieces_where_clauses(
+    conversation_id: Optional[str],
+    role: Optional[str],
+    seg: Optional[int],
+    from_msg: Optional[int],
+    to_msg: Optional[int],
+    search_terms: list[str],
+    path: Optional[str],
+    has_fts: bool,
+    has_segments: bool,
+) -> tuple[str, list]:
+    """
+    Build WHERE clauses and parameters for pieces queries.
+    Returns (where_sql, params).
+    """
+    where_clauses = []
+    params = []
+
+    if conversation_id:
+        where_clauses.append("a.conv = ?")
+        params.append(conversation_id)
+
+    # Role filter: accept any role from the archive
+    if role:
+        where_clauses.append("a.role = ?")
+        params.append(role)
+
+    # Segment filter: only if segments table exists
+    if seg is not None and has_segments:
+        where_clauses.append("""
+            EXISTS (
+                SELECT 1 FROM segments s
+                WHERE s.conv = a.conv
+                AND s.seg = ?
+                AND a.idx >= s.cut_idx
+                AND (NOT EXISTS (
+                    SELECT 1 FROM segments s2
+                    WHERE s2.conv = a.conv
+                    AND s2.seg = s.seg + 1
+                    AND a.idx >= s2.cut_idx
+                ))
+            )
+        """)
+        params.append(seg)
+
+    if from_msg is not None:
+        where_clauses.append("a.idx >= ?")
+        params.append(from_msg)
+
+    if to_msg is not None:
+        where_clauses.append("a.idx <= ?")
+        params.append(to_msg)
+
+    use_fts = has_fts and not path and search_terms
+
+    if use_fts:
+        # Use FTS5 for full-text search - join on rowid
+        fts_query = _build_fts_query(search_terms)
+        where_clauses.append("a.rowid IN (SELECT rowid FROM archive_fts WHERE content MATCH ?)")
+        params.append(fts_query)
+    elif search_terms:
+        # Fallback to LIKE search
+        like_clauses = []
+        for term in search_terms:
+            escaped = _escape_like_wildcards(term)
+            like_clauses.append("(a.content LIKE ? ESCAPE '\\' OR a.name LIKE ? ESCAPE '\\')")
+            like_term = f"%{escaped}%"
+            params.extend([like_term, like_term])
+        where_clauses.append(f"({' OR '.join(like_clauses)})")
+
+    if path:
+        # Search in metadata/content for file path references
+        where_clauses.append("a.content LIKE ? ESCAPE '\\'")
+        like_path = f"%{_escape_like_wildcards(path)}%"
+        params.append(like_path)
+
+    where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    return where_sql, params
+
+
+def _query_pieces_from_archive(
+    conn: sqlite3.Connection,
+    conversation_id: Optional[str] = None,
+    role: Optional[str] = None,
+    seg: Optional[int] = None,
+    from_msg: Optional[int] = None,
+    to_msg: Optional[int] = None,
+    query: Optional[str] = None,
+    queries: Optional[list[str]] = None,
+    order: str = "pertinenza",
+    limit: int = 20,
+    path: Optional[str] = None,
+) -> list[dict]:
+    """
+    Query pieces (messages) from the real archive schema.
+
+    The archive table has: rid, conv, idx, role, name, content, tokens, created
+    We map these to the expected piece format.
+    Segment is derived from segments.cut_idx (if segments table exists).
+    """
+    cursor = conn.cursor()
+
+    # Check if archive table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive'")
+    if not cursor.fetchone():
+        return []
+
+    # Check if FTS table exists for full-text search
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
+    has_fts = cursor.fetchone() is not None
+
+    # Check if segments table exists for segment derivation
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    search_terms = []
+    if query:
+        search_terms.append(query)
+    if queries:
+        search_terms.extend(queries)
+
+    where_sql, params = _build_pieces_where_clauses(
+        conversation_id=conversation_id,
+        role=role,
+        seg=seg,
+        from_msg=from_msg,
+        to_msg=to_msg,
+        search_terms=search_terms,
+        path=path,
+        has_fts=has_fts,
+        has_segments=has_segments,
+    )
+
+    # Order by
+    if order == "tempo":
+        order_sql = "ORDER BY a.created DESC"
+    else:
+        # Relevance: prioritize exact content matches, then by time
+        if search_terms:
+            first_escaped = _escape_like_wildcards(search_terms[0])
+            order_sql = f"ORDER BY (CASE WHEN a.content LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END), a.created DESC"
+            params.append(f"%{first_escaped}%")
+        else:
+            order_sql = "ORDER BY a.created DESC"
+
+    # Include segment info from segments table if it exists
+    if has_segments:
+        segment_sql = """
+            COALESCE((
+                SELECT s.seg FROM segments s
+                WHERE s.conv = a.conv
+                AND a.idx >= s.cut_idx
+                AND (NOT EXISTS (
+                    SELECT 1 FROM segments s2
+                    WHERE s2.conv = a.conv
+                    AND s2.seg = s.seg + 1
+                    AND a.idx >= s2.cut_idx
+                ))
+                ORDER BY s.seg DESC LIMIT 1
+            ), 1)
+        """
+    else:
+        segment_sql = "1"
+
+    sql = f"""
+        SELECT
+            a.rid, a.conv, a.idx, a.role, a.name, a.content, a.tokens, a.created,
+            {segment_sql} as segment
+        FROM archive a
+        {where_sql}
+        {order_sql}
+        LIMIT ?
+    """
+    params.append(limit)
+    cursor.execute(sql, params)
+
+    pieces = []
+    for row in cursor.fetchall():
+        piece = {
+            "id": row["rid"],
+            "conversation_id": row["conv"],
+            "role": row["role"],
+            "content": row["content"],
+            "segment": row["segment"],
+            "message_index": row["idx"],
+            "created_at": _epoch_to_iso(row["created"]),
+            "tokens": row["tokens"],
+            "name": row["name"],
+        }
+        pieces.append(piece)
+
+    return pieces
+
+
+def _count_pieces_from_archive(
+    conn: sqlite3.Connection,
+    conversation_id: Optional[str] = None,
+    role: Optional[str] = None,
+    seg: Optional[int] = None,
+    from_msg: Optional[int] = None,
+    to_msg: Optional[int] = None,
+    query: Optional[str] = None,
+    queries: Optional[list[str]] = None,
+    path: Optional[str] = None,
+) -> int:
+    """Count total matching pieces for pagination."""
+    cursor = conn.cursor()
+
+    # Check if archive table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive'")
+    if not cursor.fetchone():
+        return 0
+
+    # Check if FTS table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
+    has_fts = cursor.fetchone() is not None
+
+    # Check if segments table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    search_terms = []
+    if query:
+        search_terms.append(query)
+    if queries:
+        search_terms.extend(queries)
+
+    where_sql, params = _build_pieces_where_clauses(
+        conversation_id=conversation_id,
+        role=role,
+        seg=seg,
+        from_msg=from_msg,
+        to_msg=to_msg,
+        search_terms=search_terms,
+        path=path,
+        has_fts=has_fts,
+        has_segments=has_segments,
+    )
+
+    sql = f"SELECT COUNT(*) as total FROM archive a {where_sql}"
+    cursor.execute(sql, params)
+    row = cursor.fetchone()
+    return row["total"] if row else 0
+
+
+def _get_piece_by_id(conn: sqlite3.Connection, piece_id: str) -> Optional[dict]:
+    """Get a single piece by rid from the archive table."""
+    cursor = conn.cursor()
+
+    # Check if archive table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive'")
+    if not cursor.fetchone():
+        return None
+
+    # Check if segments table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    if has_segments:
+        segment_sql = """
+            COALESCE((
+                SELECT s.seg FROM segments s
+                WHERE s.conv = a.conv
+                AND a.idx >= s.cut_idx
+                AND (NOT EXISTS (
+                    SELECT 1 FROM segments s2
+                    WHERE s2.conv = a.conv
+                    AND s2.seg = s.seg + 1
+                    AND a.idx >= s2.cut_idx
+                ))
+                ORDER BY s.seg DESC LIMIT 1
+            ), 1)
+        """
+    else:
+        segment_sql = "1"
+
+    cursor.execute(f"""
+        SELECT
+            a.rid, a.conv, a.idx, a.role, a.name, a.content, a.tokens, a.created,
+            {segment_sql} as segment
+        FROM archive a
+        WHERE a.rid = ?
+    """, (piece_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["rid"],
+        "conversation_id": row["conv"],
+        "role": row["role"],
+        "content": row["content"],
+        "segment": row["segment"],
+        "message_index": row["idx"],
+        "created_at": _epoch_to_iso(row["created"]),
+        "tokens": row["tokens"],
+        "name": row["name"],
+    }
+
+
+def _get_oldest_piece(
+    conn: sqlite3.Connection,
+    conversation_id: Optional[str] = None,
+    role: Optional[str] = None,
+    seg: Optional[int] = None,
+    from_msg: Optional[int] = None,
+    to_msg: Optional[int] = None,
+    query: Optional[str] = None,
+    queries: Optional[list[str]] = None,
+    path: Optional[str] = None,
+) -> Optional[dict]:
+    """Get the single oldest piece matching the filters (for mode=first)."""
+    cursor = conn.cursor()
+
+    # Check if archive table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive'")
+    if not cursor.fetchone():
+        return None
+
+    # Check if FTS table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_fts'")
+    has_fts = cursor.fetchone() is not None
+
+    # Check if segments table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
+    has_segments = cursor.fetchone() is not None
+
+    search_terms = []
+    if query:
+        search_terms.append(query)
+    if queries:
+        search_terms.extend(queries)
+
+    where_sql, params = _build_pieces_where_clauses(
+        conversation_id=conversation_id,
+        role=role,
+        seg=seg,
+        from_msg=from_msg,
+        to_msg=to_msg,
+        search_terms=search_terms,
+        path=path,
+        has_fts=has_fts,
+        has_segments=has_segments,
+    )
+
+    if has_segments:
+        segment_sql = """
+            COALESCE((
+                SELECT s.seg FROM segments s
+                WHERE s.conv = a.conv
+                AND a.idx >= s.cut_idx
+                AND (NOT EXISTS (
+                    SELECT 1 FROM segments s2
+                    WHERE s2.conv = a.conv
+                    AND s2.seg = s.seg + 1
+                    AND a.idx >= s2.cut_idx
+                ))
+                ORDER BY s.seg DESC LIMIT 1
+            ), 1)
+        """
+    else:
+        segment_sql = "1"
+
+    sql = f"""
+        SELECT
+            a.rid, a.conv, a.idx, a.role, a.name, a.content, a.tokens, a.created,
+            {segment_sql} as segment
+        FROM archive a
+        {where_sql}
+        ORDER BY a.created ASC
+        LIMIT 1
+    """
+    cursor.execute(sql, params)
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["rid"],
+        "conversation_id": row["conv"],
+        "role": row["role"],
+        "content": row["content"],
+        "segment": row["segment"],
+        "message_index": row["idx"],
+        "created_at": _epoch_to_iso(row["created"]),
+        "tokens": row["tokens"],
+        "name": row["name"],
+    }
+
+
 @archive_bp.route("/api/proxy/archive/conversations", methods=["GET"])
 def api_archive_conversations():
     """List conversations from mnemonic-archive.
@@ -241,80 +770,13 @@ def api_archive_conversations():
             "sort": sort,
         })
 
-    # Query conversations from archive.sqlite
+    # Query conversations from archive.sqlite (real schema)
     conversations = []
     total = 0
     try:
-        import sqlite3
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        # Check if conversations table exists
-        cursor.execute("""
-            SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'
-        """)
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({"conversations": [], "count": 0, "total": 0, "model": model, "offset": offset, "limit": limit, "sort": sort})
-
-        # Build ORDER BY clause based on sort parameter
-        sort_mapping = {
-            "updated_desc": "updated_at DESC",
-            "updated_asc": "updated_at ASC",
-            "created_desc": "created_at DESC",
-            "created_asc": "created_at ASC",
-            "message_count_desc": "message_count DESC",
-            "message_count_asc": "message_count ASC",
-        }
-        order_by = sort_mapping.get(sort, "updated_at DESC")
-
-        # Build WHERE clause for query filtering
-        where_clause = ""
-        params = []
-        if query:
-            where_clause = "WHERE conversation_id LIKE ? ESCAPE '\\' OR metadata LIKE ? ESCAPE '\\'"
-            like_query = f"%{_escape_like_wildcards(query)}%"
-            params = [like_query, like_query]
-
-        # Get total count for pagination
-        count_sql = f"SELECT COUNT(*) as total FROM conversations {where_clause}"
-        cursor.execute(count_sql, params)
-        total_row = cursor.fetchone()
-        total = total_row["total"] if total_row else 0
-
-        # Build query with pagination
-        sql = f"""
-            SELECT conversation_id, created_at, updated_at, message_count, token_count, metadata
-            FROM conversations
-            {where_clause}
-            ORDER BY {order_by}
-            LIMIT ? OFFSET ?
-        """
-        params_with_pagination = params + [limit, offset]
-        cursor.execute(sql, params_with_pagination)
-
-        for row in cursor.fetchall():
-            conv = {
-                "id": row["conversation_id"],  # Frontend expects 'id' field
-                "conversation_id": row["conversation_id"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "message_count": row["message_count"],
-                "token_count": row["token_count"],
-            }
-            # Parse metadata if present
-            if row["metadata"]:
-                try:
-                    conv["metadata"] = json.loads(row["metadata"])
-                    # Extract segment_count from metadata if available
-                    meta = conv["metadata"]
-                    if isinstance(meta, dict) and "segment_count" in meta:
-                        conv["segment_count"] = meta["segment_count"]
-                except json.JSONDecodeError:
-                    conv["metadata"] = {}
-            conversations.append(conv)
-
+        conversations, total = _query_conversations_from_archive(conn, limit, offset, sort, query)
         conn.close()
     except Exception as e:
         log.error(f"Failed to query conversations for {model}: {e}")
@@ -323,7 +785,7 @@ def api_archive_conversations():
     return jsonify({
         "conversations": conversations,
         "count": len(conversations),
-        "total": len(conversations),
+        "total": total,
         "model": model,
         "offset": offset,
         "limit": limit,
@@ -338,7 +800,7 @@ def api_archive_journal():
     Query parameters:
     - model: Model name (required)
     - limit: Maximum number of events to return (default: 100, max: 1000)
-    - event: Filter by event type (e.g., 'request', 'recall', 'recall_use') (optional)
+    - event: Filter by event type (e.g., 'request', 'recall', 'auto_recall', 'new_conversation') (optional)
     - conversation_id: Filter by conversation ID (optional)
     - offset: Number of events to skip (default: 0)
     """
@@ -376,14 +838,12 @@ def api_archive_journal():
         })
 
     # Parse journal.jsonl - read from end for efficiency
-    # We need to collect (offset + limit) matching events from the end
     max_collect = offset + limit
     events = []
     total = 0
     try:
-        # Read file in reverse to get most recent events first
         with open(journal_path, "rb") as f:
-            f.seek(0, 2)  # Seek to end
+            f.seek(0, 2)
             file_size = f.tell()
             if file_size == 0:
                 return jsonify({
@@ -395,11 +855,9 @@ def api_archive_journal():
                     "limit": limit,
                 })
 
-            # Read chunks from end
             chunk_size = 8192
             position = file_size
             buffer = b""
-            lines_buffer = []
 
             while position > 0 and len(events) < max_collect:
                 read_size = min(chunk_size, position)
@@ -408,11 +866,8 @@ def api_archive_journal():
                 chunk = f.read(read_size)
                 buffer = chunk + buffer
 
-                # Split into lines
                 lines = buffer.split(b"\n")
-                # Keep the first (potentially incomplete) line in buffer
                 buffer = lines[0]
-                # Process complete lines in reverse order (most recent first)
                 for line in reversed(lines[1:]):
                     if not line:
                         continue
@@ -421,7 +876,7 @@ def api_archive_journal():
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         continue
 
-                    # Apply filters
+                    # Apply filters - real journal uses 'conv' field for conversation ID
                     if conversation_id and event.get("conv") != conversation_id:
                         continue
                     if event_filter and event.get("event") != event_filter:
@@ -431,7 +886,6 @@ def api_archive_journal():
                     if len(events) >= max_collect:
                         break
 
-            # Process any remaining line in buffer
             if buffer and len(events) < max_collect:
                 try:
                     event = json.loads(buffer.decode("utf-8"))
@@ -445,9 +899,7 @@ def api_archive_journal():
         log.error(f"Failed to parse journal for {model}: {e}")
         return jsonify({"error": f"Failed to parse journal: {str(e)}"}), 500
 
-    # Now we have up to (offset + limit) most recent matching events
-    # Apply offset (skip the first 'offset' events which are the most recent)
-    total = len(events)  # This is actually the count of matching events we found, not total in file
+    total = len(events)
     events = events[offset:offset + limit]
 
     return jsonify({
@@ -468,10 +920,10 @@ def api_archive_recall():
     - model: Model name (required)
     - query: Search query string (required unless id or path provided)
     - queries: Comma-separated list of alternative query strings (optional)
-    - id: Recall a specific piece by ID (optional)
+    - id: Recall a specific piece by ID (rid) (optional)
     - path: File path to search history for (optional)
     - mode: Recall mode - 'timeline' (default) or 'first' (return oldest match)
-    - role: Filter by role - 'user', 'assistant', 'reasoning', 'args', 'tool' (optional)
+    - role: Filter by role (e.g., 'user', 'assistant', 'system', 'assistant-reasoning', 'assistant-tool-args') (optional)
     - seg: Filter by segment number (optional, positive integer)
     - from: Start message number (optional, positive integer)
     - to: End message number (optional, positive integer)
@@ -503,6 +955,9 @@ def api_archive_recall():
     id_param = request.args.get("id", "").strip() or None
     path = request.args.get("path", "").strip() or None
     mode = request.args.get("mode", "timeline").strip()
+    # Accept 'default' as alias for 'timeline' (frontend default)
+    if mode == "default":
+        mode = "timeline"
     role = request.args.get("role", "").strip() or None
     seg = _validate_positive_int(request.args.get("seg", type=int))
     from_msg = _validate_positive_int(request.args.get("from", type=int))
@@ -512,7 +967,7 @@ def api_archive_recall():
     conversation_id = request.args.get("conversation_id", "").strip() or None
     order = request.args.get("order", "pertinenza").strip()
 
-    # Validate mode - only timeline and first are implemented
+    # Validate mode
     valid_modes = ("timeline", "first")
     if mode not in valid_modes:
         return jsonify({"error": f"Invalid mode: {mode}. Supported modes: {valid_modes}"}), 400
@@ -521,19 +976,13 @@ def api_archive_recall():
     if order not in ("pertinenza", "tempo"):
         return jsonify({"error": f"Invalid order: {order}. Valid orders: pertinenza, tempo"}), 400
 
-    # Validate role
-    if role and role not in ("user", "assistant", "reasoning", "args", "tool"):
-        return jsonify({"error": f"Invalid role: {role}. Valid roles: user, assistant, reasoning, args, tool"}), 400
+    # Role is passed through without whitelist - real archive has roles like assistant-reasoning, assistant-tool-args
 
     # Validate from/to ordering
     if from_msg is not None and to_msg is not None and from_msg > to_msg:
         return jsonify({"error": "Parameter 'from' must be <= 'to'"}), 400
 
     # Find archive database
-    proxy_manager = _get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "Failed to create proxy manager"}), 500
-
     archive_db = _find_archive_db(proxy_manager)
     if not archive_db or not archive_db.exists():
         return jsonify({
@@ -547,168 +996,76 @@ def api_archive_recall():
             "message": "No archive database found",
         })
 
-    # For the recall endpoint, we need to query the archive database
-    # The mnemonic-archive stores conversation pieces with embeddings for search
-    # We'll implement a basic text search for now, with structure matching the MCP tool
+    # Query pieces from archive table (real schema)
     try:
-        import sqlite3
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
 
-        # Check tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = {row[0] for row in cursor.fetchall()}
-
-        results = []
-
-        if "pieces" in tables:
-            # Build query based on parameters
-            if id_param:
-                # Recall by specific ID
-                sql = """
-                    SELECT id, conversation_id, role, content, segment, message_index,
-                           created_at, metadata, embedding
-                    FROM pieces
-                    WHERE id = ?
-                """
-                params = [id_param]
-                if conversation_id:
-                    sql += " AND conversation_id = ?"
-                    params.append(conversation_id)
-                cursor.execute(sql, params)
-                rows = cursor.fetchall()
-            elif path:
-                # Search by file path history
-                sql = """
-                    SELECT id, conversation_id, role, content, segment, message_index,
-                           created_at, metadata, embedding
-                    FROM pieces
-                    WHERE metadata LIKE ? ESCAPE '\\'
-                """
-                like_path = f"%{_escape_like_wildcards(path)}%"
-                params = [like_path]
-                if conversation_id:
-                    sql += " AND conversation_id = ?"
-                    params.append(conversation_id)
-                if role:
-                    sql += " AND role = ?"
-                    params.append(role)
-                if seg is not None:
-                    sql += " AND segment = ?"
-                    params.append(seg)
-                sql += " ORDER BY created_at DESC LIMIT ?"
-                params.append(limit)
-                cursor.execute(sql, params)
-                rows = cursor.fetchall()
-            elif query or queries:
-                # Text search (basic LIKE for now; full-text search would need FTS5)
-                search_terms = []
-                if query:
-                    search_terms.append(query)
-                if queries:
-                    search_terms.extend(queries)
-
-                # Build WHERE clause with OR for multiple search terms
-                where_clauses = []
-                params = []
-                for term in search_terms:
-                    escaped_term = _escape_like_wildcards(term)
-                    where_clauses.append("(content LIKE ? ESCAPE '\\' OR metadata LIKE ? ESCAPE '\\')")
-                    like_term = f"%{escaped_term}%"
-                    params.extend([like_term, like_term])
-
-                sql = f"""
-                    SELECT id, conversation_id, role, content, segment, message_index,
-                           created_at, metadata, embedding
-                    FROM pieces
-                    WHERE {' OR '.join(where_clauses)}
-                """
-                if conversation_id:
-                    sql += " AND conversation_id = ?"
-                    params.append(conversation_id)
-                if role:
-                    sql += " AND role = ?"
-                    params.append(role)
-                if seg is not None:
-                    sql += " AND segment = ?"
-                    params.append(seg)
-                if from_msg is not None:
-                    sql += " AND message_index >= ?"
-                    params.append(from_msg)
-                if to_msg is not None:
-                    sql += " AND message_index <= ?"
-                    params.append(to_msg)
-
-                # Order by relevance (simple: matches in content first) or time
-                if order == "tempo":
-                    sql += " ORDER BY created_at DESC"
+        # If id_param is provided, do a direct lookup
+        if id_param:
+            piece = _get_piece_by_id(conn, id_param)
+            conn.close()
+            if piece:
+                if conversation_id and piece["conversation_id"] != conversation_id:
+                    results = []
+                    total = 0
                 else:
-                    # Simple relevance: prioritize content matches over metadata
-                    first_escaped = _escape_like_wildcards(search_terms[0]) if search_terms else ""
-                    sql += " ORDER BY (CASE WHEN content LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END), created_at DESC"
-                    if search_terms:
-                        params.append(f"%{first_escaped}%")
-
-                sql += " LIMIT ?"
-                params.append(limit)
-                cursor.execute(sql, params)
-                rows = cursor.fetchall()
+                    results = [piece]
+                    total = 1
             else:
-                # No query provided, return recent pieces
-                sql = """
-                    SELECT id, conversation_id, role, content, segment, message_index,
-                           created_at, metadata, embedding
-                    FROM pieces
-                    WHERE 1=1
-                """
-                params = []
-                if conversation_id:
-                    sql += " AND conversation_id = ?"
-                    params.append(conversation_id)
-                if role:
-                    sql += " AND role = ?"
-                    params.append(role)
-                if seg is not None:
-                    sql += " AND segment = ?"
-                    params.append(seg)
-                if from_msg is not None:
-                    sql += " AND message_index >= ?"
-                    params.append(from_msg)
-                if to_msg is not None:
-                    sql += " AND message_index <= ?"
-                    params.append(to_msg)
-                sql += " ORDER BY created_at DESC LIMIT ?"
-                params.append(limit)
-                cursor.execute(sql, params)
-                rows = cursor.fetchall()
-
-            for row in rows:
-                piece = {
-                    "id": row["id"],
-                    "conversation_id": row["conversation_id"],
-                    "role": row["role"],
-                    "content": row["content"],
-                    "segment": row["segment"],
-                    "message_index": row["message_index"],
-                    "created_at": row["created_at"],
-                }
-                if row["metadata"]:
-                    try:
-                        piece["metadata"] = json.loads(row["metadata"])
-                    except json.JSONDecodeError:
-                        piece["metadata"] = {}
-                results.append(piece)
-
-        conn.close()
-
-        # Apply mode-specific processing
-        if mode == "first" and results:
-            # Return only the first (oldest) match - results are ordered by created_at DESC
-            # so the oldest is at the end
-            results = [results[-1]] if results else []
-
-        total = len(results)
+                results = []
+                total = 0
+        elif mode == "first":
+            # For mode=first, get the true oldest match using a dedicated query
+            piece = _get_oldest_piece(
+                conn=conn,
+                conversation_id=conversation_id,
+                role=role,
+                seg=seg,
+                from_msg=from_msg,
+                to_msg=to_msg,
+                query=query,
+                queries=queries,
+                path=path,
+            )
+            conn.close()
+            if piece:
+                results = [piece]
+                total = 1
+            else:
+                results = []
+                total = 0
+        else:
+            # Get total count for pagination
+            total = _count_pieces_from_archive(
+                conn=conn,
+                conversation_id=conversation_id,
+                role=role,
+                seg=seg,
+                from_msg=from_msg,
+                to_msg=to_msg,
+                query=query,
+                queries=queries,
+                path=path,
+            )
+            # Fetch page with offset
+            fetch_limit = limit + offset
+            results = _query_pieces_from_archive(
+                conn=conn,
+                conversation_id=conversation_id,
+                role=role,
+                seg=seg,
+                from_msg=from_msg,
+                to_msg=to_msg,
+                query=query,
+                queries=queries,
+                order=order,
+                limit=fetch_limit,
+                path=path,
+            )
+            # Apply offset
+            results = results[offset:]
+            conn.close()
 
         return jsonify({
             "pieces": results,
@@ -731,7 +1088,7 @@ def api_archive_recall():
 
 @archive_bp.route("/api/proxy/archive/piece/<piece_id>", methods=["GET"])
 def api_archive_piece(piece_id):
-    """Get a single piece by ID from mnemonic-archive.
+    """Get a single piece by ID (rid) from mnemonic-archive.
 
     Query parameters:
     - model: Model name (required)
@@ -758,59 +1115,15 @@ def api_archive_piece(piece_id):
         return jsonify({"error": "No archive database found"}), 404
 
     try:
-        import sqlite3
         conn = sqlite3.connect(str(archive_db))
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        # Check if pieces table exists
-        cursor.execute("""
-            SELECT name FROM sqlite_master WHERE type='table' AND name='pieces'
-        """)
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({"error": "Pieces table not found"}), 404
-
-        # Get column names from pieces table to handle schema variations
-        cursor.execute("PRAGMA table_info(pieces)")
-        columns = {row["name"] for row in cursor.fetchall()}
-
-        # Build SELECT with only existing columns
-        # Skip 'embedding' since it's a BLOB (bytes) not JSON serializable and frontend doesn't use it
-        base_columns = ["id", "conversation_id", "role", "content", "segment", "message_index", "created_at", "metadata"]
-        optional_columns = ["request_context", "recall_use", "output", "reasoning", "embedding"]
-        select_columns = [c for c in base_columns if c in columns] + [c for c in optional_columns if c in columns]
-
-        sql = f"SELECT {', '.join(select_columns)} FROM pieces WHERE id = ?"
-        cursor.execute(sql, (piece_id,))
-        row = cursor.fetchone()
+        piece = _get_piece_by_id(conn, piece_id)
         conn.close()
 
-        if not row:
+        if not piece:
             return jsonify({"error": f"Piece not found: {piece_id}"}), 404
 
-        # Build piece object with all available fields
-        piece = {"model": model}
-        for col in select_columns:
-            value = row[col]
-            if col == "metadata" and value:
-                try:
-                    piece[col] = json.loads(value)
-                except json.JSONDecodeError:
-                    piece[col] = {}
-            elif col in ("request_context", "recall_use", "output", "reasoning") and value:
-                try:
-                    piece[col] = json.loads(value)
-                except json.JSONDecodeError:
-                    piece[col] = value
-            elif col == "embedding" and value:
-                # Embedding is a BLOB - convert to base64 for JSON serialization if needed
-                # Frontend doesn't use it, so we can skip or include as base64
-                import base64
-                piece[col] = base64.b64encode(value).decode("ascii")
-            else:
-                piece[col] = value
-
+        piece["model"] = model
         return jsonify(piece)
 
     except Exception as e:
