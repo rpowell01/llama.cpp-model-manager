@@ -441,27 +441,22 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 "message": "mnemonic-mcp not enabled",
             }
     else:
-        # No proxy manager (e.g., after Flask restart). Probe the services
-        # directly so the API always reports their actual health.
-        mnemonic_proxy_enabled = base_proxy_config.get("enabled", False)
-        if mnemonic_proxy_enabled:
-            proxy_port = int(base_proxy_config.get("port", 8096) or 8096)
-            cached_health = _get_cached_proxy_health(model, proxy_port)
-            proxy_status["running"] = cached_health.get("running", False)
-            proxy_status["message"] = cached_health.get("message", "mnemonic-proxy not running")
+        # No proxy manager for this model. The proxy is not running for this model.
+        # (If Flask restarted while a proxy was running, the manager will be recreated
+        # when the model is started again, and its status will be tracked correctly.)
+        proxy_status["running"] = False
+        proxy_status["message"] = "mnemonic-proxy not running (no manager)"
 
-            mcp_enabled = bool(base_proxy_config.get("mcp_enabled", False))
-            mcp_port = int(base_proxy_config.get("mcp_port", 8133) or 8133)
-            if mcp_enabled:
-                mcp_health = _probe_mcp_health(mcp_port)
-                proxy_status["mcp"] = {
-                    "enabled": True,
-                    "running": bool(mcp_health.get("running")),
-                    "port": mcp_port,
-                    "pid": None,
-                    "uptime_seconds": 0,
-                    "message": mcp_health.get("message", "mnemonic-mcp not running"),
-                }
+        mcp_enabled = bool(base_proxy_config.get("mcp_enabled", False))
+        if mcp_enabled:
+            proxy_status["mcp"] = {
+                "enabled": True,
+                "running": False,
+                "port": int(base_proxy_config.get("mcp_port", 8133) or 8133),
+                "pid": None,
+                "uptime_seconds": 0,
+                "message": "mnemonic-mcp not running (no manager)",
+            }
 
     # Build result dict, excluding mnemonic_proxy from meta spread so our proxy status isn't overwritten
     # Also exclude "model" to prevent meta from overwriting the explicit model name

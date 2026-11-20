@@ -3305,7 +3305,7 @@
     "moe_cache_mib": 1024,
     "overthinking_penalty_enabled": true,
     "overthinking_penalty_bias": -2.0,
-    "logit_bias": "",
+    "logit_bias": "--logit-bias 8106-2,6970-2,3655-2,13428-2,3404-2,3222-2,85152-2,84485-2,37201-2,66073-2,4213-2,4611-2,4370-2,11746-2,1921-2,694-2,3384-2,7643-2,3482-2,4598-2,7014-2,5752-2,36563-2,35999-2,15029-2,1990-2,13264-2,2441-2,466-2,2892-2,3315-2,33955-2,41484-2,10451-2,2493-2,1362-2,2361-2,2086-2,37781-2,73071-2,95500-2,21979-2,62586-2,10179-2,21143-2,4808-2,16036-2,1412-2,14673-2",
     "overthinking_penalty_words": [
       " perhaps",
       " maybe",
@@ -3356,6 +3356,158 @@
       " mistake",
       " error",
       " incorrect"
-    ]
+    ],
+    "overthinking_penalty_cache": {
+      "signature": "746f023720705ca32188e535e8592e2ed37b98fe3a0df60e0f5939b2055f5190",
+      "tokens": {
+        " perhaps": [
+          8106
+        ],
+        " maybe": [
+          6970
+        ],
+        " wait": [
+          3655
+        ],
+        " Wait": [
+          13428
+        ],
+        " actually": [
+          3404
+        ],
+        " hold": [
+          3222
+        ],
+        " Hmm": [
+          85152
+        ],
+        " hmm": [
+          84485
+        ],
+        " Alternatively": [
+          37201
+        ],
+        " alternatively": [
+          66073
+        ],
+        " However": [
+          4213
+        ],
+        " however": [
+          4611
+        ],
+        " instead": [
+          4370
+        ],
+        " Instead": [
+          11746
+        ],
+        " But": [
+          1921
+        ],
+        " but": [
+          694
+        ],
+        " though": [
+          3384
+        ],
+        " although": [
+          7643
+        ],
+        " yet": [
+          3482
+        ],
+        " rather": [
+          4598
+        ],
+        " unless": [
+          7014
+        ],
+        " otherwise": [
+          5752
+        ],
+        " nonetheless": [
+          36563
+        ],
+        " nevertheless": [
+          35999
+        ],
+        " regardless": [
+          15029
+        ],
+        " still": [
+          1990
+        ],
+        " anyway": [
+          13264
+        ],
+        " Or": [
+          2441
+        ],
+        " or": [
+          466
+        ],
+        " either": [
+          2892
+        ],
+        " whether": [
+          3315
+        ],
+        " uncertain": [
+          33955
+        ],
+        " unsure": [
+          41484
+        ],
+        " possibly": [
+          10451
+        ],
+        " might": [
+          2493
+        ],
+        " could": [
+          1362
+        ],
+        " another": [
+          2361
+        ],
+        " different": [
+          2086
+        ],
+        " reconsider": [
+          37781
+        ],
+        " rethink": [
+          73071
+        ],
+        " backtrack": [
+          95500
+        ],
+        " retry": [
+          21979
+        ],
+        " revisit": [
+          62586
+        ],
+        " doubt": [
+          10179
+        ],
+        " confused": [
+          21143
+        ],
+        " wrong": [
+          4808
+        ],
+        " mistake": [
+          16036
+        ],
+        " error": [
+          1412
+        ],
+        " incorrect": [
+          14673
+        ]
+      }
+    }
   }
 }
