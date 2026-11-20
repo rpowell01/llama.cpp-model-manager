@@ -839,26 +839,54 @@ def api_proxy_status(model):
     if not model_dict:
         return jsonify({"error": f"Unknown model '{model}'"}), 404
     
-    # Get proxy manager
-    proxy_manager = get_proxy_manager(model)
-    if proxy_manager:
-        return jsonify(proxy_manager.get_status())
-    else:
-        # Return default status if not created yet
-        mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
-        if not mnemonic_proxy_enabled:
-            return jsonify({
-                "model_name": model,
-                "running": False,
-                "enabled": False,
-                "message": "mnemonic-proxy not enabled for this model"
-            })
+    # Probe the actual services directly. The in-memory manager may have a
+    # stale PID after Flask restarts or unclean service exits, so its state is
+    # not authoritative for whether the service is currently running.
+    from webapp.routes.status import _probe_mcp_health, _probe_proxy_health
+
+    mnemonic_proxy_enabled = getattr(model_dict, 'mnemonic_proxy_enabled', False)
+    if not mnemonic_proxy_enabled:
         return jsonify({
             "model_name": model,
             "running": False,
-            "enabled": True,
-            "message": "mnemonic-proxy not started"
+            "enabled": False,
+            "message": "mnemonic-proxy not enabled for this model"
         })
+
+    proxy_port = int(getattr(model_dict, 'mnemonic_proxy_port', 8096) or 8096)
+    mcp_enabled = bool(getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False))
+    mcp_port = int(getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133) or 8133)
+
+    proxy_health = _probe_proxy_health(proxy_port)
+    mcp_health = _probe_mcp_health(mcp_port) if mcp_enabled else {
+        "running": False,
+        "message": "mnemonic-mcp not enabled",
+    }
+
+    proxy_manager = get_proxy_manager(model)
+    manager_status = proxy_manager.get_status() if proxy_manager else {}
+    manager_mcp = manager_status.get("mcp", {}) or {}
+
+    return jsonify({
+        "model_name": model,
+        "running": bool(proxy_health.get("running")),
+        "enabled": True,
+        "message": proxy_health.get("message", "mnemonic-proxy not running"),
+        "pid": manager_status.get("pid") if proxy_health.get("running") else None,
+        "uptime_seconds": manager_status.get("uptime_seconds", 0) if proxy_health.get("running") else 0,
+        "proxy_port": proxy_port,
+        "llama_port": int(model_dict.port),
+        "mcp_enabled": mcp_enabled,
+        "mcp_port": mcp_port if mcp_enabled else None,
+        "mcp": {
+            "enabled": mcp_enabled,
+            "running": bool(mcp_health.get("running")),
+            "message": mcp_health.get("message", "mnemonic-mcp not running"),
+            "port": mcp_port if mcp_enabled else None,
+            "pid": manager_mcp.get("pid") if mcp_health.get("running") else None,
+            "uptime_seconds": manager_mcp.get("uptime_seconds", 0) if mcp_health.get("running") else 0,
+        },
+    })
 
 
 @lifecycle_bp.route("/api/proxy/start/<model>", methods=["POST"])
@@ -1375,16 +1403,53 @@ def api_proxy_mcp_stop(model):
 
 @lifecycle_bp.route("/api/proxy/mcp/status/<model>", methods=["GET"])
 def api_proxy_mcp_status(model):
-    """Get mnemonic-mcp server status for a model."""
+    """Get mnemonic-mcp server status for a model.
+
+    The service is probed directly so this endpoint remains accurate after a
+    Flask restart or when the in-memory manager's tracked PID is stale.
+    """
     model = model.strip()
     if not model:
         return jsonify({"error": "Missing model name"}), 400
-    
+
+    registry = g.registry
+    models = registry.list_models()
+    model_dict = None
+    for m in models:
+        if m.name == model:
+            model_dict = m
+            break
+    if not model_dict:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+
+    mcp_enabled = bool(getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False))
+    if not mcp_enabled:
+        return jsonify({
+            "model_name": model,
+            "enabled": False,
+            "running": False,
+            "port": None,
+            "pid": None,
+            "uptime_seconds": 0,
+            "message": "mnemonic-mcp not enabled for this model",
+        })
+
+    from webapp.routes.status import _probe_mcp_health
+
+    mcp_port = int(getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133) or 8133)
+    mcp_health = _probe_mcp_health(mcp_port)
     proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    return jsonify(proxy_manager.get_mcp_status())
+    manager_mcp = proxy_manager.get_mcp_status() if proxy_manager else {}
+
+    return jsonify({
+        "model_name": model,
+        "enabled": True,
+        "running": bool(mcp_health.get("running")),
+        "port": mcp_port,
+        "pid": manager_mcp.get("pid") if mcp_health.get("running") else None,
+        "uptime_seconds": manager_mcp.get("uptime_seconds", 0) if mcp_health.get("running") else 0,
+        "message": mcp_health.get("message", "mnemonic-mcp not running"),
+    })
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -178,30 +178,99 @@ def _get_cached_file_exists(model_path: Path) -> tuple[bool, float | None]:
     return exists, size_gb
 
 
+def _probe_proxy_health(proxy_port: int) -> dict:
+    """Probe the mnemonic-proxy service directly.
+
+    This deliberately does not depend on the in-process proxy manager. A
+    service that is listening and healthy must be reported as running even if
+    the Flask process was restarted or the manager's tracked PID is stale.
+
+    The journal endpoint is used as the liveness check because it is served by
+    the proxy itself. ``/health`` also waits for the upstream llama-server and
+    can time out while the proxy service itself is still serving requests.
+    """
+    status = {"running": False, "message": "mnemonic-proxy not running"}
+    try:
+        resp = requests.get(
+            f"http://127.0.0.1:{proxy_port}/v1/strata/journal",
+            timeout=2.0,
+            params={"limit": 1},
+        )
+        if resp.status_code == 200:
+            status["running"] = True
+            status["message"] = "mnemonic-proxy healthy"
+        else:
+            status["message"] = f"mnemonic-proxy journal returned HTTP {resp.status_code}"
+            return status
+    except requests.exceptions.Timeout:
+        status["message"] = "mnemonic-proxy health check timed out"
+        return status
+    except requests.exceptions.ConnectionError:
+        status["message"] = "mnemonic-proxy not running"
+        return status
+    except Exception as exc:
+        status["message"] = f"mnemonic-proxy health check failed: {exc}"
+        return status
+
+    # Report upstream health as supplementary detail. Do not use a timeout
+    # here to mark the proxy itself as stopped.
+    try:
+        health_resp = requests.get(f"http://127.0.0.1:{proxy_port}/health", timeout=1.0)
+        if health_resp.status_code == 200:
+            health = health_resp.json()
+            status["health"] = health
+            if health.get("status") != "ok":
+                status["message"] = f"mnemonic-proxy running; engine status: {health.get('status', 'unknown')}"
+    except Exception:
+        pass
+
+    return status
+
+
+def _probe_mcp_health(mcp_port: int) -> dict:
+    """Probe the mnemonic-mcp server using an MCP initialize request."""
+    status = {"running": False, "message": "mnemonic-mcp not running"}
+    try:
+        resp = requests.post(
+            f"http://127.0.0.1:{mcp_port}/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "status-check", "version": "1.0"},
+                },
+            },
+            timeout=2.0,
+        )
+        if resp.status_code == 200:
+            status["running"] = True
+            status["message"] = "mnemonic-mcp healthy"
+        else:
+            status["message"] = f"mnemonic-mcp initialize returned HTTP {resp.status_code}"
+    except requests.exceptions.Timeout:
+        status["message"] = "mnemonic-mcp health check timed out"
+    except requests.exceptions.ConnectionError:
+        status["message"] = "mnemonic-mcp not running"
+    except Exception as exc:
+        status["message"] = f"mnemonic-mcp health check failed: {exc}"
+    return status
+
+
 def _get_cached_proxy_health(model: str, proxy_port: int) -> dict:
     """Get cached proxy health status, or compute and cache."""
     global _proxy_health_cache
     cache_key = f"{model}:{proxy_port}"
     now = time.time()
-    
+
     if cache_key in _proxy_health_cache:
         cached = _proxy_health_cache[cache_key]
         if now - cached["timestamp"] < _PROXY_HEALTH_TTL:
             return cached["status"]
-    
-    # Compute fresh
-    status = {"running": False, "message": "mnemonic-proxy not running"}
-    try:
-        import requests
-        resp = requests.get(f"http://127.0.0.1:{proxy_port}/health", timeout=2.0)
-        if resp.status_code == 200:
-            health = resp.json()
-            status["running"] = health.get("status") == "ok"
-            if not status["running"]:
-                status["message"] = "mnemonic-proxy not running"
-    except Exception:
-        pass
-    
+
+    status = _probe_proxy_health(proxy_port)
     _proxy_health_cache[cache_key] = {"status": status, "timestamp": now}
     return status
 
@@ -338,29 +407,64 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         # Overlay runtime values, preserving config from meta
         runtime_status.pop("model_name", None)
         runtime_status.pop("proxy_port", None)
-        # Only overlay if proxy is actually running
-        if runtime_status.get("running"):
-            proxy_status.update({
-                "running": runtime_status["running"],
-                "pid": runtime_status.get("pid"),
-                "uptime_seconds": runtime_status.get("uptime_seconds", 0),
-                "llama_port": runtime_status.get("llama_port", 9931),
-                # Include MCP status from runtime
-                "mcp": runtime_status.get("mcp", {"enabled": False, "running": False, "port": None, "pid": None, "uptime_seconds": 0}),
-            })
+        # Use manager PID/uptime when available, but determine running state from
+        # the service's own health endpoint. The manager's tracked PID can be
+        # stale (for example after a Flask restart or an unclean proxy exit),
+        # while the actual service remains healthy on its port.
+        manager_running = bool(runtime_status.get("running"))
+        proxy_port = int(base_proxy_config.get("port", 8096) or 8096)
+        health = _get_cached_proxy_health(model, proxy_port)
+        proxy_status["running"] = bool(health.get("running"))
+        proxy_status["message"] = health.get("message", "mnemonic-proxy not running")
+        proxy_status["pid"] = runtime_status.get("pid") if manager_running else None
+        proxy_status["uptime_seconds"] = runtime_status.get("uptime_seconds", 0) if manager_running else 0
+        proxy_status["llama_port"] = runtime_status.get("llama_port", 9931)
+
+        # Probe MCP directly as well; do not rely solely on manager state.
+        mcp_enabled = bool(base_proxy_config.get("mcp_enabled", False))
+        mcp_port = int(base_proxy_config.get("mcp_port", 8133) or 8133)
+        runtime_mcp = runtime_status.get("mcp", {}) or {}
+        if mcp_enabled:
+            mcp_health = _probe_mcp_health(mcp_port)
+            proxy_status["mcp"] = {
+                "enabled": True,
+                "running": bool(mcp_health.get("running")),
+                "port": mcp_port,
+                "pid": runtime_mcp.get("pid") if mcp_health.get("running") else None,
+                "uptime_seconds": runtime_mcp.get("uptime_seconds", 0) if mcp_health.get("running") else 0,
+                "message": mcp_health.get("message", "mnemonic-mcp not running"),
+            }
         else:
-            # Proxy not running but config exists - mark as enabled but not running
-            proxy_status["running"] = False
-            proxy_status["message"] = "mnemonic-proxy not running"
+            proxy_status["mcp"] = {
+                "enabled": False,
+                "running": False,
+                "port": None,
+                "pid": None,
+                "uptime_seconds": 0,
+                "message": "mnemonic-mcp not enabled",
+            }
     else:
-        # No proxy manager (e.g., after Flask restart) - check health endpoint (cached)
+        # No proxy manager (e.g., after Flask restart). Probe the services
+        # directly so the API always reports their actual health.
         mnemonic_proxy_enabled = base_proxy_config.get("enabled", False)
         if mnemonic_proxy_enabled:
-            proxy_port = base_proxy_config.get("port", 8096)
+            proxy_port = int(base_proxy_config.get("port", 8096) or 8096)
             cached_health = _get_cached_proxy_health(model, proxy_port)
             proxy_status["running"] = cached_health.get("running", False)
-            if not proxy_status["running"]:
-                proxy_status["message"] = cached_health.get("message", "mnemonic-proxy not running")
+            proxy_status["message"] = cached_health.get("message", "mnemonic-proxy not running")
+
+            mcp_enabled = bool(base_proxy_config.get("mcp_enabled", False))
+            mcp_port = int(base_proxy_config.get("mcp_port", 8133) or 8133)
+            if mcp_enabled:
+                mcp_health = _probe_mcp_health(mcp_port)
+                proxy_status["mcp"] = {
+                    "enabled": True,
+                    "running": bool(mcp_health.get("running")),
+                    "port": mcp_port,
+                    "pid": None,
+                    "uptime_seconds": 0,
+                    "message": mcp_health.get("message", "mnemonic-mcp not running"),
+                }
 
     # Build result dict, excluding mnemonic_proxy from meta spread so our proxy status isn't overwritten
     # Also exclude "model" to prevent meta from overwriting the explicit model name

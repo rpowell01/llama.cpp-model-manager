@@ -384,6 +384,65 @@ class TestStatusRoutes:
         assert proxy_statuses['model-c']['running'] is False
 
 
+class TestServiceHealthProbes:
+    """Regression tests for authoritative proxy/MCP status checks."""
+
+    def test_proxy_probe_uses_proxy_local_endpoint(self):
+        from webapp.routes.status import _probe_proxy_health
+
+        with patch('webapp.routes.status.requests.get') as mock_get:
+            mock_get.return_value = Mock(status_code=200)
+            result = _probe_proxy_health(8096)
+
+        assert result['running'] is True
+        assert mock_get.call_args_list[0].args[0].endswith('/v1/strata/journal')
+
+    def test_mcp_probe_uses_initialize_request(self):
+        from webapp.routes.status import _probe_mcp_health
+
+        with patch('webapp.routes.status.requests.post') as mock_post:
+            mock_post.return_value = Mock(status_code=200)
+            result = _probe_mcp_health(8133)
+
+        assert result['running'] is True
+        assert mock_post.call_args.kwargs['json']['method'] == 'initialize'
+
+    def test_health_survives_stale_proxy_manager(self):
+        """Direct health must override a stale in-memory manager PID."""
+        from webapp.routes.status import _status_for_model
+
+        stale_manager = Mock()
+        stale_manager.get_status.return_value = {
+            'running': False,
+            'pid': 12345,
+            'mcp': {'running': False, 'pid': 12346},
+        }
+
+        with patch('webapp.routes.status.get_proxy_manager', return_value=stale_manager), \
+             patch('webapp.routes.status._get_cached_proxy_health', return_value={
+                 'running': True, 'message': 'mnemonic-proxy healthy'
+             }), \
+             patch('webapp.routes.status._probe_mcp_health', return_value={
+                 'running': True, 'message': 'mnemonic-mcp healthy'
+             }):
+            result = _status_for_model(
+                'model-a',
+                {
+                    'port': 11000,
+                    'mnemonic_proxy': {
+                        'enabled': True,
+                        'port': 8096,
+                        'mcp_enabled': True,
+                        'mcp_port': 8133,
+                    },
+                },
+                Mock(is_remote_mode=False),
+            )
+
+        assert result['mnemonic_proxy']['running'] is True
+        assert result['mnemonic_proxy']['mcp']['running'] is True
+
+
 class TestUpdateModelMeta:
     """Tests for the /api/update-model-meta endpoint."""
 
@@ -1860,7 +1919,3 @@ class TestBenchmarkOptimizationPerformance:
         # Cache hit should be much faster
         assert second_elapsed < 1.0  # Less than 1 second
         assert second_elapsed < first_elapsed * 0.5  # At least 2x faster
-
-
-if __name__ == "__main__":
-    unittest.main()

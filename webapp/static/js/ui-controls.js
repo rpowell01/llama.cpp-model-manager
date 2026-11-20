@@ -495,17 +495,17 @@ function renderTiles(rows, dlMap, query) {
       // Mnemonic-proxy status
       const proxy = r.mnemonic_proxy || {};
       const proxyEnabled = proxy.enabled === true;
-      const proxyRunning = proxy.running === true && running;
-      const proxyPort = proxy.port || 8096;
+      const proxyRunning = proxy.running === true;
+      const proxyPort = proxy.proxy_port || proxy.port || 8096;
       const proxyMcpEnabled = proxy.mcp_enabled === true;
-      const proxyMcpPort = proxy.mcp_port || 8133;
-      const proxyMcpRunning = proxy.mcp && proxy.mcp.running === true;
+      const proxyMcpPort = proxy.mcp_port || proxy.mcp?.port || 8133;
+      const proxyMcpRunning = proxy.mcp?.running === true;
       const proxyDataDir = proxy.data_dir || '';
 
       // Define proxy variables with defaults (used in section2 template)
       const proxyStatusClass = proxyRunning ? "ok" : "warn";
       const proxyStatusText = proxyRunning ? "● proxy running" : "● proxy stopped";
-      const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}` : "";
+      const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}${proxyMcpRunning ? " running" : " stopped"}` : "";
       const canStartProxy = running && !proxyRunning;
       const canStopProxy = running && proxyRunning;
       
