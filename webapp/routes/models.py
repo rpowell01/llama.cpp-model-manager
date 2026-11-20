@@ -1,4 +1,5 @@
 """Model CRUD operations."""
+import math
 import threading
 from typing import Any
 
@@ -8,6 +9,7 @@ from flask import Blueprint, jsonify, request, current_app
 from logging import getLogger
 
 from webapp.config import DEFAULTS, normalize_path_for_binary, get_llama_release
+from webapp.logit_bias import normalize_overthinking_words
 from webapp.metrics import fetch_metrics_snapshot
 from webapp.models import get_models, save_models, add_model_entry, delete_model_entry, refresh_models_cache
 from webapp.processes import _check_model_ready
@@ -110,6 +112,10 @@ def api_add_model():
         reasoning_effort=str(data.get("reasoning_effort", DEFAULTS["reasoning_effort"])),
         reasoning_budget=int(data.get("reasoning_budget", DEFAULTS["reasoning_budget"])),
         reasoning_budget_message=str(data.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])),
+        # Overthinking logit penalty
+        overthinking_penalty_enabled=bool(data.get("overthinking_penalty_enabled", DEFAULTS["overthinking_penalty_enabled"])),
+        overthinking_penalty_words=data.get("overthinking_penalty_words", list(DEFAULTS["overthinking_penalty_words"])),
+        overthinking_penalty_bias=float(data.get("overthinking_penalty_bias", DEFAULTS["overthinking_penalty_bias"])),
         # Mnemonic Proxy parameters
         mnemonic_proxy_enabled=bool(data.get("mnemonic_proxy", {}).get("enabled", DEFAULTS["mnemonic_proxy"]["enabled"])),
         mnemonic_proxy_port=int(data.get("mnemonic_proxy", {}).get("port", DEFAULTS["mnemonic_proxy"]["port"]) or DEFAULTS["mnemonic_proxy"]["port"]),
@@ -286,6 +292,10 @@ def api_update_model_meta():
     "reasoning_effort": str,
     "reasoning_budget": int,
     "reasoning_budget_message": str,
+    # Overthinking logit penalty
+    "overthinking_penalty_enabled": bool,
+    "overthinking_penalty_words": list,
+    "overthinking_penalty_bias": float,
     # Multimodal projector parameters
     "mmproj": str,
     "mmproj_auto": bool,
@@ -318,6 +328,28 @@ def api_update_model_meta():
                 return jsonify({"error": "Comment must be a string"}), 400
         if len(comment) > 500:
             return jsonify({"error": "Comment too long (max 500 characters)"}), 400
+
+    if "overthinking_penalty_words" in data:
+        try:
+            data["overthinking_penalty_words"] = normalize_overthinking_words(data["overthinking_penalty_words"])
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    if "overthinking_penalty_bias" in data:
+        try:
+            penalty_bias = float(data["overthinking_penalty_bias"])
+        except (TypeError, ValueError, OverflowError):
+            return jsonify({"error": "overthinking_penalty_bias must be numeric"}), 400
+        if not math.isfinite(penalty_bias) or penalty_bias > 0:
+            return jsonify({"error": "overthinking_penalty_bias must be a finite number <= 0"}), 400
+
+    penalty_enabled = data.get(
+        "overthinking_penalty_enabled", meta.get("overthinking_penalty_enabled", False)
+    )
+    if penalty_enabled is True and not data.get(
+        "overthinking_penalty_words", meta.get("overthinking_penalty_words")
+    ):
+        return jsonify({"error": "overthinking_penalty_words cannot be empty when the penalty is enabled"}), 400
 
     changes = {}
     for field, typ in allowed_fields.items():

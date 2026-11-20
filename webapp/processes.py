@@ -34,6 +34,7 @@ from webapp.config import (
     resolve_model_path,
     get_platform_backend_dir,
 )
+from webapp.logit_bias import resolve_overthinking_logit_bias
 from webapp.models import InvalidModeError
 
 log = logging.getLogger("llamaweb.processes")
@@ -873,6 +874,36 @@ def warmup_model(port: int, message: str = "Hello", max_tokens: int = 10) -> boo
     return False
 
 
+def _find_llama_tokenizer(llama_server_binary: Path) -> Path:
+    """Find the tokenizer companion from the same llama.cpp installation."""
+    executable = "llama-tokenize.exe" if llama_server_binary.suffix.lower() == ".exe" else "llama-tokenize"
+    tokenizer = llama_server_binary.with_name(executable)
+    if not tokenizer.is_file():
+        raise RuntimeError(
+            f"Overthinking penalty requires {executable} beside {llama_server_binary.name}; "
+            f"expected it at {tokenizer}"
+        )
+    return tokenizer
+
+
+def _persist_overthinking_resolution(model: str, meta: dict[str, Any]) -> None:
+    """Persist resolved IDs and the display value without replacing user settings."""
+    from webapp.models import get_models, save_models
+
+    models = get_models()
+    model_key = next((key for key in models if key.lower() == model.lower()), None)
+    if model_key is None:
+        return
+    stored = models[model_key]
+    changed = False
+    for field in ("logit_bias", "overthinking_penalty_cache"):
+        if stored.get(field) != meta.get(field):
+            stored[field] = meta.get(field)
+            changed = True
+    if changed:
+        save_models(models)
+
+
 # REMOTE_MODE: This function is for LOCAL mode only.
 # In remote mode, process lifecycle is managed by the remote llama.cpp server.
 def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
@@ -1096,6 +1127,32 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
         reasoning_budget_message = meta.get("reasoning_budget_message", DEFAULTS["reasoning_budget_message"])
         if reasoning_budget_message:
             cmd += ["--reasoning-budget-message", reasoning_budget_message]
+
+    # Overthinking penalty: resolve each exact entry independently with the
+    # tokenizer from the selected llama.cpp build. Each token/bias pair is
+    # emitted as a separate --logit-bias flag (newline-separated in logit_bias).
+    # llama.cpp parses --logit-bias as a single TOKEN_ID±BIAS per flag occurrence.
+    if meta.get("overthinking_penalty_enabled", DEFAULTS["overthinking_penalty_enabled"]):
+        tokenizer_path = _find_llama_tokenizer(Path(llama_server_binary))
+        logit_bias, skipped = resolve_overthinking_logit_bias(
+            meta,
+            model_path,
+            convert_path_for_binary(model_path, is_windows_binary_for_paths),
+            tokenizer_path,
+        )
+        if skipped:
+            log.warning(
+                "Skipping overthinking penalty entries that do not resolve to one token for %s: %s",
+                model,
+                ", ".join(f"{word!r} ({len(tokens)} tokens)" for word, tokens in skipped.items()),
+            )
+        # logit_bias contains newline-separated --logit-bias flags; split and add each
+        if logit_bias:
+            for flag in logit_bias.splitlines():
+                flag = flag.strip()
+                if flag:
+                    cmd += flag.split()
+        _persist_overthinking_resolution(model, meta)
     
     # CPU-only optimizations
     gpu_layers = meta.get("gpu_layers", DEFAULTS["gpu_layers"])

@@ -1595,6 +1595,47 @@ html += genParamsHtml;
     
     html += `</div></div>`;
 
+  // Overthinking Penalty
+  const overthinkingWords = Array.isArray(data.overthinking_penalty_words)
+    ? data.overthinking_penalty_words
+    : [];
+  html += `<div class="panel-section collapsed">
+    <h3>Overthinking Penalty</h3>
+    <div class="panel-grid">`;
+  addEditable(
+    "Enable Overthinking Penalty",
+    "overthinking_penalty_enabled",
+    data.overthinking_penalty_enabled === true,
+    "checkbox",
+    undefined,
+    undefined,
+    undefined,
+    "Resolve the configured entries with this model's tokenizer and apply --logit-bias at startup",
+  );
+  html += `<div class="panel-item full-width" id="overthinking-penalty-settings">
+    <span class="label">Penalized Token Strings</span>
+    <span class="value">
+      <textarea class="meta-input" data-field="overthinking_penalty_words" rows="12" spellcheck="false"
+        title="One exact string per line. Leading and trailing spaces are significant; multi-token entries are skipped.">${he(overthinkingWords.join("\n"))}</textarea>
+      <small style="color: var(--muted); display: block; margin-top: 0.35rem;">
+        One exact string per line; leading spaces are significant. Each entry must tokenize to one token to be applied.
+      </small>
+    </span>
+    <span class="label" style="margin-top: 0.75rem;">Logit Bias (negative values penalize)</span>
+    <span class="value">
+      <input type="number" class="meta-input" data-field="overthinking_penalty_bias"
+        value="${he(String(data.overthinking_penalty_bias ?? -2.0))}" step="0.1" max="0">
+    </span>
+    <span class="label" style="margin-top: 0.75rem;">Resolved --logit-bias</span>
+    <span class="value">
+      <textarea rows="4" readonly spellcheck="false" title="Generated and cached when the model starts">${he(String(data.logit_bias || "Not resolved yet; generated on model start"))}</textarea>
+      <small style="color: var(--muted); display: block; margin-top: 0.35rem;">
+        Resolved with the llama-tokenize binary beside the selected llama-server. Cached IDs invalidate when the model, tokenizer, or entries change.
+      </small>
+    </span>
+  </div>`;
+  html += `</div></div>`;
+
   // Running Statistics section
   if (running) {
     html += `<div class="panel-section collapsed">
@@ -1774,6 +1815,17 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     toggleGenParams();
   }
 
+  // Show overthinking settings only when the feature is enabled.
+  const overthinkingEnabledCheckbox = content.querySelector('.meta-input[data-field="overthinking_penalty_enabled"]');
+  const overthinkingSettings = content.querySelector('#overthinking-penalty-settings');
+  if (overthinkingEnabledCheckbox && overthinkingSettings) {
+    const toggleOverthinkingSettings = () => {
+      overthinkingSettings.style.display = overthinkingEnabledCheckbox.checked ? '' : 'none';
+    };
+    overthinkingEnabledCheckbox.addEventListener('change', toggleOverthinkingSettings);
+    toggleOverthinkingSettings();
+  }
+
   // Reset to Default Parameters button handler
   const resetBtn = content.querySelector('#resetPropsToDefaultsBtn');
   if (resetBtn) {
@@ -1888,6 +1940,22 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       'reasoning_effort': 'default',
       'reasoning_budget': -1,
       'reasoning_budget_message': '',
+
+      // Overthinking logit penalty
+      'overthinking_penalty_enabled': false,
+      'overthinking_penalty_words': [
+        ' perhaps', ' maybe', ' wait', ' Wait', ' actually',
+        ' hold', ' Hmm', ' hmm', ' Alternatively', ' alternatively',
+        ' However', ' however', ' instead', ' Instead', ' But',
+        ' but', ' though', ' although', ' yet', ' rather',
+        ' unless', ' otherwise', ' nonetheless', ' nevertheless', ' regardless',
+        ' still', ' anyway', ' Or', ' or', ' either',
+        ' whether', ' uncertain', ' unsure', ' possibly', ' might',
+        ' could', ' another', ' different', ' reconsider', ' rethink',
+        ' backtrack', ' retry', ' revisit', ' doubt', ' confused',
+        ' wrong', ' mistake', ' error', ' incorrect',
+      ],
+      'overthinking_penalty_bias': -2.0,
       
       // Intel/AMD GPU Options
       'sycl': false,
@@ -1930,6 +1998,8 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           });
         } else if (input.tagName === 'SELECT') {
           input.value = value;
+        } else if (field === 'overthinking_penalty_words') {
+          input.value = value.join('\n');
         } else if (input.tagName === 'TEXTAREA') {
           input.value = JSON.stringify(value, null, 2);
         } else {
@@ -1954,6 +2024,11 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
     const cpuMoeCheckbox = content.querySelector('.meta-input[data-field="cpu_moe"]');
     if (cpuMoeCheckbox) {
       cpuMoeCheckbox.dispatchEvent(new Event('change'));
+    }
+
+    const overthinkingEnabledCheckbox = content.querySelector('.meta-input[data-field="overthinking_penalty_enabled"]');
+    if (overthinkingEnabledCheckbox) {
+      overthinkingEnabledCheckbox.dispatchEvent(new Event('change'));
     }
     
     logHtml('<b>Properties reset to default parameters</b>', 'green');
@@ -2034,6 +2109,10 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
         } else {
           value = input.value;
         }
+        if (field === "overthinking_penalty_words") {
+          // Preserve leading/trailing spaces: they are part of the token string.
+          value = value.split(/\r?\n/).filter(word => word.trim().length > 0);
+        }
         const numericFields = [
           "threads", "threads_batch", "timeout",
           "ubatch_size", "gpu_layers", "batch_size",
@@ -2050,7 +2129,7 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
           // Generation / Sampling parameters
           "temperature", "top_k", "top_p", "min_p",
           "repeat_penalty", "presence_penalty",
-          "reasoning_budget",
+          "reasoning_budget", "overthinking_penalty_bias",
           // Mnemonic Proxy numeric fields
           "mnemonic_proxy.port", "mnemonic_proxy.mcp_port"
         ];
@@ -2088,9 +2167,11 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
         // Only include changed values
         const originalValue = window.originalModelMeta?.[field];
         // For parallel field, compare as strings since it can be "auto" or numeric
-        const isChanged = field === "parallel" 
+        const isChanged = field === "parallel"
           ? String(value) !== String(originalValue)
-          : value !== originalValue;
+          : field === "overthinking_penalty_words"
+            ? JSON.stringify(value) !== JSON.stringify(originalValue)
+            : value !== originalValue;
         
         // For generation parameters:
         // - Empty string/null means "use server default" - send null to clear the field

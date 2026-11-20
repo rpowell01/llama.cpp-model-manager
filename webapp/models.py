@@ -256,6 +256,10 @@ def add_model_entry(
     reasoning_effort: str = "default",
     reasoning_budget: int = -1,
     reasoning_budget_message: str = "",
+    # Overthinking logit penalty
+    overthinking_penalty_enabled: bool = False,
+    overthinking_penalty_words: Optional[list[str]] = None,
+    overthinking_penalty_bias: float = -2.0,
     # Intel/AMD GPU Options
     sycl: bool = False,
     grp_attn: bool = False,
@@ -385,6 +389,11 @@ def add_model_entry(
             "reasoning_effort": reasoning_effort,
             "reasoning_budget": reasoning_budget,
             "reasoning_budget_message": reasoning_budget_message,
+            # Overthinking logit penalty
+            "overthinking_penalty_enabled": overthinking_penalty_enabled,
+            "overthinking_penalty_words": list(overthinking_penalty_words) if overthinking_penalty_words is not None else list(DEFAULTS["overthinking_penalty_words"]),
+            "overthinking_penalty_bias": overthinking_penalty_bias,
+            "logit_bias": "",
             # User rating fields
             "comment": "",
             "rating_speed": 0,
@@ -588,6 +597,10 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         "mmproj": DEFAULTS["mmproj"],
         "mmproj_auto": DEFAULTS["mmproj_auto"],
         "mmproj_offload": DEFAULTS["mmproj_offload"],
+        # Overthinking logit penalty
+        "overthinking_penalty_enabled": DEFAULTS["overthinking_penalty_enabled"],
+        "overthinking_penalty_bias": DEFAULTS["overthinking_penalty_bias"],
+        "logit_bias": DEFAULTS["logit_bias"],
         # llama.cpp platform and backend selection
         "llama_cpp_platform": DEFAULTS.get("llama_cpp_platform", "auto"),
         "llama_cpp_backend": DEFAULTS.get("llama_cpp_backend", "auto"),
@@ -596,6 +609,8 @@ def _apply_defaults_to_models(models: dict[str, dict[str, Any]]) -> None:
         for field, default_value in default_fields.items():
             if field not in model:
                 model[field] = default_value
+        if "overthinking_penalty_words" not in model:
+            model["overthinking_penalty_words"] = list(DEFAULTS["overthinking_penalty_words"])
         # Add mnemonic_proxy defaults if missing
         if "mnemonic_proxy" not in model:
             model["mnemonic_proxy"] = {

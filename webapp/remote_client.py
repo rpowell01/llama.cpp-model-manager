@@ -21,6 +21,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from webapp.logit_bias import DEFAULT_OVERTHINKING_WORDS
+
 log = logging.getLogger("llamaweb")
 
 
@@ -153,6 +155,12 @@ class Model:
     reasoning_effort: str = "default"
     reasoning_budget: int = -1
     reasoning_budget_message: str = ""
+    # Overthinking logit penalty
+    overthinking_penalty_enabled: bool = False
+    overthinking_penalty_words: Optional[List[str]] = None
+    overthinking_penalty_bias: float = -2.0
+    logit_bias: str = ""
+    overthinking_penalty_cache: Optional[Dict[str, Any]] = None
     # llama.cpp platform and backend selection
     llama_cpp_platform: str = "auto"  # "auto", "windows", "linux"
     llama_cpp_backend: str = "auto"   # "auto", "vulkan", "sycl", "openvino"
@@ -271,6 +279,12 @@ class Model:
             reasoning_effort=data.get("reasoning_effort", "default"),
             reasoning_budget=data.get("reasoning_budget", -1),
             reasoning_budget_message=data.get("reasoning_budget_message", ""),
+            # Overthinking logit penalty
+            overthinking_penalty_enabled=data.get("overthinking_penalty_enabled", False),
+            overthinking_penalty_words=list(data["overthinking_penalty_words"]) if data.get("overthinking_penalty_words") is not None else list(DEFAULT_OVERTHINKING_WORDS),
+            overthinking_penalty_bias=data.get("overthinking_penalty_bias", -2.0),
+            logit_bias=data.get("logit_bias", ""),
+            overthinking_penalty_cache=data.get("overthinking_penalty_cache"),
             # llama.cpp platform and backend selection
             llama_cpp_platform=data.get("llama_cpp_platform", "auto"),
             llama_cpp_backend=data.get("llama_cpp_backend", "auto"),

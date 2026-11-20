@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from webapp.logit_bias import DEFAULT_OVERTHINKING_WORDS
+
 # Module logger
 log = logging.getLogger("llamaweb.config")
 
@@ -242,6 +244,11 @@ DEFAULTS: dict[str, Any] = {
     "reasoning_effort": "default",
     "reasoning_budget": -1,
     "reasoning_budget_message": "",
+    # Overthinking logit penalty (token IDs are resolved per GGUF model)
+    "overthinking_penalty_enabled": False,
+    "overthinking_penalty_words": DEFAULT_OVERTHINKING_WORDS,
+    "overthinking_penalty_bias": -2.0,
+    "logit_bias": "",
     # Mnemonic Proxy defaults
     "mnemonic_proxy": {
         "enabled": False,

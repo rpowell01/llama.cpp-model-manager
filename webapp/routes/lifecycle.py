@@ -379,6 +379,12 @@ def api_start():
             "reasoning_effort": getattr(model_dict, 'reasoning_effort', 'default'),
             "reasoning_budget": getattr(model_dict, 'reasoning_budget', -1),
             "reasoning_budget_message": getattr(model_dict, 'reasoning_budget_message', ''),
+            # Overthinking logit penalty
+            "overthinking_penalty_enabled": getattr(model_dict, 'overthinking_penalty_enabled', False),
+            "overthinking_penalty_words": getattr(model_dict, 'overthinking_penalty_words', None) or list(DEFAULTS["overthinking_penalty_words"]),
+            "overthinking_penalty_bias": getattr(model_dict, 'overthinking_penalty_bias', -2.0),
+            "logit_bias": getattr(model_dict, 'logit_bias', ''),
+            "overthinking_penalty_cache": getattr(model_dict, 'overthinking_penalty_cache', None),
         }
 
         # Check if already running
