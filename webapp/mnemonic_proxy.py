@@ -593,7 +593,7 @@ class MnemonicProxyManager:
                 self._starting = True
 
                 log.info(
-                    f"Started mnemonic-proxy for {self.model_name} (pid={self._pid}) "
+                    f"Starting mnemonic-proxy for {self.model_name} (pid={self._pid}) "
                     f"on port {self.proxy_port} (log: {self.log_path})"
                 )
 
@@ -1102,7 +1102,7 @@ class MnemonicProxyManager:
                 self._mcp_start_time = time.time()
                 
                 log.info(
-                    f"Started mnemonic-mcp for {self.model_name} (pid={self._mcp_pid}) "
+                    f"Starting mnemonic-mcp for {self.model_name} (pid={self._mcp_pid}) "
                     f"on port {self.mcp_port} (log: {mcp_log_path})"
                 )
                 
