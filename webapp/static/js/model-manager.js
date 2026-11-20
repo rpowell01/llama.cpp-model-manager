@@ -511,7 +511,14 @@ async function act(model, verb) {
         const intervalId = setInterval(async () => {
           await refresh(false);
           const modelData = currentModelRows.find(r => r.model === model);
-          if (modelData && modelData.status !== 'starting') {
+          // Continue polling until model is running AND proxy is running (if proxy enabled)
+          // AND MCP is running (if MCP enabled)
+          const proxyEnabled = modelData?.mnemonic_proxy?.enabled;
+          const proxyRunning = modelData?.mnemonic_proxy?.running;
+          const mcpEnabled = modelData?.mnemonic_proxy?.mcp_enabled;
+          const mcpRunning = modelData?.mnemonic_proxy?.mcp?.running;
+          const modelRunning = modelData && modelData.status !== 'starting';
+          if (modelRunning && (!proxyEnabled || proxyRunning) && (!mcpEnabled || mcpRunning)) {
             clearInterval(intervalId);
             delete startingIntervals[model];
           }
