@@ -560,6 +560,16 @@ class MnemonicProxyManager:
                     except Exception as e:
                         log.warning(f"Failed to remove stale kv-archive lock file for {self.model_name}: {e}")
 
+                # Clean up SQLite WAL/SHM files that can cause "database is locked" or
+                # "data directory is in use" errors on next start
+                for pattern in ["*.sqlite-shm", "*.sqlite-wal"]:
+                    for wal_file in data_dir.glob(pattern):
+                        try:
+                            wal_file.unlink()
+                            log.debug(f"Cleaned up SQLite WAL/SHM file for {self.model_name}: {wal_file}")
+                        except Exception:
+                            pass
+
                 # Capture stdout/stderr - DEVNULL here is why startup failures
                 # used to be undiagnosable.
                 self._log_handle = open(self.log_path, "a", encoding="utf-8")
@@ -763,6 +773,20 @@ class MnemonicProxyManager:
             if kv_archive_lock.exists():
                 kv_archive_lock.unlink()
                 log.debug(f"Cleaned up kv-archive lock file for {self.model_name}: {kv_archive_lock}")
+        except Exception:
+            pass  # Ignore cleanup errors
+
+        # Clean up SQLite WAL/SHM files that can cause "database is locked" or
+        # "data directory is in use" errors on next start
+        try:
+            data_dir = self._resolve_data_dir()
+            for pattern in ["*.sqlite-shm", "*.sqlite-wal"]:
+                for wal_file in data_dir.glob(pattern):
+                    try:
+                        wal_file.unlink()
+                        log.debug(f"Cleaned up SQLite WAL/SHM file for {self.model_name}: {wal_file}")
+                    except Exception:
+                        pass
         except Exception:
             pass  # Ignore cleanup errors
         
