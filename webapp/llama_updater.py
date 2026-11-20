@@ -414,6 +414,17 @@ def update_backends(
                         dest.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(item, dest)
                 
+                # Make all extracted Windows binaries executable (chmod +x)
+                # This ensures llama-server.exe, llama-tokenize.exe, llama-cli.exe, etc.
+                # can be executed on WSL (Windows executables need +x on WSL)
+                for item in target_dir.rglob('*'):
+                    if item.is_file() and not item.name.endswith(('.dll', '.txt', '.md', '.json', '.h', '.hpp')):
+                        # Make .exe files and other binaries executable
+                        try:
+                            item.chmod(item.stat().st_mode | 0o111)  # Add execute permissions
+                        except Exception:
+                            pass  # Ignore chmod failures
+                
                 # Store Windows path in config (C:/ format)
                 config_path = _target_dir_to_config_path(platform, backend, target_dir)
                 _set_platform_backend_dir(platform, backend, config_path)
