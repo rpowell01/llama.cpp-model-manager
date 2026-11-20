@@ -345,6 +345,8 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
                 "pid": runtime_status.get("pid"),
                 "uptime_seconds": runtime_status.get("uptime_seconds", 0),
                 "llama_port": runtime_status.get("llama_port", 9931),
+                # Include MCP status from runtime
+                "mcp": runtime_status.get("mcp", {"enabled": False, "running": False, "port": None, "pid": None, "uptime_seconds": 0}),
             })
         else:
             # Proxy not running but config exists - mark as enabled but not running
