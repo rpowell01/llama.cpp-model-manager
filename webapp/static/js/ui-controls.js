@@ -512,14 +512,16 @@ function renderTiles(rows, dlMap, query) {
       // Initial health badge (idle) - will be updated asynchronously
       const initialBadge = PROXY_HEALTH_BADGES.idle;
       const badgeHtml = `
-        <span class="proxy-health-badge" 
-              style="display: inline-flex; align-items: center; gap: 0.25rem; 
-                     padding: 0.15rem 0.5rem; border-radius: 4px; 
-                     font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
-                     background: ${initialBadge.bg}; border: 1px solid ${initialBadge.border}; color: ${initialBadge.color};
-                     white-space: nowrap;"
-              title="Proxy health: ${initialBadge.label} (loading...)">
-          ${initialBadge.icon} ${initialBadge.label}
+        <span class="proxy-health-badge-container" style="display: inline-flex;">
+          <span class="proxy-health-badge" 
+                style="display: inline-flex; align-items: center; gap: 0.25rem; 
+                       padding: 0.15rem 0.5rem; border-radius: 4px; 
+                       font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+                       background: ${initialBadge.bg}; border: 1px solid ${initialBadge.border}; color: ${initialBadge.color};
+                       white-space: nowrap;"
+                title="Proxy health: ${initialBadge.label} (loading...)">
+            ${initialBadge.icon} ${initialBadge.label}
+          </span>
         </span>
       `;
 

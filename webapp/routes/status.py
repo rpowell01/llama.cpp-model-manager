@@ -407,17 +407,14 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
         # Overlay runtime values, preserving config from meta
         runtime_status.pop("model_name", None)
         runtime_status.pop("proxy_port", None)
-        # Use manager PID/uptime when available, but determine running state from
-        # the service's own health endpoint. The manager's tracked PID can be
-        # stale (for example after a Flask restart or an unclean proxy exit),
-        # while the actual service remains healthy on its port.
-        manager_running = bool(runtime_status.get("running"))
-        proxy_port = int(base_proxy_config.get("port", 8096) or 8096)
-        health = _get_cached_proxy_health(model, proxy_port)
-        proxy_status["running"] = bool(health.get("running"))
-        proxy_status["message"] = health.get("message", "mnemonic-proxy not running")
-        proxy_status["pid"] = runtime_status.get("pid") if manager_running else None
-        proxy_status["uptime_seconds"] = runtime_status.get("uptime_seconds", 0) if manager_running else 0
+        # Use the proxy manager's own running status, which correctly checks
+        # the specific proxy instance (via its /health endpoint on the manager's
+        # proxy_port). This avoids the bug where _get_cached_proxy_health would
+        # return the same result for all models sharing the same default port.
+        proxy_status["running"] = bool(runtime_status.get("running"))
+        proxy_status["message"] = "mnemonic-proxy running" if runtime_status.get("running") else "mnemonic-proxy not running"
+        proxy_status["pid"] = runtime_status.get("pid")
+        proxy_status["uptime_seconds"] = runtime_status.get("uptime_seconds", 0)
         proxy_status["llama_port"] = runtime_status.get("llama_port", 9931)
 
         # Probe MCP directly as well; do not rely solely on manager state.
@@ -650,6 +647,76 @@ def api_status():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+@status_bp.route("/api/status/<model_name>")
+def api_status_single(model_name):
+    """Get status for a single model. Used by the starting interval to avoid full refresh."""
+    registry = g.get('registry') or get_status_registry()
+    models = get_models()
+    
+    # Case-insensitive lookup
+    model_key = None
+    for k in models:
+        if k.lower() == model_name.lower():
+            model_key = k
+            break
+    if model_key is None:
+        return jsonify({"error": f"Unknown model '{model_name}'"}), 404
+    
+    meta = models[model_key]
+    
+    # In remote mode, use remote API for status
+    if registry.is_remote_mode:
+        remote_model = registry._remote_client.get_model(model_key)
+        if not remote_model:
+            return jsonify({"error": f"Model '{model_key}' not found on remote server"}), 404
+        # Get local proxy status
+        proxy_status = {}
+        proxy_manager = get_proxy_manager(model_key)
+        if proxy_manager:
+            proxy_status = proxy_manager.get_status()
+        
+        return jsonify({
+            "model": model_key,
+            "port": remote_model.port,
+            "status": "running",
+            "pid": None,
+            "file_exists": True,
+            "file_size_gb": remote_model.file_size_gb,
+            "model_path": remote_model.model_path,
+            "download_status": None,
+            "partial_download": 0,
+            "pp": None,
+            "tg": None,
+            "pg": None,
+            "mnemonic_proxy": proxy_status,
+            "repo": remote_model.repo,
+            "filename": remote_model.filename,
+            "expected_size": remote_model.expected_size,
+            "threads": remote_model.threads,
+            "threads_batch": remote_model.threads_batch,
+            "timeout": remote_model.timeout,
+            "mlock": remote_model.mlock,
+            "flash_attn": remote_model.flash_attn,
+            "no_mmap": remote_model.no_mmap,
+            "parallel": remote_model.parallel,
+            "ubatch_size": remote_model.ubatch_size,
+            "ctx_size": remote_model.ctx_size,
+            "yarn_orig_ctx": remote_model.yarn_orig_ctx,
+            "overthinking_penalty_enabled": remote_model.overthinking_penalty_enabled,
+            "overthinking_penalty_words": remote_model.overthinking_penalty_words,
+            "overthinking_penalty_bias": remote_model.overthinking_penalty_bias,
+            "logit_bias": remote_model.logit_bias,
+            "rating_speed": remote_model.rating_speed,
+            "rating_coding": remote_model.rating_coding,
+            "comment": remote_model.comment,
+            "speculative_decoding_model": getattr(remote_model, "speculative_decoding_model", False),
+        })
+    
+    # Local mode: use existing _status_for_model function
+    result = _status_for_model(model_key, meta, registry)
+    return jsonify(result)
 
 
 def _validate_status_uniqueness(results: list) -> None:

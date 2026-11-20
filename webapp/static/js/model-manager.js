@@ -512,18 +512,43 @@ async function act(model, verb) {
           clearInterval(startingIntervals[model]);
         }
         const intervalId = setInterval(async () => {
-          await refresh(false);
-          const modelData = currentModelRows.find(r => r.model === model);
-          // Continue polling until model is running AND proxy is running (if proxy enabled)
-          // AND MCP is running (if MCP enabled)
-          const proxyEnabled = modelData?.mnemonic_proxy?.enabled;
-          const proxyRunning = modelData?.mnemonic_proxy?.running;
-          const mcpEnabled = modelData?.mnemonic_proxy?.mcp_enabled;
-          const mcpRunning = modelData?.mnemonic_proxy?.mcp?.running;
-          const modelRunning = modelData && modelData.status !== 'starting';
-          if (modelRunning && (!proxyEnabled || proxyRunning) && (!mcpEnabled || mcpRunning)) {
-            clearInterval(intervalId);
-            delete startingIntervals[model];
+          // Fetch status for just this model to avoid full refresh (which closes panel and loses unsaved changes)
+          try {
+            const res = await fetch(`/api/status/${encodeURIComponent(model)}`, {
+              cache: 'no-store',
+              signal: AbortSignal.timeout(5000)
+            });
+            if (res.ok) {
+              const modelData = await res.json();
+              // Update the model in currentModelRows
+              const idx = currentModelRows.findIndex(r => r.model === model);
+              if (idx >= 0) {
+                currentModelRows[idx] = modelData;
+                // Update only this tile in the grid
+                updateSingleTile(modelData);
+                // If this model's panel is open, update the panel without losing form state
+                if (selectedModel === model) {
+                  updatePanelProperties(modelData);
+                }
+              }
+              // Continue polling until model is running AND proxy is running (if proxy enabled)
+              // AND MCP is running (if MCP enabled)
+              const proxyEnabled = modelData?.mnemonic_proxy?.enabled;
+              const proxyRunning = modelData?.mnemonic_proxy?.running;
+              const mcpEnabled = modelData?.mnemonic_proxy?.mcp_enabled;
+              const mcpRunning = modelData?.mnemonic_proxy?.mcp?.running;
+              const modelRunning = modelData && modelData.status !== 'starting';
+              if (modelRunning && (!proxyEnabled || proxyRunning) && (!mcpEnabled || mcpRunning)) {
+                clearInterval(intervalId);
+                delete startingIntervals[model];
+                // Do a full refresh once everything is fully started to sync all state
+                refresh(false);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to fetch single model status:', e);
+            // Fall back to full refresh on error
+            await refresh(false);
           }
         }, 2000);
         startingIntervals[model] = intervalId;
@@ -540,8 +565,125 @@ async function act(model, verb) {
   }
 }
 
+/**
+ * Update a single tile in the grid without full re-render
+ * @param {Object} modelData - Model data from /api/status/<model>
+ */
+function updateSingleTile(modelData) {
+  const tile = document.querySelector(`.tile[data-model="${modelData.model}"]`);
+  if (!tile) return;
+  
+  const running = modelData.status && modelData.status.startsWith("running");
+  const starting = modelData.status === "starting";
+  const isSpec = !!modelData.speculative_decoding_model;
+  const { canStart, canStop } = modelActionState(modelData);
+  
+  // Update status chip
+  const statusChip = running
+    ? '<span class="chip ok">● running</span>'
+    : starting
+      ? '<span class="chip warn">● starting</span>'
+      : modelData.file_exists
+        ? '<span class="chip ok">● stopped</span>'
+        : '<span class="chip bad">[x] missing</span>';
+  
+  // Update model path, size, status, pid in the second .tile-section-content
+  const contentSections = tile.querySelectorAll('.tile-section-content');
+  if (contentSections.length >= 2) {
+    const statusContent = contentSections[1]; // Second section has path, size, status
+    statusContent.innerHTML = `
+      <code title="${modelData.model_path}">${modelData.model_path ? modelData.model_path.split("/").pop() : modelData.filename}</code>
+      <div>${fmtGb(modelData.file_size_gb)} · ${modelData.status || "-"}${modelData.pid ? " · pid " + modelData.pid : ""}</div>
+    `;
+  }
+  
+  // Update status chip in the first section (first .chip in the model section)
+  const modelSection = tile.querySelector('.tile-section-model');
+  if (modelSection) {
+    const chip = modelSection.querySelector('.chip');
+    if (chip) {
+      chip.outerHTML = statusChip;
+    }
+  }
+  
+  // Update tile class for running state
+  tile.classList.toggle('running', running);
+  
+  // Update action buttons
+  const runBtn = tile.querySelector('.run');
+  const stopBtn = tile.querySelector('.stop');
+  const chatBtn = tile.querySelector('.chat');
+  if (runBtn) runBtn.disabled = !canStart;
+  if (stopBtn) stopBtn.disabled = !canStop;
+  if (chatBtn) chatBtn.disabled = !canStop;
+  
+  // Update proxy status if present
+  const proxySection = tile.querySelector('.tile-section-proxy');
+  if (proxySection && modelData.mnemonic_proxy) {
+    const proxy = modelData.mnemonic_proxy;
+    const proxyEnabled = proxy.enabled === true;
+    const proxyRunning = proxy.running === true;
+    const proxyPort = proxy.proxy_port || proxy.port || 8096;
+    const proxyMcpEnabled = proxy.mcp_enabled === true;
+    const proxyMcpPort = proxy.mcp_port || proxy.mcp?.port || 8133;
+    const proxyMcpRunning = proxy.mcp?.running === true;
+    const proxyMcpStatus = proxyMcpEnabled ? ` MCP:${proxyMcpPort}${proxyMcpRunning ? " running" : " stopped"}` : "";
+    const proxyStatusClass = proxyRunning ? "ok" : "warn";
+    const proxyStatusText = proxyRunning ? "● proxy running" : "● proxy stopped";
+    const canStartProxy = running && !proxyRunning;
+    const canStopProxy = running && proxyRunning;
+    
+    const proxyChip = proxySection.querySelector('.chip');
+    if (proxyChip) {
+      proxyChip.className = `chip ${proxyStatusClass}`;
+      proxyChip.textContent = `${proxyStatusText} :${proxyPort}${proxyMcpStatus}`;
+    }
+    
+    const proxyRunBtn = proxySection.querySelector('.actions-btn.run');
+    const proxyStopBtn = proxySection.querySelector('.actions-btn.stop');
+    if (proxyRunBtn) proxyRunBtn.disabled = !canStartProxy;
+    if (proxyStopBtn) proxyStopBtn.disabled = !canStopProxy;
+  }
+}
+
+/**
+ * Update panel properties without losing form state
+ * @param {Object} modelData - Model data from /api/status/<model>
+ */
+function updatePanelProperties(modelData) {
+  const panel = document.getElementById('properties-panel');
+  if (!panel || panel.dataset.modelName !== modelData.model) return;
+  
+  const running = modelData.status && modelData.status.startsWith("running");
+  const { canStart, canStop } = modelActionState(modelData);
+  
+  // Update start/stop buttons
+  const startBtn = panel.querySelector(`#start-model-${safeId(modelData.model)}`);
+  const stopBtn = panel.querySelector(`#stop-model-${safeId(modelData.model)}`);
+  if (startBtn) startBtn.disabled = !canStart;
+  if (stopBtn) stopBtn.disabled = !canStop;
+  
+  // Update status display in panel (if there's a running statistics section)
+  const statusItem = panel.querySelector('.panel-item .chip');
+  if (statusItem) {
+    statusItem.outerHTML = running
+      ? '<span class="chip ok">● running</span>'
+      : modelData.status === "starting"
+        ? '<span class="chip warn">● starting</span>'
+        : '<span class="chip ok">● stopped</span>';
+  }
+  
+  // Update PID if present
+  const pidItem = panel.querySelector('.panel-item code');
+  if (pidItem && modelData.pid) {
+    pidItem.textContent = modelData.pid;
+  }
+}
+
 // Expose metrics functions and act globally for tooltip and panel use
 window.fetchModelMetrics = fetchModelMetrics;
 window.formatMetricsTooltip = formatMetricsTooltip;
 window.act = act;
+window.updateSingleTile = updateSingleTile;
+window.updatePanelProperties = updatePanelProperties;
 

@@ -1131,7 +1131,7 @@
     "moe_cache_mib": 0,
     "overthinking_penalty_enabled": true,
     "overthinking_penalty_bias": -2.0,
-    "logit_bias": "--logit-bias 12951-2\n--logit-bias 10112-2\n--logit-bias 5238-2\n--logit-bias 24305-2\n--logit-bias 4771-2\n--logit-bias 5060-2\n--logit-bias 165972-2\n--logit-bias 186402-2\n--logit-bias 46417-2\n--logit-bias 112475-2\n--logit-bias 5551-2\n--logit-bias 6726-2\n--logit-bias 7665-2\n--logit-bias 21050-2\n--logit-bias 3072-2\n--logit-bias 889-2\n--logit-bias 5495-2\n--logit-bias 11943-2\n--logit-bias 5073-2\n--logit-bias 7542-2\n--logit-bias 12604-2\n--logit-bias 10275-2\n--logit-bias 48495-2\n--logit-bias 45757-2\n--logit-bias 23994-2\n--logit-bias 2928-2\n--logit-bias 22332-2\n--logit-bias 2604-2\n--logit-bias 503-2\n--logit-bias 4784-2\n--logit-bias 5588-2\n--logit-bias 59410-2\n--logit-bias 62827-2\n--logit-bias 14836-2\n--logit-bias 3572-2\n--logit-bias 2023-2\n--logit-bias 3613-2\n--logit-bias 2647-2\n--logit-bias 98054-2\n--logit-bias 141047-2\n--logit-bias 45364-2\n--logit-bias 103323-2\n--logit-bias 16928-2\n--logit-bias 35975-2\n--logit-bias 8201-2\n--logit-bias 28597-2\n--logit-bias 2915-2\n--logit-bias 25570-2",
+    "logit_bias": "--logit-bias 12951-2,10112-2,5238-2,24305-2,4771-2,5060-2,165972-2,186402-2,46417-2,112475-2,5551-2,6726-2,7665-2,21050-2,3072-2,889-2,5495-2,11943-2,5073-2,7542-2,12604-2,10275-2,48495-2,45757-2,23994-2,2928-2,22332-2,2604-2,503-2,4784-2,5588-2,59410-2,62827-2,14836-2,3572-2,2023-2,3613-2,2647-2,98054-2,141047-2,45364-2,103323-2,16928-2,35975-2,8201-2,28597-2,2915-2,25570-2",
     "overthinking_penalty_words": [
       " perhaps",
       " maybe",
@@ -1718,7 +1718,7 @@
     "cpu_affinity": "auto",
     "cpu_strict": true,
     "batch_size": 32768,
-    "ctx_size": 131072,
+    "ctx_size": 65536,
     "rope_freq_base": 10000.0,
     "rope_freq_scale": 1.0,
     "rope_scaling_type": "none",
@@ -1751,7 +1751,7 @@
     "warmup_enabled": true,
     "warmup_message": "Hello",
     "warmup_max_tokens": 10,
-    "slot_save_path": "",
+    "slot_save_path": "./data/lfm2.5-24b-a2b-tbrill-neo-iq4-xs/slots",
     "cache_reuse": 4096,
     "swa_full": false,
     "chat_template_file": "",
@@ -1779,20 +1779,49 @@
     "file_size_gb": 11.96,
     "keep": 32768,
     "reuse_port": true,
-    "reasoning_budget_message": "ok i have enough. Now impliment.",
+    "reasoning_budget_message": "'ok i have enough. Now impliment.'",
     "mnemonic_proxy": {
-      "enabled": false,
+      "enabled": true,
       "port": 8096,
       "data_dir": "./data/lfm2.5-24b-a2b-tbrill-neo-iq4-xs",
-      "slot_dir": "",
+      "slot_dir": "./data/lfm2.5-24b-a2b-tbrill-neo-iq4-xs/slots",
       "tokenizer_path": "",
       "config_override": {
-        "mask_anchor": true,
+        "auto_recall": false,
         "autosave": true,
-        "window_estimate_slack": 0.15
+        "autosave_idle_s": 30,
+        "autosave_keep": 8,
+        "autosave_max_gb": 10,
+        "engine": "llama.cpp",
+        "engine_tokenize": true,
+        "keep_recent_tokens": 1600,
+        "kv_archive": true,
+        "kv_archive_idle_s": 600,
+        "kv_archive_level": 3,
+        "kv_archive_min_age_s": 1800,
+        "kv_archive_min_bytes": 67108864,
+        "kv_archive_poll_s": 60,
+        "kv_archive_threads": 2,
+        "mask_anchor": true,
+        "mask_reasoning": true,
+        "mask_target": 8000,
+        "mask_tool_args": true,
+        "mask_trigger": 14000,
+        "min_age_turns": 1,
+        "min_batch_tokens": 2000,
+        "notes_max_tokens": 12288,
+        "recall_flex": true,
+        "recall_multi": true,
+        "recall_struct": true,
+        "response_floor": 16384,
+        "seal_experimental": true,
+        "slot_save": true,
+        "tools_paging": true,
+        "tools_paging_native_split": true,
+        "tools_paging_native_split_build": ""
       },
       "mcp_enabled": false,
-      "mcp_port": 8133
+      "mcp_port": null
     },
     "llama_cpp_platform": "auto",
     "llama_cpp_backend": "auto",
@@ -1800,9 +1829,9 @@
     "mmproj_auto": true,
     "mmproj_offload": true,
     "moe_cache_mib": 0,
-    "overthinking_penalty_enabled": false,
+    "overthinking_penalty_enabled": true,
     "overthinking_penalty_bias": -2.0,
-    "logit_bias": "",
+    "logit_bias": "--logit-bias 7432-2,12621-2,6997-2,34689-2,4202-2,3464-2,92897-2,117373-2,43492-2,93228-2,2375-2,3276-2,4977-2,11089-2,1938-2,702-2,1952-2,5321-2,4262-2,3785-2,10466-2,8640-2,45506-2,33833-2,16217-2,2009-2,24535-2,1746-2,432-2,3520-2,3483-2,11792-2,54380-2,10708-2,2223-2,1237-2,2271-2,1346-2,94620-2,94610-2,11141-2,22428-2,7370-2,22407-2,5082-2,22650-2",
     "overthinking_penalty_words": [
       " perhaps",
       " maybe",
@@ -1853,7 +1882,163 @@
       " mistake",
       " error",
       " incorrect"
-    ]
+    ],
+    "bind_host": "0.0.0.0",
+    "overthinking_penalty_cache": {
+      "signature": "7b819ef9066f7f6f6cbefdcba0847e71023ae179f8441c6de255adf1064f4cdc",
+      "tokens": {
+        " perhaps": [
+          7432
+        ],
+        " maybe": [
+          12621
+        ],
+        " wait": [
+          6997
+        ],
+        " Wait": [
+          34689
+        ],
+        " actually": [
+          4202
+        ],
+        " hold": [
+          3464
+        ],
+        " Hmm": [
+          92897
+        ],
+        " hmm": [
+          117373
+        ],
+        " Alternatively": [
+          43492
+        ],
+        " alternatively": [
+          93228
+        ],
+        " However": [
+          2375
+        ],
+        " however": [
+          3276
+        ],
+        " instead": [
+          4977
+        ],
+        " Instead": [
+          11089
+        ],
+        " But": [
+          1938
+        ],
+        " but": [
+          702
+        ],
+        " though": [
+          1952
+        ],
+        " although": [
+          5321
+        ],
+        " yet": [
+          4262
+        ],
+        " rather": [
+          3785
+        ],
+        " unless": [
+          10466
+        ],
+        " otherwise": [
+          8640
+        ],
+        " nonetheless": [
+          45506
+        ],
+        " nevertheless": [
+          33833
+        ],
+        " regardless": [
+          16217
+        ],
+        " still": [
+          2009
+        ],
+        " anyway": [
+          24535
+        ],
+        " Or": [
+          1746
+        ],
+        " or": [
+          432
+        ],
+        " either": [
+          3520
+        ],
+        " whether": [
+          3483
+        ],
+        " uncertain": [
+          11792
+        ],
+        " unsure": [
+          54380
+        ],
+        " possibly": [
+          10708
+        ],
+        " might": [
+          2223
+        ],
+        " could": [
+          1237
+        ],
+        " another": [
+          2271
+        ],
+        " different": [
+          1346
+        ],
+        " reconsider": [
+          339,
+          35766
+        ],
+        " rethink": [
+          339,
+          36442
+        ],
+        " backtrack": [
+          94620
+        ],
+        " retry": [
+          984,
+          657
+        ],
+        " revisit": [
+          94610
+        ],
+        " doubt": [
+          11141
+        ],
+        " confused": [
+          22428
+        ],
+        " wrong": [
+          7370
+        ],
+        " mistake": [
+          22407
+        ],
+        " error": [
+          5082
+        ],
+        " incorrect": [
+          22650
+        ]
+      }
+    }
   },
   "gpt-oss-20b-q5-k-m": {
     "model_path": "/mnt/c/llama.cpp-models/gpt-oss-20b-q5-k-m/gpt-oss-20b-Q5_K_M.gguf",
