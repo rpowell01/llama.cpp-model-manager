@@ -443,6 +443,80 @@ class TestServiceHealthProbes:
         assert result['mnemonic_proxy']['mcp']['running'] is True
 
 
+class TestZombieServiceCleanup:
+    """Regression tests: stopping a model must also stop proxy and MCP."""
+
+    @pytest.fixture
+    def app(self):
+        from flask import Flask
+        from webapp.routes.lifecycle import lifecycle_bp
+        app = Flask(__name__)
+        app.register_blueprint(lifecycle_bp)
+        app.config['TESTING'] = True
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return app.test_client()
+
+    @staticmethod
+    def _model(name='model-a', **overrides):
+        model = Mock()
+        model.name = name
+        model.port = 11000
+        model.mnemonic_proxy_enabled = True
+        model.mnemonic_proxy_port = 8096
+        model.mnemonic_proxy_mcp_enabled = True
+        model.mnemonic_proxy_mcp_port = 8133
+        model.llama_cpp_platform = 'auto'
+        for key, value in overrides.items():
+            setattr(model, key, value)
+        return model
+
+    def test_stop_model_kills_zombie_proxy_and_mcp(self):
+        """Lingering listeners on the proxy/MCP ports must be killed on stop."""
+        from flask import Flask, g
+        from webapp.routes.lifecycle import _kill_lingering_service_listeners
+
+        model = self._model()
+        registry = Mock()
+        registry.list_models.return_value = [model]
+
+        app = Flask(__name__)
+        with app.test_request_context('/'):
+            g.registry = registry
+            with patch('webapp.routes.lifecycle.get_proxy_manager', return_value=None), \
+                 patch('webapp.routes.lifecycle.find_pids_by_port') as mock_find, \
+                 patch('webapp.routes.lifecycle._kill_listener_process') as mock_kill:
+                mock_find.side_effect = lambda port: (
+                    [(222, 'linux')] if port == 8096 else [(333, 'linux')]
+                )
+                _kill_lingering_service_listeners('model-a')
+
+        probed_ports = {call.args[0] for call in mock_find.call_args_list}
+        killed_pids = {call.args[0] for call in mock_kill.call_args_list}
+        assert probed_ports == {8096, 8133}
+        assert killed_pids == {222, 333}
+
+    def test_stop_endpoint_invokes_listener_cleanup(self, client):
+        """The /api/stop route must run the lingering-listener cleanup."""
+        model = self._model()
+
+        with patch('webapp.routes.lifecycle._stop_model', return_value=(True, 111)), \
+             patch('webapp.routes.lifecycle.get_proxy_manager', return_value=None), \
+             patch('webapp.routes.lifecycle.remove_proxy_manager', return_value=False), \
+             patch('webapp.routes.lifecycle._kill_lingering_service_listeners') as mock_cleanup:
+            registry = Mock()
+            registry.is_remote_mode = False
+            registry.list_models.return_value = [model]
+            with patch('webapp.routes.lifecycle.get_model_registry', return_value=registry):
+                response = client.post('/api/stop', json={'model': 'model-a'})
+
+        assert response.status_code == 200
+        assert mock_cleanup.called
+        assert mock_cleanup.call_args.args[0] == 'model-a'
+
+
 class TestUpdateModelMeta:
     """Tests for the /api/update-model-meta endpoint."""
 

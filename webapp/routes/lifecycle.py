@@ -771,6 +771,111 @@ def api_start():
                 _start_timestamps.pop(model, None)
 
 
+def _kill_listener_process(pid: int, platform: str = 'auto') -> bool:
+    """Kill a process listening on a service port and wait for it to exit.
+
+    Used as a fallback when the in-memory proxy manager no longer owns the
+    process (e.g. after a Flask restart) but the listener is still alive.
+    """
+    try:
+        killed = _kill_tree(pid, platform=platform)
+    except Exception as exc:
+        log.warning("Failed to kill lingering service pid=%s: %s", pid, exc)
+        return False
+    if killed:
+        log.info("Killed lingering service pid=%s (platform=%s)", pid, platform)
+    return killed
+
+
+def _kill_lingering_service_listeners(model: str) -> None:
+    """Kill any lingering mnemonic-proxy/MCP listeners for a model.
+
+    The in-memory manager can lose ownership of a service (Flask restart,
+    unclean exit) while the process keeps holding its port. Such zombies
+    interfere with starting the proxy for another model, so the ports are
+    always verified after a stop request.
+
+    The lookup is namespace-agnostic on purpose: a model's configured platform
+    can be edited while it is stopped, so the surviving listener may live in
+    the *other* namespace than the one currently configured.
+    """
+    try:
+        registry = g.registry
+        model_dict = None
+        for m in registry.list_models():
+            if m.name == model:
+                model_dict = m
+                break
+    except Exception as exc:
+        log.warning("Could not resolve model '%s' for listener cleanup: %s", model, exc)
+        return
+
+    if model_dict is None:
+        return
+
+    proxy_port = int(getattr(model_dict, 'mnemonic_proxy_port', 8096) or 8096)
+    mcp_enabled = bool(getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False))
+    mcp_port = int(getattr(model_dict, 'mnemonic_proxy_mcp_port', 8133) or 8133)
+
+    # The proxy/MCP ports are shared defaults across models. Do not kill a
+    # service that another still-running model owns.
+    def _port_owned_by_other_model(port: int, kind: str) -> bool:
+        try:
+            for other in registry.list_models():
+                if other.name == model:
+                    continue
+                if kind == "proxy":
+                    if not getattr(other, 'mnemonic_proxy_enabled', False):
+                        continue
+                    other_port = int(getattr(other, 'mnemonic_proxy_port', 8096) or 8096)
+                else:
+                    if not getattr(other, 'mnemonic_proxy_mcp_enabled', False):
+                        continue
+                    other_port = int(getattr(other, 'mnemonic_proxy_mcp_port', 8133) or 8133)
+                if other_port != port:
+                    continue
+                other_manager = get_proxy_manager(other.name)
+                if other_manager is None:
+                    continue
+                # Prefer the tracked process liveness over the health probe:
+                # the health endpoint can time out while the proxy itself is
+                # still serving requests, which must not cause us to kill a
+                # proxy that belongs to a different model.
+                try:
+                    if other_manager._pid and other_manager._process_alive():
+                        return True
+                except Exception:
+                    if other_manager.is_running():
+                        return True
+        except Exception as exc:
+            log.warning("Could not determine ownership of port %s: %s", port, exc)
+        return False
+
+    def _kill_port_listeners(port: int, label: str, kind: str) -> None:
+        if _port_owned_by_other_model(port, kind):
+            log.info(
+                "Skipping %s cleanup on port %s: owned by another running model",
+                label, port,
+            )
+            return
+        try:
+            targets = find_pids_by_port(port)
+        except Exception as exc:
+            log.warning("Could not resolve listeners on port %s: %s", port, exc)
+            return
+        for pid, namespace in targets:
+            _kill_listener_process(pid, namespace)
+            add_log_entry(
+                f"🔧 killed lingering {label} pid={pid} on port {port} ({namespace})",
+                "blue",
+            )
+
+    if mcp_enabled:
+        _kill_port_listeners(mcp_port, "mnemonic-mcp", "mcp")
+
+    _kill_port_listeners(proxy_port, "mnemonic-proxy", "proxy")
+
+
 @lifecycle_bp.route("/api/stop", methods=["POST"])
 def api_stop():
     """Stop a model. In remote mode, models are pre-loaded and cannot be stopped."""
@@ -803,18 +908,26 @@ def api_stop():
 
     success, pid = _stop_model(model, port)
     
-    # Stop mnemonic-proxy if running for this model
+    # Stop mnemonic-proxy and MCP if enabled for this model
     if getattr(model_dict, 'mnemonic_proxy_enabled', False):
+        mcp_enabled = bool(getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False))
+
         proxy_manager = get_proxy_manager(model)
         if proxy_manager:
             # Stop MCP server first (if running)
-            if getattr(model_dict, 'mnemonic_proxy_mcp_enabled', False):
+            if mcp_enabled:
                 proxy_manager.stop_mcp()
                 add_log_entry(f"🔗 mnemonic-mcp stopped: {model}", "blue")
-            # Stop proxy
+            # Stop proxy (remove_proxy_manager calls manager.stop())
             remove_proxy_manager(model)
             add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
-    
+
+        # Always verify the service ports are free afterwards. The manager may
+        # have tracked a stale PID while a different process still owns the
+        # port (e.g. after a Flask restart or unclean exit). Leaving such a
+        # listener alive interferes with starting the proxy for another model.
+        _kill_lingering_service_listeners(model)
+
     return jsonify({"status": "stopped", "pid": pid, "success": success})
 
 
@@ -987,17 +1100,21 @@ def api_proxy_start(model):
 
 @lifecycle_bp.route("/api/proxy/stop/<model>", methods=["POST"])
 def api_proxy_stop(model):
-    """Stop mnemonic-proxy for a model."""
+    """Stop mnemonic-proxy (and its MCP server) for a model."""
     model = model.strip()
     if not model:
         return jsonify({"error": "Missing model name"}), 400
-    
+
     success = remove_proxy_manager(model)
     if success:
         add_log_entry(f"🔗 mnemonic-proxy stopped: {model}", "blue")
-        return jsonify({"status": "stopped", "model": model})
     else:
-        return jsonify({"status": "not_running", "model": model})
+        add_log_entry(f"🔗 mnemonic-proxy was not managed in this process: {model}", "orange")
+
+    # Also ensure no lingering listener survives on the configured ports.
+    _kill_lingering_service_listeners(model)
+
+    return jsonify({"status": "stopped", "model": model, "success": success})
 
 
 @lifecycle_bp.route("/api/proxy/logs/<model>", methods=["GET"])
@@ -1384,21 +1501,25 @@ def api_proxy_mcp_start(model):
 
 @lifecycle_bp.route("/api/proxy/mcp/stop/<model>", methods=["POST"])
 def api_proxy_mcp_stop(model):
-    """Stop mnemonic-mcp server for a model."""
+    """Stop mnemonic-mcp server for a model and clean up lingering listeners."""
     model = model.strip()
     if not model:
         return jsonify({"error": "Missing model name"}), 400
-    
+
     proxy_manager = get_proxy_manager(model)
-    if not proxy_manager:
-        return jsonify({"error": "mnemonic-proxy not running for this model", "model": model}), 404
-    
-    success = proxy_manager.stop_mcp()
-    if success:
-        add_log_entry(f"🔗 mnemonic-mcp stopped: {model}", "blue")
-        return jsonify({"status": "stopped", "model": model})
+    if proxy_manager:
+        success = proxy_manager.stop_mcp()
+        if success:
+            add_log_entry(f"🔗 mnemonic-mcp stopped: {model}", "blue")
+        else:
+            add_log_entry(f"🔗 mnemonic-mcp was not running: {model}", "orange")
     else:
-        return jsonify({"status": "not_running", "model": model})
+        # Manager not present – kill any process still listening on the model's MCP port.
+        success = False
+
+    _kill_lingering_service_listeners(model)
+
+    return jsonify({"status": "stopped", "model": model, "success": success})
 
 
 @lifecycle_bp.route("/api/proxy/mcp/status/<model>", methods=["GET"])
