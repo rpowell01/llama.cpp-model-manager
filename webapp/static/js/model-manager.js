@@ -249,7 +249,7 @@ function formatMetricsTooltip(metrics) {
  */
 function selectModel(modelName) {
   // Normalize the model name for consistent matching
-  const normalizedModelName = modelName.trim().toLowerCase();
+  const normalizedModelName = normalizeModelName(modelName);
   
   // Find the model using normalized comparison
   const modelData = currentModelRows.find(r => normalizeModelName(r.model) === normalizedModelName);
@@ -284,13 +284,16 @@ window.selectModel = selectModel;
  */
 function updateTileSelection(modelName) {
   // Remove selected class from all tiles
-  document.querySelectorAll('.tile').forEach(tile => {
+  const tiles = document.querySelectorAll('.tile');
+  tiles.forEach(tile => {
     tile.classList.remove('selected');
   });
   
   // Add selected class to the clicked tile
-  const normalizedModelName = modelName.trim().toLowerCase();
-  const selectedTile = document.querySelector(`.tile[data-model="${normalizedModelName}"]`);
+  const normalizedModelName = normalizeModelName(modelName);
+  const selectedTile = Array.from(tiles).find(
+    tile => normalizeModelName(tile.dataset.model) === normalizedModelName
+  );
   if (selectedTile) {
     selectedTile.classList.add('selected');
   }

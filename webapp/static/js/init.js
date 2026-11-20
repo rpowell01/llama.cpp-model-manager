@@ -238,6 +238,10 @@ function initHfModal() {
         if (data.error) {
           throw new Error(data.error);
         }
+        if (!data.results || data.results.length === 0) {
+          if (statusEl) statusEl.textContent = 'No matching GGUF repository found on Hugging Face.';
+          return;
+        }
         if (statusEl) statusEl.textContent = '';
         // Auto-select best repo based on downloads and likes
         const best = selectBestRepo(data.results);

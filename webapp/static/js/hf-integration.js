@@ -124,7 +124,9 @@ async function autoSearchAndSelectRepo(modelName) {
     }
     const data = await resp.json();
     if (!data.results || data.results.length === 0) {
-      throw new Error('No repositories found');
+      const statusEl = document.getElementById(`hf-search-status-${safeId(modelName)}`);
+      if (statusEl) statusEl.textContent = 'No matching GGUF repository found on Hugging Face.';
+      return;
     }
     const best = selectBestRepo(data.results);
     // Update model repo with the best candidate

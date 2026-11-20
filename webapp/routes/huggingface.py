@@ -32,7 +32,7 @@ def api_hf_repo_search():
             return jsonify({"error": f"HF search failed: HTTP {resp.status_code}"}), 500
         hf_models = resp.json()
         if not hf_models:
-            return jsonify({"error": f"No model found on Hugging Face for '{model}'"}), 404
+            return jsonify({"status": "ok", "results": []})
 
         results = []
         for hf_model in hf_models:
@@ -51,7 +51,7 @@ def api_hf_repo_search():
                         "likes": hf_model.get("likes", 0)
                     })
         if not results:
-            return jsonify({"error": f"No GGUF file found for '{model}' on Hugging Face"}), 404
+            return jsonify({"status": "ok", "results": []})
         return jsonify({"status": "ok", "results": results})
     except Exception as e:
         log.error(f"HF search error: {e}")
