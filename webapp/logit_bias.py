@@ -172,9 +172,8 @@ def resolve_overthinking_logit_bias(
             "No overthinking penalty entries resolve to one token; edit the list to remove multi-token entries"
         )
 
-    # Serialize each token/bias pair as a separate --logit-bias flag.
-    # llama.cpp parses --logit-bias as a single TOKEN_ID±BIAS per flag occurrence.
-    # Comma-separated values in one flag are silently ignored after the first entry.
+    # Serialize token/bias pairs as comma-separated values in a single --logit-bias flag.
+    # llama.cpp expects: --logit-bias TOKEN_ID±BIAS,TOKEN_ID±BIAS,...
     # Zero bias values are omitted entirely since llama.cpp requires explicit sign (+0/-0).
     # The bias string from _format_bias already includes the sign (e.g., "-2", "-2.0").
     bias_value = float(bias)
@@ -182,7 +181,7 @@ def resolve_overthinking_logit_bias(
         logit_bias = ""
     else:
         # bias already has the sign (e.g., "-2"), so use it directly
-        logit_bias = "\n".join(f"--logit-bias {token_id}{bias}" for token_id in token_ids)
+        logit_bias = "--logit-bias " + ",".join(f"{token_id}{bias}" for token_id in token_ids)
 
     meta["overthinking_penalty_cache"] = cache
     meta["logit_bias"] = logit_bias
