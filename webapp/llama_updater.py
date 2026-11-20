@@ -462,6 +462,17 @@ def update_backends(
                     for item in extracted_items:
                         shutil.move(str(item), str(target_dir / item.name))
                 
+                # Make all extracted binaries executable (chmod +x)
+                # This ensures llama-server, llama-tokenize, llama-cli, etc. can be executed
+                for item in target_dir.rglob('*'):
+                    if item.is_file() and not item.name.endswith(('.so', '.dll', '.txt', '.md', '.json', '.h', '.hpp')):
+                        # Check if it's an executable (no extension or known binary extensions)
+                        # We'll make everything executable except shared libraries and text files
+                        try:
+                            item.chmod(item.stat().st_mode | 0o111)  # Add execute permissions
+                        except Exception:
+                            pass  # Ignore chmod failures
+                
                 # Verify llama-server exists in the target
                 server_bin = target_dir / "llama-server"
                 if not server_bin.exists():
