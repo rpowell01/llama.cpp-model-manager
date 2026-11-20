@@ -1129,9 +1129,9 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             cmd += ["--reasoning-budget-message", reasoning_budget_message]
 
     # Overthinking penalty: resolve each exact entry independently with the
-    # tokenizer from the selected llama.cpp build. Each token/bias pair is
-    # emitted as a separate --logit-bias flag (newline-separated in logit_bias).
-    # llama.cpp parses --logit-bias as a single TOKEN_ID±BIAS per flag occurrence.
+    # tokenizer from the selected llama.cpp build. Token/bias pairs are
+    # emitted as a single --logit-bias flag with comma-separated values.
+    # llama.cpp expects: --logit-bias TOKEN_ID±BIAS,TOKEN_ID±BIAS,...
     if meta.get("overthinking_penalty_enabled", DEFAULTS["overthinking_penalty_enabled"]):
         tokenizer_path = _find_llama_tokenizer(Path(llama_server_binary))
         logit_bias, skipped = resolve_overthinking_logit_bias(
@@ -1146,12 +1146,9 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
                 model,
                 ", ".join(f"{word!r} ({len(tokens)} tokens)" for word, tokens in skipped.items()),
             )
-        # logit_bias contains newline-separated --logit-bias flags; split and add each
+        # logit_bias is a single --logit-bias flag with comma-separated values
         if logit_bias:
-            for flag in logit_bias.splitlines():
-                flag = flag.strip()
-                if flag:
-                    cmd += flag.split()
+            cmd += logit_bias.split()
         _persist_overthinking_resolution(model, meta)
     
     # CPU-only optimizations
