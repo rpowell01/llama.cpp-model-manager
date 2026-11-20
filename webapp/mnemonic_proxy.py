@@ -758,6 +758,15 @@ class MnemonicProxyManager:
         """True if the tracked proxy process still exists."""
         if not self._pid:
             return False
+        
+        # First check if we have a subprocess.Popen object and it's still running
+        if self._process is not None:
+            if self._process.poll() is None:
+                return True
+            # Process has exited
+            return False
+        
+        # Fallback: check if PID exists (for cases where _process is not tracked)
         try:
             if WINDOWS or (WSL and False):
                 cmd_path = "/mnt/c/Windows/System32/cmd.exe" if WSL else "cmd.exe"
