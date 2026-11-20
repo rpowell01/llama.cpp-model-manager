@@ -548,6 +548,18 @@ class MnemonicProxyManager:
                 data_dir = self._resolve_data_dir()
                 data_dir.mkdir(parents=True, exist_ok=True)
 
+                # Clean up stale lock files that might prevent proxy startup
+                # The mnemonic-proxy binary creates a lock file in kv-archive/.lock
+                # to prevent concurrent access. If a previous proxy didn't shut down
+                # cleanly, this lock file can cause "data directory is in use" errors.
+                kv_archive_lock = data_dir / "kv-archive" / ".lock"
+                if kv_archive_lock.exists():
+                    try:
+                        kv_archive_lock.unlink()
+                        log.info(f"Removed stale kv-archive lock file for {self.model_name}: {kv_archive_lock}")
+                    except Exception as e:
+                        log.warning(f"Failed to remove stale kv-archive lock file for {self.model_name}: {e}")
+
                 # Capture stdout/stderr - DEVNULL here is why startup failures
                 # used to be undiagnosable.
                 self._log_handle = open(self.log_path, "a", encoding="utf-8")
@@ -742,6 +754,18 @@ class MnemonicProxyManager:
                     pass  # Give up, process will be reaped by init
             except Exception:
                 pass  # Ignore any other errors during reap
+        
+        # Clean up stale lock files in data directory
+        # This helps prevent "data directory is in use" errors on next start
+        try:
+            data_dir = self._resolve_data_dir()
+            kv_archive_lock = data_dir / "kv-archive" / ".lock"
+            if kv_archive_lock.exists():
+                kv_archive_lock.unlink()
+                log.debug(f"Cleaned up kv-archive lock file for {self.model_name}: {kv_archive_lock}")
+        except Exception:
+            pass  # Ignore cleanup errors
+        
         self._pid = None
         self._process = None
         self._start_time = None
