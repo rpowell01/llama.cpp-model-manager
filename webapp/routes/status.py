@@ -342,6 +342,7 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
             # Use cached port listener check first (avoids repeated netstat calls)
             port_has_listener = _get_cached_port_listener(port, llama_cpp_platform)
             
+            active = False
             if port_has_listener:
                 # Port has a listener - check if the specific model is ready
                 active = _check_model_ready(port, model)
