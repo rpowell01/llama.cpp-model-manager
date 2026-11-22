@@ -108,6 +108,26 @@ def main() -> None:
     # Configure logging with SSE handler for web console
     from webapp.state import add_log_entry
     
+    # Suppress Werkzeug access logs for frequent polling endpoints
+    # (e.g., /api/status/<model> called every 2s during model startup)
+    werkzeug_logger = logging.getLogger("werkzeug")
+    
+    class StatusEndpointFilter(logging.Filter):
+        """Filter to suppress access logs for frequent polling endpoints."""
+        def filter(self, record):
+            # Check if this is an access log message for endpoints we want to suppress
+            msg = record.getMessage()
+            if "GET" in msg:
+                # Suppress individual model status checks (polled every 2s during startup)
+                if "/api/status/" in msg:
+                    return False
+                # Suppress proxy archive journal polling
+                if "/api/proxy/archive/journal" in msg:
+                    return False
+            return True
+    
+    werkzeug_logger.addFilter(StatusEndpointFilter())
+    
     class SSELogHandler(logging.Handler):
         """Custom logging handler that forwards logs to SSE clients."""
         def emit(self, record):

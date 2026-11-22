@@ -23,7 +23,9 @@
   --btn-search: #3498db;
   --btn-goto: #003e99;
   --btn-export: #4a4a4a;
-  --btn-agent-config:#003e99;
+   --btn-agent-config:#003e99;
+   --accent: #1d6fd6;
+   --surface3: #244a7a;
   }
 
 /* Theme: Dark (default) */
@@ -34,8 +36,10 @@
   --surface-spec: #2e2447;
   --text: #e0e0e0;
   --text2: #a0a0b8;
-  --chart-text: #ffffff;
-  --chart-grid: #9c9cc0;
+   --chart-text: #ffffff;
+   --chart-grid: #9c9cc0;
+   --accent: #1d6fd6;
+   --surface3: #4a70a8;
 }
 
 /* Theme: Light */
@@ -48,6 +52,8 @@
   --text2: #666666;
   --chart-text: #333333;
   --chart-grid: #cccccc;
+  --accent: #3498db;
+  --surface3: #81a5d3;
 }
 
 /* Theme: Solarized Dark */
@@ -60,6 +66,8 @@
   --text2: #93a1a1;
   --chart-text: #ffffff;
   --chart-grid: #404060;
+  --accent: #073642;
+  --surface3: #586e75;
 }
 
 /* Theme: Nord */
@@ -72,4 +80,6 @@
   --text2: #a5abb6;
   --chart-text: #ffffff;
   --chart-grid: #404060;
+  --accent: #3498db;
+  --surface3: #3c4558;
 }
