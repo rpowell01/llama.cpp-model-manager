@@ -90,11 +90,13 @@ if ($enableIntelOneAPI) {
     $env:SYCL_DEVICE_FILTER = "opencl:gpu"
     $env:GGML_SYCL_USE_LEVEL_ZERO_API = "1"
     $env:GGML_VK_DISABLE_COOPMAT = "1"
+    $env:GGML_OPENVINO_DEVICE="NPU"
 } else {
 		$env:ONEAPI_DEVICE_SELECTOR = "opencl:gpu"
-    $env:SYCL_DEVICE_FILTER = "opencl:gpu"
-	  $env:GGML_SYCL_USE_LEVEL_ZERO_API = "0"
+        $env:SYCL_DEVICE_FILTER = "opencl:gpu"
+	    $env:GGML_SYCL_USE_LEVEL_ZERO_API = "0"
 		$env:GGML_VK_DISABLE_COOPMAT = "1"
+        $env:GGML_OPENVINO_DEVICE="NPU"
     Write-Host "Intel oneAPI configuration disabled" -ForegroundColor Yellow
 }
 

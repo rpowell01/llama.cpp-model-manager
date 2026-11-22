@@ -28,6 +28,7 @@ PYTHON_EXEC="python3"
 export ONEAPI_DEVICE_SELECTOR="opencl:gpu"
 export SYCL_DEVICE_FILTER="opencl:gpu"
 export GGML_SYCL_USE_LEVEL_ZERO_API="0"
+export GGML_OPENVINO_DEVICE="GPU"
 
 # Colors for output
 RED='\033[0;31m'

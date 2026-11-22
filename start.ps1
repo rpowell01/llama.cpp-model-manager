@@ -33,6 +33,7 @@ $PythonExec = "python"
 $env:ONEAPI_DEVICE_SELECTOR = "opencl:gpu"
 $env:SYCL_DEVICE_FILTER = "opencl:gpu"
 $env:GGML_SYCL_USE_LEVEL_ZERO_API = "0"
+$env:GGML_OPENVINO_DEVICE="GPU"
 
 # Colors for output
 $Red = [ConsoleColor]::Red
