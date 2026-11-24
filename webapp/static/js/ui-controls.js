@@ -4651,11 +4651,10 @@ function setupHideModelListeners() {
     input.addEventListener('change', function() {
       const modelName = this.dataset.model;
       if (window.hiddenModelsCache) {
-        const idx = window.hiddenModelsCache.indexOf(modelName);
         if (this.checked) {
-          if (idx === -1) window.hiddenModelsCache.push(modelName);
+          window.hiddenModelsCache.add(modelName);
         } else {
-          if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
+          window.hiddenModelsCache.delete(modelName);
         }
       }
       // Re-render tiles with updated hidden models cache
