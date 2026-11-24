@@ -457,6 +457,9 @@ function renderTiles(rows, dlMap, query) {
   // Remember the inputs so tile preferences can be re-applied without refetching
   lastTileRows = rows;
   lastTileDlMap = dlMap;
+  window.lastTileRows = rows;
+  window.lastTileDlMap = dlMap;
+  window.lastQuery = query;
 
   // Track which models have their "Hide Model" checkbox checked
   // This persists across renders so we can filter properly
