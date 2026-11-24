@@ -4600,47 +4600,7 @@ async function showProxyMetrics(model) {
     </div>
   `;
 
-// Setup event listeners for .hide-model-input checkboxes
-  document.querySelectorAll('.hide-model-input').forEach(input => {
-    input.addEventListener('change', function() {
-      const modelName = normalizeModelName(input.dataset.model);
-      if (window.hiddenModelsCache) {
-        const idx = window.hiddenModelsCache.indexOf(modelName);
-        if (this.checked) {
-          if (idx === -1) window.hiddenModelsCache.push(modelName);
-        } else {
-          if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
-        }
-      }
-      // Re-render tiles after changing hidden models
-      renderTiles(window.modelRows, window.dlMap, window.search.value.toLowerCase());
-    });
-  }); // "Hide Model" checkboxes in each tile
-  // Initialize hidden models cache if not already set
-  if (!window.hiddenModelsCache) window.hiddenModelsCache = new Set();
-
-  function setupHideModelListeners() {
-    const hideModelInputs = document.querySelectorAll('.hide-model-input');
-    hideModelInputs.forEach(input => {
-      input.addEventListener('change', function() {
-        const modelName = this.dataset.model;
-        if (window.hiddenModelsCache) {
-          const idx = window.hiddenModelsCache.indexOf(modelName);
-          if (this.checked) {
-            if (idx === -1) window.hiddenModelsCache.push(modelName);
-          } else {
-            if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
-          }
-        }
-        // Re-render tiles with updated hidden models cache
-        if (window.renderTiles) {
-          window.renderTiles(window.lastTileRows, window.lastTileDlMap, window.lastQuery);
-        }
-      });
-    });
-  }
-  
-  // Remove any existing modal
+// Remove any existing modal
   const existing = document.getElementById('proxy-metrics-modal');
   if (existing) existing.remove();
   
@@ -4682,6 +4642,29 @@ async function showProxyMetrics(model) {
   });
   observer.observe(document.body, { childList: true, subtree: true });
 }
-
+ 
+// Setup event listeners for "Hide Model" checkboxes in tiles
+// This is called from init.js and also when tiles are re-rendered
+function setupHideModelListeners() {
+  const hideModelInputs = document.querySelectorAll('.hide-model-input');
+  hideModelInputs.forEach(input => {
+    input.addEventListener('change', function() {
+      const modelName = this.dataset.model;
+      if (window.hiddenModelsCache) {
+        const idx = window.hiddenModelsCache.indexOf(modelName);
+        if (this.checked) {
+          if (idx === -1) window.hiddenModelsCache.push(modelName);
+        } else {
+          if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
+        }
+      }
+      // Re-render tiles with updated hidden models cache
+      if (window.renderTiles) {
+        window.renderTiles(window.lastTileRows, window.lastTileDlMap, window.lastQuery);
+      }
+    });
+  });
+}
+ 
 window.showProxyMetrics = showProxyMetrics;
 window.setupHideModelListeners = setupHideModelListeners;
