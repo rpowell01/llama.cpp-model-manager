@@ -4599,10 +4599,6 @@ async function showProxyMetrics(model) {
       </div>
     </div>
   `;
-  
-  // Remove any existing modal
-  const existing = document.getElementById('proxy-metrics-modal');
-  if (existing) existing.remove();
 
 // Setup event listeners for .hide-model-input checkboxes
   document.querySelectorAll('.hide-model-input').forEach(input => {
@@ -4619,7 +4615,7 @@ async function showProxyMetrics(model) {
       // Re-render tiles after changing hidden models
       renderTiles(window.modelRows, window.dlMap, window.search.value.toLowerCase());
     });
-  }); "Hide Model" checkboxes in each tile
+  }); // "Hide Model" checkboxes in each tile
   // Initialize hidden models cache if not already set
   if (!window.hiddenModelsCache) window.hiddenModelsCache = new Set();
 
@@ -4688,3 +4684,4 @@ async function showProxyMetrics(model) {
 }
 
 window.showProxyMetrics = showProxyMetrics;
+window.setupHideModelListeners = setupHideModelListeners;
