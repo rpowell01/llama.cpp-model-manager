@@ -141,9 +141,25 @@ function initTileControls() {
     hideSpecCheckbox.addEventListener('change', function() {
       updateTilePrefs({ hideSpecModels: this.checked });
     });
-} else {
+  } else {
      console.warn('Hide speculative models control not found');
-   }
+    }
+
+  const hideModelCheckbox = document.getElementById('hideModel');
+  if (hideModelCheckbox) {
+    hideModelCheckbox.checked = tilePrefs.hideModel;
+    hideModelCheckbox.addEventListener('change', function() {
+      updateTilePrefs({ hideModel: this.checked });
+      // Re-render tiles with new hideModel preference
+      if (window.renderTiles) {
+        renderTiles(lastTileRows, lastTileDlMap, document.getElementById('search').value.toLowerCase());
+      }
+    });
+  } else {
+     console.warn('Hide marked models control not found');
+    }
+  // Setup event listeners for per-tile "Hide Model" checkboxes
+  setupHideModelListeners();
 }
 
 // ──────────────────────────────────────────────────────────────

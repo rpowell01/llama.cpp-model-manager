@@ -29,7 +29,7 @@ const TILE_SORT_ORDERS = [
 const TILE_SORT_VALUES = TILE_SORT_ORDERS.map((o) => o.value);
 
 function loadTilePrefs() {
-  const fallback = { sortOrder: "name", hideSpecModels: false };
+  const fallback = { sortOrder: "name", hideSpecModels: false, hideModel: false };
   try {
     const raw = localStorage.getItem(TILE_PREFS_KEY);
     if (!raw) return fallback;
@@ -39,6 +39,7 @@ function loadTilePrefs() {
         ? parsed.sortOrder
         : fallback.sortOrder,
       hideSpecModels: !!parsed?.hideSpecModels,
+      hideModel: !!parsed?.hideModel,
     };
   } catch (e) {
     console.warn("Failed to load tile preferences:", e);
@@ -457,6 +458,10 @@ function renderTiles(rows, dlMap, query) {
   lastTileRows = rows;
   lastTileDlMap = dlMap;
 
+  // Track which models have their "Hide Model" checkbox checked
+  // This persists across renders so we can filter properly
+  const hiddenModels = (hiddenModelsCache = window.hiddenModelsCache) || new Set();
+
   // Deduplicate: keep the first occurrence of each normalized model name
   // normalizeModelName is provided by model-manager.js (loaded before ui-controls.js)
   const seen = new Set();
@@ -472,7 +477,13 @@ function renderTiles(rows, dlMap, query) {
   const filtered = deduplicated.filter((r) => {
     if (tilePrefs.hideSpecModels && r.speculative_decoding_model) return false;
     const q = query.toLowerCase();
-    return r.model.toLowerCase().includes(q) || String(r.port).includes(q);
+    const modelMatch = r.model.toLowerCase().includes(q) || String(r.port).includes(q);
+
+    // If hideModel is enabled, filter out models marked as hidden
+    const isHidden = hiddenModels.has(normalizeModelName(r.model));
+    if (tilePrefs.hideModel && isHidden) return false;
+
+    return modelMatch;
   });
 
   // Sort by the selected order (alphabetical by default)
@@ -706,6 +717,10 @@ function renderTiles(rows, dlMap, query) {
             </div>
           </div>
           ${r.comment ? `<div class="tile-comment">${he(r.comment)}</div>` : ""}
+          <div class="hide-model-chip">
+            <input type="checkbox" class="hide-model-input" ${r.hideModel ? "checked" : ""} data-model="${normalizeModelName(r.model)}">
+            <label for="hide-model-${normalizeModelName(r.model)}">Hide Model</label>
+          </div>
         </div>`;
 
       return (
@@ -1145,6 +1160,9 @@ async function renderPanelProperties(data, modelName) {
     addEditableWithBrowse("Multimodal Projector File", "mmproj", data.mmproj || "", "file");
     addEditable("Use Multimodal Projector Auto", "mmproj_auto", data.mmproj_auto !== false, "checkbox");
     addEditable("Multimodal Projector Offload", "mmproj_offload", data.mmproj_offload !== false, "checkbox");
+    
+    // Speculative Decoding Model
+    addEditable("Speculative Decoding Model", "speculative_decoding_model", data.speculative_decoding_model, "checkbox");
 
     html += `</div></div>`;
 
@@ -1507,7 +1525,6 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
     addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
     addEditable("Auto-download", "auto_download", data.auto_download, "checkbox");
-    addEditable("Speculative Decoding Model", "speculative_decoding_model", data.speculative_decoding_model, "checkbox");
     
     // Custom HTTP Header for Kilo Code Config
     addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
@@ -4582,6 +4599,50 @@ async function showProxyMetrics(model) {
       </div>
     </div>
   `;
+  
+  // Remove any existing modal
+  const existing = document.getElementById('proxy-metrics-modal');
+  if (existing) existing.remove();
+
+// Setup event listeners for .hide-model-input checkboxes
+  document.querySelectorAll('.hide-model-input').forEach(input => {
+    input.addEventListener('change', function() {
+      const modelName = normalizeModelName(input.dataset.model);
+      if (window.hiddenModelsCache) {
+        const idx = window.hiddenModelsCache.indexOf(modelName);
+        if (this.checked) {
+          if (idx === -1) window.hiddenModelsCache.push(modelName);
+        } else {
+          if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
+        }
+      }
+      // Re-render tiles after changing hidden models
+      renderTiles(window.modelRows, window.dlMap, window.search.value.toLowerCase());
+    });
+  }); "Hide Model" checkboxes in each tile
+  // Initialize hidden models cache if not already set
+  if (!window.hiddenModelsCache) window.hiddenModelsCache = new Set();
+
+  function setupHideModelListeners() {
+    const hideModelInputs = document.querySelectorAll('.hide-model-input');
+    hideModelInputs.forEach(input => {
+      input.addEventListener('change', function() {
+        const modelName = this.dataset.model;
+        if (window.hiddenModelsCache) {
+          const idx = window.hiddenModelsCache.indexOf(modelName);
+          if (this.checked) {
+            if (idx === -1) window.hiddenModelsCache.push(modelName);
+          } else {
+            if (idx !== -1) window.hiddenModelsCache.splice(idx, 1);
+          }
+        }
+        // Re-render tiles with updated hidden models cache
+        if (window.renderTiles) {
+          window.renderTiles(window.lastTileRows, window.lastTileDlMap, window.lastQuery);
+        }
+      });
+    });
+  }
   
   // Remove any existing modal
   const existing = document.getElementById('proxy-metrics-modal');
