@@ -463,7 +463,8 @@ function renderTiles(rows, dlMap, query) {
 
   // Track which models have their "Hide Model" checkbox checked
   // This persists across renders so we can filter properly
-  const hiddenModels = (hiddenModelsCache = window.hiddenModelsCache) || new Set();
+  window.hiddenModelsCache = window.hiddenModelsCache || new Set();
+  const hiddenModels = window.hiddenModelsCache;
 
   // Deduplicate: keep the first occurrence of each normalized model name
   // normalizeModelName is provided by model-manager.js (loaded before ui-controls.js)
