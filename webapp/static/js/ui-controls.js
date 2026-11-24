@@ -751,6 +751,9 @@ function renderTiles(rows, dlMap, query) {
 
   // Fetch and update proxy health badges for all tiles with enabled proxy
   updateAllProxyHealthBadges();
+
+  // Attach event listeners to newly created "Hide Model" checkboxes
+  setupHideModelListeners();
 }
 
 /**
