@@ -3417,7 +3417,7 @@
   },
   "mmproj": {
     "model_path": "/mnt/c/llama.cpp-models/inkling-2-mini-apex-i-miniplus-v2.1/mmproj/mmproj-BF16.gguf",
-    "repo": "",
+    "repo": "koboldcpp/mmproj",
     "filename": "mmproj-BF16.gguf",
     "expected_size": 641805760,
     "port": 0,
@@ -4420,7 +4420,7 @@
     "swa_full": false,
     "log_verbosity": 4,
     "reuse_port": true,
-    "chat_template_file": "",
+    "chat_template_file": "c:/llama.cpp-models/minicpm-v-4.7-35b-a3b-ad-iq4-xs-iq3-s/chat_template.jinja",
     "mmproj": "c:/llama.cpp-models/minicpm-v-4.7-35b-a3b-ad-iq4-xs-iq3-s/mmproj/mmproj-model-f16-4x.gguf",
     "mmproj_auto": true,
     "mmproj_offload": false,

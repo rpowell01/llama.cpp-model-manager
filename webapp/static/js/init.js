@@ -99,9 +99,9 @@ function initSearchDebounce() {
 // ──────────────────────────────────────────────────────────────
 function initTileControls() {
   // Load tile preferences from localStorage
-  const TILE_PREFS_KEY = 'llamaweb_tile_prefs';
+  const TILE_PREFS_KEY = 'tile_prefs';
   function loadTilePrefs() {
-    const fallback = { sortOrder: 'name', hideSpecModels: false };
+    const fallback = { sortOrder: 'name', hideSpecModels: false, hideModel: false };
     try {
       const raw = localStorage.getItem(TILE_PREFS_KEY);
       if (!raw) return fallback;
@@ -109,6 +109,7 @@ function initTileControls() {
       return {
         sortOrder: parsed?.sortOrder || fallback.sortOrder,
         hideSpecModels: !!parsed?.hideSpecModels,
+        hideModel: !!parsed?.hideModel,
       };
     } catch (e) {
       console.warn('Failed to load tile preferences:', e);

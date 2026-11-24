@@ -17,6 +17,7 @@
  * Persisted in localStorage so the choice survives a page reload.
  */
 const TILE_PREFS_KEY = "tile_prefs";
+const HIDDEN_MODELS_CACHE_KEY = "hidden_models_cache";
 
 // Single source of truth for sort orders - values and their labels
 const TILE_SORT_ORDERS = [
@@ -462,9 +463,19 @@ function renderTiles(rows, dlMap, query) {
   window.lastQuery = query;
 
   // Track which models have their "Hide Model" checkbox checked
-  // This persists across renders so we can filter properly
-  window.hiddenModelsCache = window.hiddenModelsCache || new Set();
+  // This persists across renders and page reloads via localStorage
+  if (!window.hiddenModelsCache) {
+    try {
+      const stored = localStorage.getItem(HIDDEN_MODELS_CACHE_KEY);
+      window.hiddenModelsCache = stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch (e) {
+      console.warn("Failed to load hidden models cache from localStorage:", e);
+      window.hiddenModelsCache = new Set();
+    }
+  }
   const hiddenModels = window.hiddenModelsCache;
+  // Update the hidden model count display
+  updateHiddenModelCount();
 
   // Deduplicate: keep the first occurrence of each normalized model name
   // normalizeModelName is provided by model-manager.js (loaded before ui-controls.js)
@@ -1281,7 +1292,6 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
       "Must be OFF (false) for cache reload - SWA breaks cache persistence (see llama.cpp PR #13194)");
     
     // Chat template file with browse button
-    addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
     html += `</div></div>`;
 
@@ -1540,6 +1550,9 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     // Use Generation Parameters checkbox
     const useGenParams = data.use_generation_params ?? true;
     addEditable("Use Generation Parameters", "use_generation_params", useGenParams, "checkbox");
+    
+    // Chat Template File with browse button
+    addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
     // Generation / Sampling Parameters (wrapped in a container for show/hide)
     html += `<div class="panel-item" id="generation-params-container" style="${useGenParams ? '' : 'display: none;'}">`;
@@ -4024,8 +4037,10 @@ async function showProxyMetrics(model) {
   
   function formatJournalEvent(event) {
     const evType = event.event;
-    const time = event.timestamp ? new Date(event.timestamp * 1000).toLocaleTimeString() : 'N/A';
-    const conv = event.conv ? `${String(event.conv).slice(0, 8)}...` : 'N/A';
+    // timestamp is already an ISO-8601 string from the backend, don't multiply by 1000
+    const time = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : 'N/A';
+    // Use conversation_id from normalized event, fallback to conv
+    const conv = event.conversation_id ? `${String(event.conversation_id).slice(0, 8)}...` : (event.conv ? `${String(event.conv).slice(0, 8)}...` : 'N/A');
     
     // Helper to get data from event.data object with fallback to event itself
     const d = event.data || {};
@@ -4636,7 +4651,23 @@ async function showProxyMetrics(model) {
   // Initial fetch
   await fetchAllData();
   
-  // Start auto-refresh
+  // Start auto-refresh (paused when user scrolls in journal table)
+  let scrollTimeout = null;
+  const journalTable = document.getElementById('journal-events-table');
+  if (journalTable) {
+    journalTable.addEventListener('scroll', () => {
+      // Pause auto-refresh when scrolling
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+      // Resume auto-refresh after 3 seconds of no scrolling
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        refreshInterval = setInterval(fetchAllData, 5000);
+      }, 3000);
+    });
+  }
   refreshInterval = setInterval(fetchAllData, 5000);
   countdownInterval = startCountdown();
   
@@ -4650,6 +4681,15 @@ async function showProxyMetrics(model) {
   observer.observe(document.body, { childList: true, subtree: true });
 }
  
+// Update the hidden model count display
+function updateHiddenModelCount() {
+  const countEl = document.getElementById('hiddenModelCount');
+  if (countEl && window.hiddenModelsCache) {
+    const count = window.hiddenModelsCache.size;
+    countEl.textContent = count > 0 ? `(${count})` : '';
+  }
+}
+
 // Setup event listeners for "Hide Model" checkboxes in tiles
 // This is called from init.js and also when tiles are re-rendered
 function setupHideModelListeners() {
@@ -4663,7 +4703,15 @@ function setupHideModelListeners() {
         } else {
           window.hiddenModelsCache.delete(modelName);
         }
+        // Persist to localStorage
+        try {
+          localStorage.setItem(HIDDEN_MODELS_CACHE_KEY, JSON.stringify([...window.hiddenModelsCache]));
+        } catch (e) {
+          console.warn("Failed to save hidden models cache to localStorage:", e);
+        }
       }
+      // Update the hidden model count display
+      updateHiddenModelCount();
       // Re-render tiles with updated hidden models cache
       if (window.renderTiles) {
         window.renderTiles(window.lastTileRows, window.lastTileDlMap, window.lastQuery);
