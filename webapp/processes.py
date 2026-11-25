@@ -1416,5 +1416,12 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
             if spec_draft_type_v and spec_draft_type_v != "f16":
                 cmd += ["--spec-draft-type-v", spec_draft_type_v]
 
+    # Custom model start parameter string
+    custom_start_param = meta.get("custom_model_start_param", "")
+    if custom_start_param:
+        # Split by whitespace and add each token to the command
+        for param in custom_start_param.split():
+            cmd.append(param)
+    
     log.info(f"Build command for {model}: {cmd}")
     return cmd

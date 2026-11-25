@@ -1541,7 +1541,12 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     
     addEditable("Jinja Tool Parsing", "jinja", data.jinja, "checkbox");
     addEditable("Reasoning Preserve", "reasoning_preserve", data.reasoning_preserve, "checkbox");
-    addEditable("Auto-download", "auto_download", data.auto_download, "checkbox");
+    
+    // Custom model start parameter string (new field)
+    addEditable("Custom model start parameter string", "custom_model_start_param", data.custom_model_start_param || "", "text");
+    
+    // Chat Template File with browse button (moved below Reasoning Preserve)
+    addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
     // Custom HTTP Header for Kilo Code Config
     addEditable("Custom Header Key", "custom_header_key", data.custom_header_key || "", "text");
@@ -1550,9 +1555,6 @@ addEditableWithBrowse("Slot Save Path", "slot_save_path", data.slot_save_path, "
     // Use Generation Parameters checkbox
     const useGenParams = data.use_generation_params ?? true;
     addEditable("Use Generation Parameters", "use_generation_params", useGenParams, "checkbox");
-    
-    // Chat Template File with browse button
-    addEditableWithBrowse("Chat Template File", "chat_template_file", data.chat_template_file, "file");
     
     // Generation / Sampling Parameters (wrapped in a container for show/hide)
     html += `<div class="panel-item" id="generation-params-container" style="${useGenParams ? '' : 'display: none;'}">`;
@@ -1959,8 +1961,11 @@ content.querySelectorAll('.panel-section h3').forEach(h3 => {
       'keep': 32768,
       'swa_full': false,
       
-      // Chat template
-      'chat_template_file': '',
+       // Custom model start parameter string
+       'custom_model_start_param': '',
+       
+       // Chat template
+       'chat_template_file': '',
       
       // Multimodal projector
       'mmproj': '',
