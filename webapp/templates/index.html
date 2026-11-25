@@ -105,8 +105,7 @@
   <button class="btn-goto" id="refreshBtn">↻ Refresh</button>
   <button class="btn-stop" id="shutdownBtn">⏻ Shutdown</button>
   <button class="btn-add" id="addModelBtn">➕ Add Model</button>
-  <button class="btn-goto" id="exportStatusBtn" onclick="openExportConfigModal()">📊 Metrics Export Cfg</button>
-  <button class="btn-goto" id="platformBackendBtn" onclick="openPlatformBackendConfigModal()">⚙️ llama.cpp Platform/Backend</button>
+  <button class="btn-goto" id="globalConfigBtn" onclick="openGlobalConfigModal()">⚙️ Global Configuration</button>
   <button class="btn-goto" id="performanceBtn" onclick="showPerformanceModal()">📈 Performance</button>
 </div>
 
@@ -265,118 +264,122 @@
       </div>
     </div>
 
-<!-- Export Configuration Modal -->
-    <div id="export-config-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Export configuration dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;" aria-hidden="true">
-      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 560px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h3 style="margin: 0; color: var(--text);">Metrics Export Configuration</h3>
-          <button id="export-config-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;" aria-label="Close">&times;</button>
+<!-- Global Configuration Modal (combined Metrics Export + Platform/Backend) -->
+    <div id="global-config-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Global configuration dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;" aria-hidden="true">
+      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 1200px; width: 95%; max-height: calc(100vh - 2rem); overflow: hidden; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--surface2); flex-shrink: 0;">
+          <h3 style="margin: 0; color: var(--text); font-size: 1.1rem;">⚙️ Global Configuration</h3>
+          <button id="global-config-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;" aria-label="Close">&times;</button>
         </div>
-        <p id="export-config-description" style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
-          Controls automatic periodic metrics export for running models.
-        </p>
-        <form id="export-config-form">
-          <div style="margin-bottom: 0.75rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--text); cursor: pointer;">
-              <input type="checkbox" id="export-config-enabled"> Enabled
-            </label>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="display: block; font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Interval (seconds)</label>
-            <input type="number" id="export-config-interval" min="1" max="3600" style="width: 120px; padding: 0.4rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="display: block; font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Models (comma-separated, empty = all running)</label>
-            <input type="text" id="export-config-models" placeholder="e.g. model-a, model-b" style="width: 100%; padding: 0.4rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
-          </div>
-          <div id="export-config-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem;"></div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button type="button" id="export-config-refresh" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Refresh</button>
-            <button type="submit" id="export-config-save" style="padding: 0.5rem 1rem; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Save changes</button>
-          </div>
-        </form>
-      </div>
-    </div>
 
-<!-- Platform/Backend Configuration Modal -->
-    <div id="platform-backend-config-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Platform/Backend configuration dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;" aria-hidden="true">
-      <div class="modal-content" style="background: var(--surface); border: 1px solid var(--surface2); border-radius: 12px; max-width: 700px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h3 style="margin: 0; color: var(--text);">llama.cpp Platform/Backend Directory Configuration</h3>
-          <button id="platform-backend-config-modal-close" style="background: none; border: none; color: var(--text2); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;" aria-label="Close">&times;</button>
+        <!-- Tabs -->
+        <div style="display: flex; gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--surface2); flex-shrink: 0; background: var(--surface);">
+          <button type="button" class="global-config-tab active" data-tab="metrics-export" style="padding: 0.5rem 1rem; border: none; background: var(--blue); color: #fff; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 600;">📊 Metrics Export</button>
+          <button type="button" class="global-config-tab" data-tab="platform-backend" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 600;">⚙️ Platform/Backend</button>
         </div>
-        <p id="platform-backend-config-description" style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
-          Configure llama-server directory paths for each platform/backend combination. These directories are used when a model selects a specific platform (windows/linux) and backend (vulkan/sycl/openvino) in its properties.
-        </p>
-        <!-- Current versions info -->
-        <div id="platform-backend-current-versions" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface); font-size: 0.875rem;">
-          <div style="font-weight: 600; color: var(--text); margin-bottom: 0.4rem;">Currently running</div>
-          <div id="platform-backend-version-llama" style="color: var(--text2); margin-bottom: 0.25rem;">
-            <span style="font-weight: 600; color: var(--text);">llama.cpp:</span>
-            <span id="platform-backend-version-llama-tag">—</span>
-            <span id="platform-backend-version-llama-commit" style="font-weight: 500;"></span>
-          </div>
-          <div id="platform-backend-version-mnemonic" style="color: var(--text2);">
-            <span style="font-weight: 600; color: var(--text);">mnemonic-proxy:</span>
-            <span id="platform-backend-version-mnemonic-ver">—</span>
-            <span id="platform-backend-version-mnemonic-commit" style="font-weight: 500;"></span>
-          </div>
-        </div>
-        <form id="platform-backend-config-form">
-          <!-- Global default selection (shown at top) -->
-          <fieldset id="platform-backend-global-default" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface);">
-            <legend style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Global default (used when platform or backend is "auto")</legend>
-            <div id="platform-backend-global-default-options" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;"></div>
-          </fieldset>
 
-          <div id="platform-backend-config-fields"></div>
-
-          <div id="platform-backend-config-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem;"></div>
-          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button type="button" id="platform-backend-config-refresh" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Refresh</button>
-            <button type="submit" id="platform-backend-config-save" style="padding: 0.5rem 1rem; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Save changes</button>
-          </div>
-        </form>
-
-        <!-- Backend binary updater -->
-        <div id="platform-backend-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
-          <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Backend Binaries</h4>
-          <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
-            Download and install the latest llama.cpp builds for every platform/backend combination
-            into the directories configured above.
+        <!-- Metrics Export Tab Content -->
+        <div id="global-config-metrics-export" class="global-config-tab-content" style="display: block; padding: 1.5rem; overflow-y: auto; flex: 1; min-height: 0;">
+          <p style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
+            Controls automatic periodic metrics export for running models.
           </p>
-          <div id="platform-backend-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
-          <div id="platform-backend-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
-            <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
-              <div id="platform-backend-update-progress-bar" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
+          <form id="export-config-form">
+            <div style="margin-bottom: 0.75rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--text); cursor: pointer;">
+                <input type="checkbox" id="export-config-enabled"> Enabled
+              </label>
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+              <label style="display: block; font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Interval (seconds)</label>
+              <input type="number" id="export-config-interval" min="1" max="3600" style="width: 120px; padding: 0.4rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+              <label style="display: block; font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">Models (comma-separated, empty = all running)</label>
+              <input type="text" id="export-config-models" placeholder="e.g. model-a, model-b" style="width: 100%; padding: 0.4rem; border-radius: 4px; border: 1px solid var(--surface2); background: var(--surface); color: var(--text);">
+            </div>
+            <div id="export-config-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem;"></div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button type="button" id="export-config-refresh" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Refresh</button>
+              <button type="submit" id="export-config-save" style="padding: 0.5rem 1rem; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Save changes</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Platform/Backend Tab Content -->
+        <div id="global-config-platform-backend" class="global-config-tab-content" style="display: none; padding: 1.5rem; overflow-y: auto; flex: 1; min-height: 0;">
+          <p style="margin-bottom: 1rem; color: var(--text2); font-size: 0.875rem;">
+            Configure llama-server directory paths for each platform/backend combination. These directories are used when a model selects a specific platform (windows/linux) and backend (vulkan/sycl/openvino) in its properties.
+          </p>
+          <!-- Current versions info -->
+          <div id="platform-backend-current-versions" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface); font-size: 0.875rem;">
+            <div style="font-weight: 600; color: var(--text); margin-bottom: 0.4rem;">Currently running</div>
+            <div id="platform-backend-version-llama" style="color: var(--text2); margin-bottom: 0.25rem;">
+              <span style="font-weight: 600; color: var(--text);">llama.cpp:</span>
+              <span id="platform-backend-version-llama-tag">—</span>
+              <span id="platform-backend-version-llama-commit" style="font-weight: 500;"></span>
+            </div>
+            <div id="platform-backend-version-mnemonic" style="color: var(--text2);">
+              <span style="font-weight: 600; color: var(--text);">mnemonic-proxy:</span>
+              <span id="platform-backend-version-mnemonic-ver">—</span>
+              <span id="platform-backend-version-mnemonic-commit" style="font-weight: 500;"></span>
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <button type="button" id="platform-backend-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--green, #22c55e); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Backends</button>
-            <span id="platform-backend-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
-          </div>
-        </div>
+          <form id="platform-backend-config-form">
+            <!-- Global default selection (shown at top) -->
+            <fieldset id="platform-backend-global-default" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--surface2); border-radius: 6px; background: var(--surface);">
+              <legend style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Global default (used when platform or backend is "auto")</legend>
+              <div id="platform-backend-global-default-options" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;"></div>
+            </fieldset>
 
-        <!-- Mnemonic Proxy Updater -->
-        <div id="mnemonic-proxy-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
-          <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Mnemonic Proxy</h4>
-          <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
-            Update the mnemonic-proxy Python package to the latest version from PyPI/GitHub.
-          </p>
-          <div id="mnemonic-proxy-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
-          <div id="mnemonic-proxy-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
-            <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
-              <div id="mnemonic-proxy-update-progress-bar" style="background: var(--purple, #a855f7); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            <div id="platform-backend-config-fields"></div>
+
+            <div id="platform-backend-config-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem;"></div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+              <button type="button" id="platform-backend-config-refresh" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Refresh</button>
+              <button type="submit" id="platform-backend-config-save" style="padding: 0.5rem 1rem; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Save changes</button>
+            </div>
+          </form>
+
+          <!-- Backend binary updater -->
+          <div id="platform-backend-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Backend Binaries</h4>
+            <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
+              Download and install the latest llama.cpp builds for every platform/backend combination
+              into the directories configured above.
+            </p>
+            <div id="platform-backend-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
+            <div id="platform-backend-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
+              <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
+                <div id="platform-backend-update-progress-bar" style="background: var(--blue); height: 100%; width: 0%; transition: width 0.3s;"></div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <button type="button" id="platform-backend-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--green, #22c55e); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Backends</button>
+              <span id="platform-backend-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <button type="button" id="mnemonic-proxy-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--purple, #a855f7); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Mnemonic Proxy</button>
-            <button type="button" id="mnemonic-proxy-check-btn" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Check Version</button>
-            <span id="mnemonic-proxy-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
-</div>
+
+          <!-- Mnemonic Proxy Updater -->
+          <div id="mnemonic-proxy-update-section" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--surface2);">
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text); font-size: 0.95rem;">Mnemonic Proxy</h4>
+            <p style="margin: 0 0 0.75rem 0; color: var(--text2); font-size: 0.85rem;">
+              Update the mnemonic-proxy Python package to the latest version from PyPI/GitHub.
+            </p>
+            <div id="mnemonic-proxy-update-status" style="margin-bottom: 0.75rem; font-size: 0.85rem; min-height: 1.2rem; color: var(--text2);"></div>
+            <div id="mnemonic-proxy-update-progress-wrap" style="display: none; margin-bottom: 0.75rem;">
+              <div style="background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden;">
+                <div id="mnemonic-proxy-update-progress-bar" style="background: var(--purple, #a855f7); height: 100%; width: 0%; transition: width 0.3s;"></div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+              <button type="button" id="mnemonic-proxy-update-btn" style="padding: 0.5rem 1rem; border: none; background: var(--purple, #a855f7); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600;">⬇ Update Mnemonic Proxy</button>
+              <button type="button" id="mnemonic-proxy-check-btn" style="padding: 0.5rem 1rem; border: 1px solid var(--border); background: var(--bg-primary); color: var(--fg-primary); border-radius: 4px; cursor: pointer;">Check Version</button>
+              <span id="mnemonic-proxy-update-tag" style="color: var(--text2); font-size: 0.8rem;"></span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
 <!-- Archive Browser Modal -->
 <div id="archive-browser-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive Browser dialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;" aria-hidden="true">
@@ -562,7 +565,7 @@ const timeRangeSelect = document.getElementById('time-range-select') || {};
 let metricsChart = null;
 
 // Historical metrics for the time-series chart (accumulated across fetches)
-const MAX_METRIC_POINTS = 50;
+const MAX_METRIC_POINTS = 10000;
 let metricTimestamps = [];
 let metricPromptEvalTimes = [];
 let metricPromptEvalRates = [];
@@ -1034,10 +1037,11 @@ window.startPerformanceGraphAutoRefresh = startPerformanceGraphAutoRefresh;
 window.stopPerformanceGraphAutoRefresh = stopPerformanceGraphAutoRefresh;
 
 // ──────────────────────────────────────────────────────────────
-// Export Configuration Modal
+// Global Configuration Modal (combined Metrics Export + Platform/Backend)
 // ──────────────────────────────────────────────────────────────
 
-const exportConfigModal = document.getElementById('export-config-modal');
+const globalConfigModal = document.getElementById('global-config-modal');
+const globalConfigModalClose = document.getElementById('global-config-modal-close');
 const exportConfigForm = document.getElementById('export-config-form');
 const exportConfigEnabled = document.getElementById('export-config-enabled');
 const exportConfigInterval = document.getElementById('export-config-interval');
@@ -1069,20 +1073,97 @@ function populateExportConfig(config) {
   setTimeout(() => setExportConfigStatus(''), 2000);
 }
 
-async function openExportConfigModal() {
-  if (!exportConfigModal) return;
+async function openGlobalConfigModal(initialTab = 'metrics-export') {
+  if (!globalConfigModal) return;
   // Open the modal FIRST so it displays immediately, then load config asynchronously.
-  // Previously ModalManager.open() was after the await fetch, so if the fetch hung
-  // (e.g. WSL networking issues) the modal never appeared and the button seemed dead.
-  ModalManager.open('export-config-modal');
-  try {
-    setExportConfigStatus('Loading…');
-    const config = await fetchExportConfig();
-    populateExportConfig(config);
-  } catch (e) {
-    setExportConfigStatus('Failed to load: ' + e.message, 'error');
+  ModalManager.open('global-config-modal');
+  showGlobalConfigTab(initialTab);
+
+  if (initialTab === 'metrics-export') {
+    try {
+      setExportConfigStatus('Loading…');
+      const config = await fetchExportConfig();
+      populateExportConfig(config);
+    } catch (e) {
+      setExportConfigStatus('Failed to load: ' + e.message, 'error');
+    }
+  } else if (initialTab === 'platform-backend') {
+    try {
+      setPlatformBackendConfigStatus('Loading…');
+      const config = await fetchPlatformBackendConfig();
+      populatePlatformBackendConfig(config);
+    } catch (e) {
+      setPlatformBackendConfigStatus('Failed to load: ' + e.message, 'error');
+      return;
+    }
+    // Current versions are informational; never fail the modal open for them.
+    try {
+      await populateCurrentVersions(await fetchCurrentVersions());
+    } catch (e) {
+      console.warn('platform-backend: could not fetch current versions:', e);
+    }
   }
 }
+
+// Tab switching for global config modal
+function showGlobalConfigTab(tabName) {
+  // Hide all tab contents
+  document.querySelectorAll('.global-config-tab-content').forEach(el => {
+    el.style.display = 'none';
+  });
+  // Deactivate all tab buttons
+  document.querySelectorAll('.global-config-tab').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.background = 'var(--surface)';
+    btn.style.border = '1px solid var(--border)';
+    btn.style.color = 'var(--text)';
+  });
+
+  // Show selected tab content
+  const activeContent = document.getElementById('global-config-' + tabName);
+  const activeButton = document.querySelector('.global-config-tab[data-tab="' + tabName + '"]');
+  if (activeContent) activeContent.style.display = 'block';
+  if (activeButton) {
+    activeButton.classList.add('active');
+    activeButton.style.background = 'var(--blue)';
+    activeButton.style.border = 'none';
+    activeButton.style.color = '#fff';
+  }
+}
+
+// Tab button click listeners
+document.querySelectorAll('.global-config-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    if (tab === 'metrics-export') {
+      try {
+        setExportConfigStatus('Loading…');
+        fetchExportConfig().then(populateExportConfig).catch(e => {
+          setExportConfigStatus('Failed to load: ' + e.message, 'error');
+        });
+      } catch (e) {
+        setExportConfigStatus('Failed to load: ' + e.message, 'error');
+      }
+    } else if (tab === 'platform-backend') {
+      try {
+        setPlatformBackendConfigStatus('Loading…');
+        fetchPlatformBackendConfig().then(populatePlatformBackendConfig).catch(e => {
+          setPlatformBackendConfigStatus('Failed to load: ' + e.message, 'error');
+        });
+      } catch (e) {
+        setPlatformBackendConfigStatus('Failed to load: ' + e.message, 'error');
+      }
+      try {
+        fetchCurrentVersions().then(populateCurrentVersions).catch(e => {
+          console.warn('platform-backend: could not fetch current versions:', e);
+        });
+      } catch (e) {
+        console.warn('platform-backend: could not fetch current versions:', e);
+      }
+    }
+    showGlobalConfigTab(tab);
+  });
+});
 
 async function saveExportConfig(event) {
   event.preventDefault();
@@ -1107,23 +1188,26 @@ async function saveExportConfig(event) {
   }
 }
 
+if (globalConfigModalClose) {
+  globalConfigModalClose.addEventListener('click', () => ModalManager.close('global-config-modal'));
+}
 if (exportConfigClose) {
-  exportConfigClose.addEventListener('click', () => ModalManager.close('export-config-modal'));
+  exportConfigClose.addEventListener('click', () => ModalManager.close('global-config-modal'));
 }
 if (exportConfigRefresh) {
-  exportConfigRefresh.addEventListener('click', openExportConfigModal);
+  exportConfigRefresh.addEventListener('click', () => openGlobalConfigModal('metrics-export'));
 }
 if (exportConfigForm) {
   exportConfigForm.addEventListener('submit', saveExportConfig);
 }
 
 // Reset form and clear status when the modal closes
-ModalManager.register('export-config-modal', () => {
+ModalManager.register('global-config-modal', () => {
   if (exportConfigForm) exportConfigForm.reset();
   if (exportConfigStatus) exportConfigStatus.textContent = '';
 });
 
-window.openExportConfigModal = openExportConfigModal;
+window.openGlobalConfigModal = openGlobalConfigModal;
 
 // ──────────────────────────────────────────────────────────────
 // Platform/Backend Configuration Modal
@@ -1247,23 +1331,8 @@ function populatePlatformBackendConfig(config) {
 }
 
 async function openPlatformBackendConfigModal() {
-  if (!platformBackendConfigModal) return;
-  ModalManager.open('platform-backend-config-modal');
-  try {
-    setPlatformBackendConfigStatus('Loading…');
-    const config = await fetchPlatformBackendConfig();
-    populatePlatformBackendConfig(config);
-  } catch (e) {
-    setPlatformBackendConfigStatus('Failed to load: ' + e.message, 'error');
-    return;
-  }
-  // Current versions are informational; never fail the modal open for them.
-  try {
-    await populateCurrentVersions(await fetchCurrentVersions());
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('platform-backend: could not fetch current versions:', e);
-  }
+  // Redirect to the combined global config modal with platform-backend tab
+  openGlobalConfigModal('platform-backend');
 }
 
 async function savePlatformBackendConfig(event) {
@@ -1293,17 +1362,17 @@ async function savePlatformBackendConfig(event) {
 }
 
 if (platformBackendConfigClose) {
-  platformBackendConfigClose.addEventListener('click', () => ModalManager.close('platform-backend-config-modal'));
+  platformBackendConfigClose.addEventListener('click', () => ModalManager.close('global-config-modal'));
 }
 if (platformBackendConfigRefresh) {
-  platformBackendConfigRefresh.addEventListener('click', openPlatformBackendConfigModal);
+  platformBackendConfigRefresh.addEventListener('click', () => openGlobalConfigModal('platform-backend'));
 }
 if (platformBackendConfigForm) {
   platformBackendConfigForm.addEventListener('submit', savePlatformBackendConfig);
 }
 
 // Reset form and clear status when the modal closes
-ModalManager.register('platform-backend-config-modal', () => {
+ModalManager.register('global-config-modal', () => {
   if (platformBackendConfigForm) platformBackendConfigForm.reset();
   if (platformBackendConfigStatus) platformBackendConfigStatus.textContent = '';
   // Stop polling while the modal is closed; the update itself keeps running and
