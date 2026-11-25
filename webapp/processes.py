@@ -1417,7 +1417,7 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
                 cmd += ["--spec-draft-type-v", spec_draft_type_v]
 
     # Custom model start parameter string
-    custom_start_param = meta.get("custom_model_start_param", "")
+    custom_start_param = meta.get("custom_model_start_param") or ""
     if custom_start_param:
         # Split by whitespace and add each token to the command
         for param in custom_start_param.split():

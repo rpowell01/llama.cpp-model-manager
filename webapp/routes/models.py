@@ -280,6 +280,8 @@ def api_update_model_meta():
     # Custom HTTP Header for Kilo Code Config
     "custom_header_key": str,
     "custom_header_value": str,
+    # Custom model start parameter string
+    "custom_model_start_param": str,
     # Generation / Sampling parameters
     "use_generation_params": bool,
     "temperature": float,
