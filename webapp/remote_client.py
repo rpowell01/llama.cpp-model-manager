@@ -139,6 +139,8 @@ class Model:
     log_verbosity: int = 3
     # Chat template
     chat_template_file: str = ""
+    # Custom model start parameter string
+    custom_model_start_param: str = ""
     # Multimodal projector parameters
     mmproj: str = ""
     mmproj_auto: bool = True
@@ -263,6 +265,8 @@ class Model:
             log_verbosity=data.get("log_verbosity", 3),
             # Chat template
             chat_template_file=data.get("chat_template_file", ""),
+            # Custom model start parameter string
+            custom_model_start_param=data.get("custom_model_start_param", ""),
             # Multimodal projector parameters
             mmproj=data.get("mmproj", ""),
             mmproj_auto=data.get("mmproj_auto", True),

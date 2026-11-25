@@ -363,6 +363,8 @@ def api_start():
             "log_verbosity": getattr(model_dict, 'log_verbosity', 3),
             # Chat template
             "chat_template_file": getattr(model_dict, 'chat_template_file', ''),
+            # Custom model start parameter string
+            "custom_model_start_param": getattr(model_dict, 'custom_model_start_param', ''),
             # Multimodal projector parameters
             "mmproj": getattr(model_dict, 'mmproj', ''),
             "mmproj_auto": getattr(model_dict, 'mmproj_auto', True),
