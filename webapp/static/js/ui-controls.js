@@ -663,7 +663,7 @@ function renderTiles(rows, dlMap, query) {
           <button class="run" onclick="act('${jsEscape(r.model)}', 'start')" ${canStart ? "" : "disabled"}>\u25B6 Start</button>
           <button class="stop" onclick="act('${jsEscape(r.model)}', 'stop')" ${canStop ? "" : "disabled"}>\u25A0 Stop</button>
           <button class="chat" onclick="window.open('http://127.0.0.1:${r.port}?model=' + encodeURIComponent('${jsEscape(r.model)}'), '_blank')" ${canStop ? "" : "disabled"} title="Chat with model">Chat</button>
-          <button class="add" onclick="downloadModel('${jsEscape(r.model)}', true)">\u2795 Add Variant</button>
+          <button class="add" onclick="downloadModel('${jsEscape(r.model)}', true, '${jsEscape(r.repo || '')}')">\u2795 Add Variant</button>
           <button class="del" onclick="promptDeleteModel('${jsEscape(r.model)}')">\u274C Delete</button>
           ${r.mnemonic_proxy && r.mnemonic_proxy.enabled ? 
             '<button class="agent-config" onclick="event.stopPropagation(); openAgentConfigModal(\'' + jsEscape(r.model) + '\')" title="Generate agent config for this model">🤖 Config</button>' : ''}

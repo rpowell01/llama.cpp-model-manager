@@ -138,14 +138,14 @@ async function _triggerDownload(model, url, size, force = false) {
  * @param {string} model - Model name
  * @param {boolean} force - Force download
  */
-async function downloadModel(model, force = false) {
-  console.log('downloadModel called for:', model, 'force:', force);
-  // First, search HF for the model using the known name
+async function downloadModel(model, force = false, repo = null) {
+  console.log('downloadModel called for:', model, 'force:', force, 'repo:', repo);
+  // First, search HF for the model using the known name or repo URL
   try {
     const res = await fetch('/api/download-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, force })
+      body: JSON.stringify({ model, force, repo })
     });
     const data = await res.json();
     console.log('download-search response:', data);

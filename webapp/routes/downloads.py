@@ -155,6 +155,7 @@ def api_download_search():
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     force = data.get("force", False)
+    repo = data.get("repo", None)
     if not model:
         return jsonify({"error": "Missing model name"}), 400
     models = get_models()
@@ -172,15 +173,33 @@ def api_download_search():
             return jsonify({"status": "complete", "model": model, "size": existing_size, "results": []})
 
     try:
-        resp = requests.get(
-            "https://huggingface.co/api/models",
-            params={"search": model, "limit": 10, "full": "true"},
-            timeout=10
-        )
+        # If a repo URL is provided, use it directly; otherwise search by model name
+        if repo:
+            # Extract repo ID from URL (e.g., https://huggingface.co/username/repo -> username/repo)
+            repo_id = repo.replace("https://huggingface.co/", "").strip("/")
+            resp = requests.get(
+                f"https://huggingface.co/api/models/{repo_id}",
+                timeout=10
+            )
+        else:
+            resp = requests.get(
+                "https://huggingface.co/api/models",
+                params={"search": model, "limit": 10, "full": "true"},
+                timeout=10
+            )
         if resp.status_code != 200:
             return jsonify({"error": f"HF search failed: HTTP {resp.status_code}"}), 500
 
-        hf_models = resp.json()
+        hf_response = resp.json()
+        if not hf_response:
+            return jsonify({"error": f"No model found on Hugging Face for '{model}'"}), 404
+
+        # When repo URL is provided, HF returns a single model dict; otherwise a list
+        if repo:
+            hf_models = [hf_response]
+        else:
+            hf_models = hf_response
+
         if not hf_models:
             return jsonify({"error": f"No model found on Hugging Face for '{model}'"}), 404
 
