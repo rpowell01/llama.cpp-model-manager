@@ -22,6 +22,8 @@ services:
       - GGML_OPENVINO_DEVICE=GPU
     volumes:
       # Persistent data directories
+      # Windows: Use /c/path format for host paths (e.g., C:\llama.cpp-models -> /c/llama.cpp-models)
+      # - /c/llama.cpp-models:/app/models
       - ./models:/app/models
       - ./logs:/app/logs
       # Mount llama-server binary directory (REQUIRED - see documentation)

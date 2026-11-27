@@ -26,6 +26,10 @@ param(
     # llama-server binary directory (optional - will prompt if not provided)
     [string]$LlamaServerDir = "",
 
+    # Models directory on host (optional - defaults to ./models in install dir)
+    # Example: -ModelsDir "C:\llama.cpp-models"
+    [string]$ModelsDir = "",
+
     # Docker Compose project name
     [string]$ProjectName = "llamaweb",
 
@@ -469,7 +473,8 @@ function Update-DockerCompose {
     param(
         [string]$ComposeFile,
         [string]$LlamaServerDir,
-        [string]$InstallDir
+        [string]$InstallDir,
+        [string]$ModelsDir
     )
 
     Write-LogInfo "Updating docker-compose.yml..."
@@ -498,15 +503,40 @@ function Update-DockerCompose {
         }
     }
 
-    # Update MODEL_DIR to use the host models directory
-    $hostModelsDir = Join-Path $InstallDir "models"
-    $dockerModelsPath = $hostModelsDir.Replace('\', '/')
-    if ($dockerModelsPath -match '^[A-Za-z]:/') {
-        $drive = $dockerModelsPath.Substring(0,1).ToLower()
-        $dockerModelsPath = "/$drive" + $dockerModelsPath.Substring(2)
+    # Update models volume mount
+    if ($ModelsDir) {
+        # Convert Windows path to Docker-compatible path
+        $dockerModelsPath = $ModelsDir.Replace('\', '/')
+        if ($dockerModelsPath -match '^[A-Za-z]:/') {
+            $drive = $dockerModelsPath.Substring(0,1).ToLower()
+            $dockerModelsPath = "/$drive" + $dockerModelsPath.Substring(2)
+        }
+
+        $modelsVolumeLine = "      - ${dockerModelsPath}:/app/models"
+
+        # Replace the default ./models line
+        if ($content -match '      - \.\/models:\/app\/models') {
+            $content = $content -replace '      - \.\/models:\/app\/models', $modelsVolumeLine
+            Write-LogSuccess "Updated models volume mount: $modelsVolumeLine"
+        } else {
+            Write-LogWarning "Could not find default models volume line to replace"
+        }
+    } else {
+        # Use default models directory in install dir
+        $hostModelsDir = Join-Path $InstallDir "models"
+        $dockerModelsPath = $hostModelsDir.Replace('\', '/')
+        if ($dockerModelsPath -match '^[A-Za-z]:/') {
+            $drive = $dockerModelsPath.Substring(0,1).ToLower()
+            $dockerModelsPath = "/$drive" + $dockerModelsPath.Substring(2)
+        }
+
+        $content = $content -replace 'MODEL_DIR=\/app\/models', "MODEL_DIR=$dockerModelsPath"
     }
 
-    $content = $content -replace 'MODEL_DIR=\/app\/models', "MODEL_DIR=$dockerModelsPath"
+    # Update MODEL_DIR environment variable
+    if ($ModelsDir) {
+        $content = $content -replace 'MODEL_DIR=\/app\/models', "MODEL_DIR=/app/models"
+    }
 
     # Write back
     Set-Content -Path $ComposeFile -Value $content -Encoding UTF8
@@ -624,17 +654,19 @@ function Main {
     # Update docker-compose.yml
     $composeFile = Join-Path $extractDir "docker-compose.yml"
     if (Test-Path $composeFile) {
-        Update-DockerCompose -ComposeFile $composeFile -LlamaServerDir $LlamaServerDir -InstallDir $extractDir
+        Update-DockerCompose -ComposeFile $composeFile -LlamaServerDir $LlamaServerDir -InstallDir $extractDir -ModelsDir $ModelsDir
     } else {
         Write-LogError "docker-compose.yml not found in extracted release"
         exit 1
     }
 
-    # Create models directory
-    $modelsDir = Join-Path $extractDir "models"
-    if (-not (Test-Path $modelsDir)) {
-        New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
-        Write-LogInfo "Created models directory: $modelsDir"
+    # Create models directory (only if using default local models dir)
+    if (-not $ModelsDir) {
+        $modelsDir = Join-Path $extractDir "models"
+        if (-not (Test-Path $modelsDir)) {
+            New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
+            Write-LogInfo "Created models directory: $modelsDir"
+        }
     }
 
     # Create logs directory

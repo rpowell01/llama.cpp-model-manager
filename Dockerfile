@@ -26,14 +26,13 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # Install runtime dependencies (curl for healthcheck, ca-certificates for HTTPS)
 # Intel GPU: OpenCL/SYCL runtime libraries
+# Note: Level Zero driver is provided by host via /dev/dri mount; no libze-loader needed in container
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     # Intel GPU: OpenCL ICD loader and headers
     ocl-icd-libopencl1 \
     clinfo \
-    # Intel GPU: Level Zero loader (for SYCL via Level Zero)
-    libze-loader1 \
     # Intel GPU: Mesa for OpenCL on integrated graphics
     mesa-opencl-icd \
     && rm -rf /var/lib/apt/lists/*
