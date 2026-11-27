@@ -67,22 +67,32 @@ services:
 #   - Windows: llama-server.exe (runs via Wine in container, not recommended)
 #
 # ──────────────────────────────────────────────────────────────────────────────
-# Intel GPU Support (llama.cpp with SYCL)
+# Intel GPU Support (llama.cpp with SYCL) - Windows 11 Host
 # ──────────────────────────────────────────────────────────────────────────────
-# For Intel GPU acceleration with llama.cpp SYCL builds:
+# For Intel GPU acceleration with llama.cpp SYCL builds on Windows 11:
 #
-# Host requirements:
+# Host requirements (Windows 11):
 #   - Intel GPU (Arc, Iris Xe, UHD 770, etc.)
-#   - Intel Compute Runtime (neo) or Intel Level Zero driver installed
-#   - User in 'video' and 'render' groups: sudo usermod -a -G video,render $USER
+#   - Intel Graphics Driver installed from Intel website or Windows Update
+#     (provides OpenCL ICD and Level Zero driver for WSL)
+#   - WSL 2 with latest updates: wsl --update
+#   - Docker Desktop with "Use WSL 2 based engine" enabled
+#   - In Docker Desktop Settings > Resources > WSL Integration:
+#     Enable integration for your WSL distro
+#
+# How it works:
+#   Docker Desktop on Windows uses WSL 2 for Linux containers.
+#   WSL 2 exposes host GPU devices (/dev/dri/renderD128, /dev/dri/card0)
+#   and OpenCL ICDs (/etc/OpenCL/vendors) into the container.
+#   No manual group management needed (handled by WSL).
 #
 # Container configuration (already included above):
-#   - devices: /dev/dri/renderD128, /dev/dri/card0
-#   - volumes: /dev/dri, /etc/OpenCL/vendors
-#   - group_add: video (44), render (109)
+#   - devices: /dev/dri/renderD128, /dev/dri/card0 (exposed by WSL)
+#   - volumes: /dev/dri, /etc/OpenCL/vendors (exposed by WSL)
+#   - group_add: video (44), render (109) - for container user access
 #   - environment: ONEAPI_DEVICE_SELECTOR, SYCL_DEVICE_FILTER, etc.
 #
-# llama.cpp build with SYCL:
+# llama.cpp build with SYCL (Linux binary for container):
 #   cmake -DGGML_SYCL=ON -DGGML_SYCL_F16=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
 #
 # Verify GPU access in container:
