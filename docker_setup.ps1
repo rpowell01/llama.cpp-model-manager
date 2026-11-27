@@ -267,9 +267,9 @@ function Prompt-LlamaServerDir {
     )
 
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor $Cyan
+    Write-Host "================================================================" -ForegroundColor $Cyan
     Write-Host "LLAMA-SERVER BINARY REQUIRED" -ForegroundColor $Yellow
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor $Cyan
+    Write-Host "================================================================" -ForegroundColor $Cyan
     Write-Host ""
     Write-Host "The web UI manages llama-server processes but does NOT include the binary."
     Write-Host "You must provide a llama-server binary built with KV cache slot save support."
@@ -407,9 +407,9 @@ function Show-PostInstallInfo {
     )
 
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor $Cyan
+    Write-Host "================================================================" -ForegroundColor $Cyan
     Write-Host "DEPLOYMENT COMPLETE" -ForegroundColor $Green
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor $Cyan
+    Write-Host "================================================================" -ForegroundColor $Cyan
     Write-Host ""
     Write-Host "Web UI: http://localhost:5000" -ForegroundColor $Cyan
     Write-Host ""
@@ -437,9 +437,9 @@ function Show-PostInstallInfo {
 
 function Main {
     Write-Host ""
-    Write-Host "╔══════════════════════════════════════════════════════════════════╗" -ForegroundColor $Cyan
-    Write-Host "║  Llama.cpp Model Manager - Docker Setup for Windows             ║" -ForegroundColor $Cyan
-    Write-Host "╚══════════════════════════════════════════════════════════════════╝" -ForegroundColor $Cyan
+    Write-Host "==================================================================" -ForegroundColor $Cyan
+    Write-Host "  Llama.cpp Model Manager - Docker Setup for Windows" -ForegroundColor $Cyan
+    Write-Host "==================================================================" -ForegroundColor $Cyan
     Write-Host ""
 
     # Check prerequisites
