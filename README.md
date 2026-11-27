@@ -193,7 +193,7 @@ The project includes a `Dockerfile` and `docker-compose.yml` for containerized d
 - **llama-server binary** built with KV cache slot save support (`--slot-save-path`)
   - The container does NOT include llama-server; you must provide it via volume mount
 
-#### Quick Start
+#### Quick Start (Linux/macOS/WSL)
 
 ```bash
 # Clone the repository
@@ -205,6 +205,34 @@ docker compose build
 
 # Start the container (requires llama-server binary mount - see below)
 docker compose up -d
+```
+
+#### Quick Start (Windows PowerShell)
+
+For Windows users, use the provided setup script which handles downloading the latest release, configuring volumes, and starting the container:
+
+```powershell
+# Run the setup script (downloads latest release, configures, and starts)
+.\docker_setup.ps1
+```
+
+The script will:
+- Download the latest release from GitHub
+- Auto-detect or prompt for your llama-server binary location
+- Configure docker-compose.yml with the correct volume mounts
+- Build and start the Docker container
+- Provide access information
+
+Options:
+```powershell
+# Specify custom install directory
+.\docker_setup.ps1 -InstallDir "D:\llama-web"
+
+# Provide llama-server directory upfront (skip prompt)
+.\docker_setup.ps1 -LlamaServerDir "C:\llama.cpp\bin"
+
+# Show debug output
+.\docker_setup.ps1 -DebugOutput
 ```
 
 #### Providing the llama-server Binary (REQUIRED)
