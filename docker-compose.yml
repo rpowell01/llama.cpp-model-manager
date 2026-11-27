@@ -15,12 +15,28 @@ services:
       # - PREFER_LINUX_BINARY=true
       # Optional: Custom llama-server directory
       # - LLAMA_SERVER_DIR=/path/to/llama-server
+      # Intel GPU: Enable SYCL/OpenCL
+      - ONEAPI_DEVICE_SELECTOR=opencl:gpu
+      - SYCL_DEVICE_FILTER=opencl:gpu
+      - GGML_SYCL_USE_LEVEL_ZERO_API=0
+      - GGML_OPENVINO_DEVICE=GPU
     volumes:
       # Persistent data directories
       - ./models:/app/models
       - ./logs:/app/logs
       # Mount llama-server binary directory (REQUIRED - see documentation)
       # Example: - /home/user/llama.cpp/bin:/app/llama-server:ro
+      # Intel GPU: Device and driver access
+      - /dev/dri:/dev/dri
+      - /etc/OpenCL/vendors:/etc/OpenCL/vendors:ro
+    devices:
+      # Intel GPU: Render and video devices
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
+    group_add:
+      # Intel GPU: Access to render and video groups
+      - "44"   # video group (typical)
+      - "109"  # render group (typical)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/status"]
@@ -51,7 +67,30 @@ services:
 #   - Windows: llama-server.exe (runs via Wine in container, not recommended)
 #
 # ──────────────────────────────────────────────────────────────────────────────
-# Optional: Run llama.cpp server alongside the web UI
+# Intel GPU Support (llama.cpp with SYCL)
+# ──────────────────────────────────────────────────────────────────────────────
+# For Intel GPU acceleration with llama.cpp SYCL builds:
+#
+# Host requirements:
+#   - Intel GPU (Arc, Iris Xe, UHD 770, etc.)
+#   - Intel Compute Runtime (neo) or Intel Level Zero driver installed
+#   - User in 'video' and 'render' groups: sudo usermod -a -G video,render $USER
+#
+# Container configuration (already included above):
+#   - devices: /dev/dri/renderD128, /dev/dri/card0
+#   - volumes: /dev/dri, /etc/OpenCL/vendors
+#   - group_add: video (44), render (109)
+#   - environment: ONEAPI_DEVICE_SELECTOR, SYCL_DEVICE_FILTER, etc.
+#
+# llama.cpp build with SYCL:
+#   cmake -DGGML_SYCL=ON -DGGML_SYCL_F16=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+#
+# Verify GPU access in container:
+#   docker exec llamaweb ls -la /dev/dri/
+#   docker exec llamaweb clinfo
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional: Run llama.cpp server alongside the web UI (with GPU)
 # ──────────────────────────────────────────────────────────────────────────────
 # You can run a llama-server instance in a separate container and connect the
 # web UI to it. This is useful for GPU-accelerated inference.
@@ -65,14 +104,21 @@ services:
 #     - "8080:8080"
 #   volumes:
 #     - ./models:/models
-#   command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080
-#   deploy:
-#     resources:
-#       reservations:
-#         devices:
-#           - driver: nvidia
-#             count: 1
-#             capabilities: [gpu]
+#     # Intel GPU access
+#     - /dev/dri:/dev/dri
+#     - /etc/OpenCL/vendors:/etc/OpenCL/vendors:ro
+#   devices:
+#     - /dev/dri/renderD128:/dev/dri/renderD128
+#     - /dev/dri/card0:/dev/dri/card0
+#   group_add:
+#     - "44"
+#     - "109"
+#   environment:
+#     - ONEAPI_DEVICE_SELECTOR=opencl:gpu
+#     - SYCL_DEVICE_FILTER=opencl:gpu
+#     - GGML_SYCL_USE_LEVEL_ZERO_API=0
+#     - GGML_OPENVINO_DEVICE=GPU
+#   command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080 -ngl 99
 #
 # Then configure your model in the web UI to use the remote llama-server at
 # http://llama-server:8080 (Docker DNS) or http://host.docker.internal:8080
