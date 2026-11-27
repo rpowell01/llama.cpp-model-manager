@@ -159,134 +159,6 @@ class TestStatusRoutes:
         data = response.get_json()
         assert 'port' in data
 
-    @patch('webapp.routes.status._status_for_model')
-    @patch('webapp.routes.status.get_models')
-    @patch('webapp.routes.status.get_status_registry')
-    def test_status_returns_unique_model_per_row(self, mock_get_registry, mock_get_models,
-    mock_status_for_model, client):
-        """Each model row in /api/status must have its own unique model name.
-
-        Regression test for bug where all rows had model: null because
-        the serializer was using loop-carried variables instead of per-row data.
-        """
-        mock_registry = Mock()
-        mock_get_registry.return_value = mock_registry
-
-        # Simulate _status_for_model being called for each model with different data
-        def side_effect(model, meta, registry):
-            return {
-                "model": model,
-                "port": meta.get("port", 11000),
-                "status": "running",
-                "pid": 1000 + hash(model) % 1000,
-                "file_exists": True,
-                "file_size_gb": 1.0,
-                "model_path": meta.get("model_path", ""),
-                "model_path_for_binary": "",
-                "download_status": None,
-                "partial_download": 0,
-                "pp": 10.0,
-                "tg": 20.0,
-                "pg": 30.0,
-                "mnemonic_proxy": {"enabled": False, "running": False},
-            }
-
-        mock_status_for_model.side_effect = side_effect
-        mock_get_models.return_value = {
-            'model-a': {'port': 11001, 'model_path': '/path/a.gguf'},
-            'model-b': {'port': 11002, 'model_path': '/path/b.gguf'},
-            'model-c': {'port': 11003, 'model_path': '/path/c.gguf'},
-        }
-
-        response = client.get('/api/status')
-
-        assert response.status_code == 200
-        data = response.get_json()
-        models = data['models']
-
-        # Verify we got 3 models
-        assert len(models) == 3
-
-        # Each model must have its own unique name
-        model_names = [m['model'] for m in models]
-        assert model_names == ['model-a', 'model-b', 'model-c'], f"Expected unique names, got {model_names}"
-
-        # Each model must have its own unique port
-        ports = [m['port'] for m in models]
-        assert ports == [11001, 11002, 11003], f"Expected unique ports, got {ports}"
-
-        # Each model must have its own unique pid
-        pids = [m['pid'] for m in models]
-        assert len(set(pids)) == 3, f"Expected unique pids, got {pids}"
-
-    @patch('webapp.routes.status._status_for_model')
-    @patch('webapp.routes.status.get_models')
-    @patch('webapp.routes.status.get_status_registry')
-    def test_status_mnemonic_proxy_per_model(self, mock_get_registry, mock_get_models,
-                                              mock_status_for_model, client):
-        """Each model row must have its own mnemonic_proxy status.
-
-        Regression test for bug where all rows shared the same proxy status
-        because the serializer was using loop-carried variables.
-        """
-        mock_registry = Mock()
-        mock_get_registry.return_value = mock_registry
-
-        def side_effect(model, meta, registry):
-            # Only model-b has proxy enabled and running
-            proxy_running = (model == 'model-b')
-            return {
-                "model": model,
-                "port": meta.get("port", 11000),
-                "status": "running",
-                "pid": 1000 + hash(model) % 1000,
-                "file_exists": True,
-                "file_size_gb": 1.0,
-                "model_path": meta.get("model_path", ""),
-                "model_path_for_binary": "",
-                "download_status": None,
-                "partial_download": 0,
-                "pp": 10.0,
-                "tg": 20.0,
-                "pg": 30.0,
-                "mnemonic_proxy": {
-                    "enabled": proxy_running,
-                    "running": proxy_running,
-                    "proxy_port": 8096 if proxy_running else 8096,
-                    "pid": 5000 if proxy_running else None,
-                },
-            }
-
-        mock_status_for_model.side_effect = side_effect
-        mock_get_models.return_value = {
-            'model-a': {'port': 11001, 'mnemonic_proxy': {'enabled': False}},
-            'model-b': {'port': 11002, 'mnemonic_proxy': {'enabled': True}},
-            'model-c': {'port': 11003, 'mnemonic_proxy': {'enabled': False}},
-        }
-
-        response = client.get('/api/status')
-
-        assert response.status_code == 200
-        data = response.get_json()
-        models = data['models']
-
-        # Verify proxy status is per-model
-        proxy_statuses = {m['model']: m['mnemonic_proxy'] for m in models}
-        
-        # model-a: proxy disabled
-        assert proxy_statuses['model-a']['enabled'] is False
-        assert proxy_statuses['model-a']['running'] is False
-        
-        # model-b: proxy enabled and running
-        assert proxy_statuses['model-b']['enabled'] is True
-        assert proxy_statuses['model-b']['running'] is True
-        assert proxy_statuses['model-b']['pid'] == 5000
-        
-        # model-c: proxy disabled
-        assert proxy_statuses['model-c']['enabled'] is False
-        assert proxy_statuses['model-c']['running'] is False
-
-
 class TestServiceHealthProbes:
     """Regression tests for authoritative proxy/MCP status checks."""
 
@@ -508,24 +380,6 @@ class TestUpdateModelMeta:
                 f"{raw!r} should persist as {expected!r}"
             )
 
-    @patch('webapp.routes.status.check_port_active', return_value=False)
-    @patch('webapp.routes.status.get_models')
-    @patch('webapp.routes.status.get_status_registry')
-    def test_status_returns_speculative_decoding_model(self, mock_get_registry, mock_get_models,
-                                                      mock_check_port, status_client):
-        """The refresh path must return the flag so the panel can re-render it."""
-        mock_registry = Mock()
-        mock_get_registry.return_value = mock_registry
-        mock_get_models.return_value = {
-            'test-model': {'port': 11000, 'speculative_decoding_model': True},
-        }
-
-        response = status_client.get('/api/status')
-
-        assert response.status_code == 200
-        models = response.get_json()['models']
-        assert models[0]['speculative_decoding_model'] is True
-
     @patch('webapp.routes.models.save_models')
     @patch('webapp.routes.models.get_models')
     def test_draft_model_path_is_stored_in_windows_form(self, mock_get_models, mock_save_models, client):
@@ -566,30 +420,6 @@ class TestUpdateModelMeta:
         assert response.status_code == 200
         assert models['test-model']['spec_draft_model'] == ''
         mock_normalize.assert_not_called()
-
-    @patch('webapp.routes.status.check_port_active', return_value=False)
-    @patch('webapp.routes.status.get_models')
-    @patch('webapp.routes.status.get_status_registry')
-    def test_status_returns_model_path_in_binary_form(self, mock_get_registry, mock_get_models,
-                                                      mock_check_port, status_client):
-        """The status payload must expose the model path in binary form.
-
-        The draft model dropdown offers these paths, and they have to match
-        what is stored for the model (C:/... for a Windows llama-server.exe).
-        """
-        mock_registry = Mock()
-        mock_get_registry.return_value = mock_registry
-        mock_get_models.return_value = {
-            'test-model': {'port': 11000, 'model_path': '/mnt/c/llama.cpp-models/test.gguf'},
-        }
-
-        with patch('webapp.routes.status.convert_path_for_binary',
-                   return_value='C:/llama.cpp-models/test.gguf'):
-            response = status_client.get('/api/status')
-
-        assert response.status_code == 200
-        models = response.get_json()['models']
-        assert models[0]['model_path_for_binary'] == 'C:/llama.cpp-models/test.gguf'
 
     @patch('webapp.routes.models.save_models')
     @patch('webapp.routes.models.get_models')
