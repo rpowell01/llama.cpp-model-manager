@@ -649,6 +649,10 @@ def _port_has_listener(port: int, platform: str = "auto") -> bool:
         port: Port number.
         platform: "windows", "linux", or "auto" (both).
     """
+    # Port 0 is invalid - no process can listen on it
+    if not port or port <= 0 or port > 65535:
+        return False
+    
     if WSL:
         if platform == "windows":
             return _windows_port_listener_pid(port) is not None
