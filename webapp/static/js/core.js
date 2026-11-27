@@ -17,14 +17,16 @@ function initLogStream() {
 
   _eventSource = new EventSource('/api/logs/stream');
   
-  _eventSource.onmessage = function(event) {
-    try {
-      const entry = JSON.parse(event.data);
-      if (entry.timestamp && entry.message) {
-        const escapedMsg = he(entry.message);
-        const color = entry.color || 'inherit';
-        const logEntry = `<span style="color:${color}">[${entry.timestamp}] ${escapedMsg}</span>\n`;
-        contentEl.insertAdjacentHTML('afterbegin', logEntry);
+_eventSource.onmessage = function(event) {
+  try {
+    const entry = JSON.parse(event.data);
+    if (entry.timestamp && entry.message) {
+      const escapedMsg = he(entry.message);
+      const color = entry.color || 'inherit';
+      const isTiming = entry.message.includes('print_timing');
+      const classAttr = isTiming ? ' class="log-timing"' : '';
+      const logEntry = `<span style="color:${color}"${classAttr}>[${entry.timestamp}] ${escapedMsg}</span>\n`;
+      contentEl.insertAdjacentHTML('afterbegin', logEntry);
         
         // Limit to 1000 entries
         const entries = contentEl.getElementsByTagName('span');

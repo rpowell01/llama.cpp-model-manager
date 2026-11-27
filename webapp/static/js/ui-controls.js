@@ -506,6 +506,8 @@ function renderTiles(rows, dlMap, query) {
 
   const html = filtered
     .map((r) => {
+      // Set hideModel property based on hiddenModelsCache for checkbox state
+      r.hideModel = hiddenModels.has(normalizeModelName(r.model));
       const running = r.status && r.status.startsWith("running");
       const starting = r.status === "starting";
       const isSpec = !!r.speculative_decoding_model;

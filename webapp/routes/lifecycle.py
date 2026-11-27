@@ -11,7 +11,7 @@ from pathlib import Path
 
 import webapp.config as config
 from webapp.config import BASE_DIR, DEFAULTS, WINDOWS, WSL, convert_path_for_binary, Config
-from webapp.models import ModelRegistry, InvalidModeError
+from webapp.models import ModelRegistry, InvalidModeError, get_models
 from webapp.processes import (
     find_pid_by_port,
     find_pids_by_port,
@@ -179,6 +179,23 @@ def _stop_all_models(registry) -> dict[str, bool]:
         model = m.name
         port = int(m.port)
         
+        # Only attempt to stop if the model is actually running
+        # Check if port has a listener (same logic as status endpoint)
+        meta = get_models().get(model, {})
+        llama_cpp_platform = meta.get("llama_cpp_platform", "auto") or "auto"
+        
+        # Check stored PID for WSL Windows models (same as status endpoint)
+        is_wsl_windows = WSL and llama_cpp_platform == "windows"
+        has_stored_pid = False
+        if is_wsl_windows:
+            with _wsl_pids_lock:
+                has_stored_pid = model in _wsl_pids
+        
+        # Only attempt stop if port has listener or we have a stored PID
+        if not _port_has_listener(port, llama_cpp_platform) and not has_stored_pid:
+            results[model] = True  # Already stopped
+            continue
+            
         success, _ = _stop_model(model, port)
         results[model] = success
     

@@ -100,6 +100,16 @@
   padding: 0.2rem 0;
 }
 
+/* Highlight slot print_timing lines in the console log */
+#log .log-content span.log-timing {
+  font-weight: 700;
+  color: #ffe082;
+  background-color: rgba(255, 214, 100, 0.18);
+  border-radius: 3px;
+  padding: 0.2rem 0.4rem;
+  display: inline-block;
+}
+
 /* Hide the empty state placeholder when there are actual logs */
 #log .log-content:not(:empty)::before {
   display: none;
