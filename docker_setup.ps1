@@ -5,7 +5,7 @@
     This script downloads the latest release from GitHub and deploys the webapp
     as a Docker container on Windows. It handles:
     - Prerequisites check (Docker, Git)
-    - Downloading latest release from GitHub
+    - Downloading latest release from GitHub (or cloning if private/no releases)
     - Setting up required directories and volumes
     - Configuring llama-server binary (required for model serving)
     - Starting the Docker container
@@ -135,12 +135,30 @@ function Check-Prerequisites {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# GitHub Source Download (Release or Main Branch)
-# ─────────────────────────────────────────────────────────────────────────��────
+# GitHub Source Download (Release, Main Branch, or Local Repo)
+# ────────────────────────────────────────────────────────────────────────────────
 
 function Get-SourceInfo {
-    Write-LogInfo "Fetching latest release from GitHub..."
+    Write-LogInfo "Fetching source information..."
 
+    # First, check if we're already in a git repo for this project
+    $currentDir = Get-Location
+    if (Test-Path "$currentDir\.git") {
+        $originUrl = git -C $currentDir config --get remote.origin.url 2>$null
+        if ($originUrl -and $originUrl -like "*$RepoOwner/$RepoName*") {
+            Write-LogInfo "Already in project repository: $currentDir"
+            $tag = git -C $currentDir rev-parse --short HEAD 2>$null
+            if (-not $tag) { $tag = "local" }
+            return @{
+                SourceType = "local"
+                Path = $currentDir
+                tag_name = $tag
+                name = "local clone"
+            }
+        }
+    }
+
+    # Try GitHub API for releases (public repos only)
     $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
 
     try {
@@ -148,21 +166,36 @@ function Get-SourceInfo {
         $response.SourceType = "release"
         return $response
     } catch {
-        # No releases found - fall back to main branch
         if ($_.Exception.Response.StatusCode -eq 404) {
-            Write-LogInfo "No releases found, falling back to main branch..."
+            # No releases or private repo - try repo info
+            Write-LogInfo "No releases found or private repo, checking repository..."
             $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName"
-            $repoInfo = Invoke-RestMethod -Uri $apiUrl -Headers @{ "Accept" = "application/vnd.github.v3+json" } -UseBasicParsing
-            $repoInfo.SourceType = "branch"
-            $repoInfo.tag_name = $repoInfo.default_branch
-            $repoInfo.name = "main branch"
-            $repoInfo.zipball_url = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$($repoInfo.default_branch).zip"
-            return $repoInfo
+            try {
+                $repoInfo = Invoke-RestMethod -Uri $apiUrl -Headers @{ "Accept" = "application/vnd.github.v3+json" } -UseBasicParsing
+                $repoInfo.SourceType = "branch"
+                $repoInfo.tag_name = $repoInfo.default_branch
+                $repoInfo.name = "main branch"
+                $repoInfo.zipball_url = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$($repoInfo.default_branch).zip"
+                return $repoInfo
+            } catch {
+                if ($_.Exception.Response.StatusCode -eq 404) {
+                    Write-LogWarning "Repository not accessible via API (likely private). Will use git clone."
+                } else {
+                    Write-LogWarning "GitHub API error: $($_.Exception.Message). Will try git clone."
+                }
+                # Fall through to git clone approach
+            }
         } else {
-            Write-LogError "Failed to fetch repository information: $($_.Exception.Message)"
-            Write-Host "Check your internet connection and GitHub API availability." -ForegroundColor $Yellow
-            exit 1
+            Write-LogWarning "GitHub API error: $($_.Exception.Message). Will try git clone."
         }
+    }
+
+    # Final fallback: use git clone directly
+    return @{
+        SourceType = "git"
+        RepoUrl = "https://github.com/$RepoOwner/$RepoName.git"
+        tag_name = "main"
+        name = "git clone"
     }
 }
 
@@ -172,23 +205,75 @@ function Download-Source {
         [string]$Destination
     )
 
-    $downloadUrl = $SourceInfo.zipball_url
-    $fileName = "$($SourceInfo.tag_name).zip"
+    switch ($SourceInfo.SourceType) {
+        "local" {
+            Write-LogInfo "Using local repository at $($SourceInfo.Path)"
+            # Return the local path directly (no copy needed)
+            return $SourceInfo.Path
+        }
 
-    $zipPath = Join-Path $Destination $fileName
+        "release" {
+            $downloadUrl = $SourceInfo.zipball_url
+            $fileName = "$($SourceInfo.tag_name).zip"
+            $zipPath = Join-Path $Destination $fileName
 
-    Write-LogInfo "Downloading $fileName ($($SourceInfo.SourceType))..."
-    Write-LogVerbose "URL: $downloadUrl"
+            Write-LogInfo "Downloading $fileName ($($SourceInfo.SourceType))..."
+            Write-LogVerbose "URL: $downloadUrl"
 
-    try {
-        $progressPreference = 'silentlyContinue'
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
-        $progressPreference = 'Continue'
-        Write-LogSuccess "Downloaded to $zipPath"
-        return $zipPath
-    } catch {
-        Write-LogError "Download failed: $($_.Exception.Message)"
-        exit 1
+            try {
+                $progressPreference = 'silentlyContinue'
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+                $progressPreference = 'Continue'
+                Write-LogSuccess "Downloaded to $zipPath"
+                return $zipPath
+            } catch {
+                Write-LogWarning "Download failed: $($_.Exception.Message). Trying git clone..."
+                # Fall through to git clone
+            }
+        }
+
+        "branch" {
+            $downloadUrl = $SourceInfo.zipball_url
+            $fileName = "$($SourceInfo.tag_name).zip"
+            $zipPath = Join-Path $Destination $fileName
+
+            Write-LogInfo "Downloading $fileName ($($SourceInfo.SourceType))..."
+            Write-LogVerbose "URL: $downloadUrl"
+
+            try {
+                $progressPreference = 'silentlyContinue'
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+                $progressPreference = 'Continue'
+                Write-LogSuccess "Downloaded to $zipPath"
+                return $zipPath
+            } catch {
+                Write-LogWarning "Download failed: $($_.Exception.Message). Trying git clone..."
+                # Fall through to git clone
+            }
+        }
+
+        "git" {
+            Write-LogInfo "Cloning repository via git..."
+            $repoUrl = $SourceInfo.RepoUrl
+            $cloneDir = Join-Path $Destination "$RepoName-git"
+
+            try {
+                if (Test-Path $cloneDir) {
+                    Remove-Item -Recurse -Force $cloneDir -ErrorAction SilentlyContinue
+                }
+                git clone $repoUrl $cloneDir
+                Write-LogSuccess "Cloned to $cloneDir"
+                return $cloneDir
+            } catch {
+                Write-LogError "Git clone failed: $($_.Exception.Message)"
+                exit 1
+            }
+        }
+
+        default {
+            Write-LogError "Unknown source type: $($SourceInfo.SourceType)"
+            exit 1
+        }
     }
 }
 
@@ -197,6 +282,18 @@ function Extract-Release {
         [string]$ZipPath,
         [string]$ExtractDir
     )
+
+    # If ZipPath is actually a directory (from local or git clone), just copy it
+    if (Test-Path $ZipPath -PathType Container) {
+        Write-LogInfo "Source is a directory, copying to install location..."
+        if (Test-Path $ExtractDir) {
+            Write-LogVerbose "Removing existing directory: $ExtractDir"
+            Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
+        }
+        Copy-Item -Path $ZipPath -Destination $ExtractDir -Recurse -Force
+        Write-LogSuccess "Copied to $ExtractDir"
+        return $ExtractDir
+    }
 
     Write-LogInfo "Extracting release..."
 
@@ -449,9 +546,9 @@ function Main {
     # Check prerequisites
     Check-Prerequisites
 
-    # Get source info (release or main branch)
+    # Get source info
     $sourceInfo = Get-SourceInfo
-    Write-LogInfo "Latest source: $($sourceInfo.tag_name) - $($sourceInfo.name)"
+    Write-LogInfo "Source: $($sourceInfo.tag_name) - $($sourceInfo.name)"
     if ($sourceInfo.published_at) {
         Write-LogVerbose "Published: $($sourceInfo.published_at)"
     }
@@ -464,8 +561,8 @@ function Main {
 
     # Download and extract
     $tempDir = [System.IO.Path]::GetTempPath()
-    $zipPath = Download-Source -SourceInfo $sourceInfo -Destination $tempDir
-    $extractDir = Extract-Release -ZipPath $zipPath -ExtractDir $InstallDir
+    $sourcePath = Download-Source -SourceInfo $sourceInfo -Destination $tempDir
+    $extractDir = Extract-Release -ZipPath $sourcePath -ExtractDir $InstallDir
 
     # Find or prompt for llama-server directory
     if (-not $LlamaServerDir) {
@@ -502,9 +599,9 @@ function Main {
     # Show post-install info
     Show-PostInstallInfo -InstallDir $extractDir -ProjectName $ProjectName
 
-    # Cleanup temp zip
-    if (Test-Path $zipPath) {
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+    # Cleanup temp zip (only if we downloaded a zip)
+    if ($sourceInfo.SourceType -in @("release", "branch") -and $sourcePath -and (Test-Path $sourcePath)) {
+        Remove-Item $sourcePath -Force -ErrorAction SilentlyContinue
     }
 }
 
