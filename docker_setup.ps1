@@ -290,7 +290,58 @@ function Extract-Release {
             Write-LogVerbose "Removing existing directory: $ExtractDir"
             Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
         }
-        Copy-Item -Path $ZipPath -Destination $ExtractDir -Recurse -Force
+        
+        # For local git repos, use git archive to get clean working tree (excludes .git, ignored files)
+        if (Test-Path "$ZipPath\.git") {
+            Write-LogVerbose "Using git archive for clean copy..."
+            try {
+                $tempArchive = Join-Path $env:TEMP "repo-archive-$(Get-Random).tar"
+                git -C $ZipPath archive --format=tar HEAD -o $tempArchive
+                if (Test-Path $tempArchive) {
+                    # Ensure extract directory exists
+                    if (-not (Test-Path $ExtractDir)) {
+                        New-Item -ItemType Directory -Path $ExtractDir -Force | Out-Null
+                    }
+                    # Extract tar using tar.exe (available on Windows 10+)
+                    # Use absolute path for -C to avoid chdir issues
+                    $extractDirAbs = Resolve-Path $ExtractDir
+                    tar -xf $tempArchive -C $extractDirAbs.Path
+                    Remove-Item $tempArchive -Force -ErrorAction SilentlyContinue
+                    Write-LogSuccess "Extracted clean working tree to $ExtractDir"
+                    return $ExtractDir
+                }
+            } catch {
+                Write-LogWarning "git archive failed, falling back to robocopy: $($_.Exception.Message)"
+            }
+        }
+        
+        # Fallback: use robocopy with exclusions
+        # Exclude .git, venv, __pycache__, .pytest_cache, node_modules, .vscode, .idea, logs, models
+        $excludeDirs = @(".git", "venv", "__pycache__", ".pytest_cache", "node_modules", ".vscode", ".idea", "logs", "models")
+        $excludeFiles = @("*.log", "*.pyc", "*.pyo")
+        
+        $robocopyArgs = @("/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP")
+        if ($excludeDirs.Count -gt 0) { $robocopyArgs += "/XD"; $robocopyArgs += $excludeDirs }
+        if ($excludeFiles.Count -gt 0) { $robocopyArgs += "/XF"; $robocopyArgs += $excludeFiles }
+        
+        $sourcePath = $ZipPath.TrimEnd('\')
+        $destPath = $ExtractDir.TrimEnd('\')
+        
+        Write-LogVerbose "Running robocopy $sourcePath $destPath $($robocopyArgs -join ' ')"
+        $result = robocopy $sourcePath $destPath $robocopyArgs 2>&1
+        $exitCode = $LASTEXITCODE
+        
+        # Robocopy exit codes: 0=no files copied, 1=success, 2=extra files, 3=1+2, etc. >=8 is error
+        if ($exitCode -ge 8) {
+            Write-LogWarning "robocopy had issues (exit code $exitCode), falling back to Copy-Item..."
+            try {
+                Copy-Item -Path $ZipPath -Destination $ExtractDir -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-LogError "Copy failed: $($_.Exception.Message)"
+                exit 1
+            }
+        }
+        
         Write-LogSuccess "Copied to $ExtractDir"
         return $ExtractDir
     }
@@ -431,7 +482,7 @@ function Update-DockerCompose {
         $dockerPath = $LlamaServerDir.Replace('\', '/')
         if ($dockerPath -match '^[A-Za-z]:/') {
             # Convert C:/path to /c/path for Docker
-            $drive = $dockerPath[0].ToLower()
+            $drive = $dockerPath.Substring(0,1).ToLower()
             $dockerPath = "/$drive" + $dockerPath.Substring(2)
         }
 
@@ -451,7 +502,7 @@ function Update-DockerCompose {
     $hostModelsDir = Join-Path $InstallDir "models"
     $dockerModelsPath = $hostModelsDir.Replace('\', '/')
     if ($dockerModelsPath -match '^[A-Za-z]:/') {
-        $drive = $dockerModelsPath[0].ToLower()
+        $drive = $dockerModelsPath.Substring(0,1).ToLower()
         $dockerModelsPath = "/$drive" + $dockerModelsPath.Substring(2)
     }
 
