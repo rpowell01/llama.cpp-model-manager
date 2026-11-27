@@ -45,26 +45,10 @@ def inject_registry_to_context():
         g.registry = get_status_registry()
 
 
-def validate_remote_connectivity():
-    """Before request hook to validate remote server connectivity if in remote mode."""
-    registry = g.get('registry')
-    if registry and registry.is_remote_mode:
-        try:
-            registry._remote_client.get_status()
-            g.remote_healthy = True
-        except Exception as e:
-            log = __import__('logging').getLogger("llamaweb")
-            log.warning(f"Remote server connectivity check failed: {e}")
-            g.remote_healthy = False
-    else:
-        g.remote_healthy = True  # N/A in local mode
-
-
 status_bp = Blueprint("status", __name__)
 
 # Register before_request handlers
 status_bp.before_request(inject_registry_to_context)
-status_bp.before_request(validate_remote_connectivity)
 
 # Thread pool for parallel model status checks
 _status_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="model-status-")
@@ -80,74 +64,6 @@ _PROXY_HEALTH_TTL = 5  # seconds
 # Port listener cache with TTL (to avoid repeated netstat calls for same port)
 _port_listener_cache = {}
 _PORT_LISTENER_TTL = 5  # seconds
-
-
-def _status_for_model_remote(model: str, meta: dict, registry: ModelRegistry) -> dict:
-    """Compute model status in remote mode using the API."""
-    port = int(meta.get("port", 11000))
-    
-    # Get model status from remote API
-    try:
-        remote_model = registry._remote_client.get_model(model)
-    except Exception as e:
-        log = __import__('logging').getLogger("llamaweb")
-        log.warning(f"Failed to get remote model status for {model}: {e}")
-        # Remote server unreachable - mark as unknown status
-        return {
-            "model": model,
-            "port": port,
-            "status": "unknown",
-            "pid": None,
-            "file_exists": True,
-            "file_size_gb": meta.get("file_size_gb"),
-            "model_path": meta.get("model_path", ""),
-            "download_status": None,
-            "partial_download": 0,
-            "pp": None,
-            "tg": None,
-            "pg": None,
-            **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
-        }
-    
-    status = "unknown"
-    pid = None
-    
-    if remote_model:
-        status = "running"
-        port = remote_model.port
-    else:
-        status = "stopped"
-    
-    # File size info is not available from remote API
-    size_gb = meta.get("file_size_gb")
-    
-    # Download status
-    dl_status = None
-    with download_lock:
-        dl_status = download_status.get(model)
-    
-    # Mnemonic-proxy status (local proxy manager)
-    proxy_status = {}
-    proxy_manager = get_proxy_manager(model)
-    if proxy_manager:
-        proxy_status = proxy_manager.get_status()
-    
-    return {
-        "model": model,
-        "port": port,
-        "status": status,
-        "pid": pid,
-        "file_exists": True,  # Assume exists in remote mode
-        "file_size_gb": size_gb,
-        "model_path": meta.get("model_path", ""),
-        "download_status": dl_status,
-        "partial_download": 0,
-        "pp": None,
-        "tg": None,
-        "pg": None,
-        "mnemonic_proxy": proxy_status,
-        **{k: v for k, v in meta.items() if k not in ["file_size_gb", "file_exists"]},
-    }
 
 
 def _get_cached_file_exists(model_path: Path) -> tuple[bool, float | None]:
@@ -298,10 +214,6 @@ def _status_for_model(model: str, meta: dict, registry: ModelRegistry | None = N
     """Compute comprehensive model status."""
     if registry is None:
         registry = g.get('registry') or get_status_registry()
-    
-    # In remote mode, delegate to remote API
-    if registry.is_remote_mode:
-        return _status_for_model_remote(model, meta, registry)
     
     # Local mode: use local process management
     port = int(meta.get("port", 11000))
@@ -514,48 +426,8 @@ def _get_model_statuses_parallel(models: dict, registry: ModelRegistry) -> list:
 def index():
     registry = g.get('registry') or get_status_registry()
     
-    if registry.is_remote_mode:
-        remote_models = registry.list_models()
-        statuses = []
-        for model in remote_models:
-            statuses.append({
-                "model": model.name,
-                "port": model.port,
-                "status": "running",
-                "pid": None,
-                "file_exists": True,
-                "file_size_gb": model.file_size_gb,
-                "model_path": model.model_path,
-                "download_status": None,
-                "partial_download": 0,
-                "pp": None,
-                "tg": None,
-                "pg": None,
-                "repo": model.repo,
-                "filename": model.filename,
-                "expected_size": model.expected_size,
-                "threads": model.threads,
-                "threads_batch": model.threads_batch,
-                "timeout": model.timeout,
-                "mlock": model.mlock,
-                "flash_attn": model.flash_attn,
-                "no_mmap": model.no_mmap,
-                "parallel": model.parallel,
-                "ubatch_size": model.ubatch_size,
-                "ctx_size": model.ctx_size,
-                "yarn_orig_ctx": model.yarn_orig_ctx,
-                "overthinking_penalty_enabled": model.overthinking_penalty_enabled,
-                "overthinking_penalty_words": model.overthinking_penalty_words,
-                "overthinking_penalty_bias": model.overthinking_penalty_bias,
-                "logit_bias": model.logit_bias,
-                "rating_speed": model.rating_speed,
-                "rating_coding": model.rating_coding,
-                "comment": model.comment,
-                "speculative_decoding_model": getattr(model, "speculative_decoding_model", False),
-            })
-    else:
-        models = get_models()
-        statuses = _get_model_statuses_parallel(models, registry)
+    models = get_models()
+    statuses = _get_model_statuses_parallel(models, registry)
     
     # Get hardware info for display (cached)
     hardware_info = get_hardware_info()
@@ -572,68 +444,17 @@ def index():
 def api_status():
     registry = g.get('registry') or get_status_registry()
     
-    # In remote mode, fetch models from remote server
-    if registry.is_remote_mode:
-        remote_models = registry.list_models()
-        results = []
-        for model in remote_models:
-            # Get local proxy status for this model
-            proxy_status = {}
-            proxy_manager = get_proxy_manager(model.name)
-            if proxy_manager:
-                proxy_status = proxy_manager.get_status()
-            
-            # Convert remote Model to status dict format
-            results.append({
-                "model": model.name,
-                "port": model.port,
-                "status": "running",
-                "pid": None,
-                "file_exists": True,
-                "file_size_gb": model.file_size_gb,
-                "model_path": model.model_path,
-                "download_status": None,
-                "partial_download": 0,
-                "pp": None,
-                "tg": None,
-                "pg": None,
-                "mnemonic_proxy": proxy_status,
-                "repo": model.repo,
-                "filename": model.filename,
-                "expected_size": model.expected_size,
-                "threads": model.threads,
-                "threads_batch": model.threads_batch,
-                "timeout": model.timeout,
-                "mlock": model.mlock,
-                "flash_attn": model.flash_attn,
-                "no_mmap": model.no_mmap,
-                "parallel": model.parallel,
-                "ubatch_size": model.ubatch_size,
-                "ctx_size": model.ctx_size,
-                "yarn_orig_ctx": model.yarn_orig_ctx,
-                "overthinking_penalty_enabled": model.overthinking_penalty_enabled,
-                "overthinking_penalty_words": model.overthinking_penalty_words,
-                "overthinking_penalty_bias": model.overthinking_penalty_bias,
-                "logit_bias": model.logit_bias,
-                "rating_speed": model.rating_speed,
-                "rating_coding": model.rating_coding,
-                "comment": model.comment,
-                "speculative_decoding_model": getattr(model, "speculative_decoding_model", False),
-            })
-    else:
-        models = get_models()
-        results = _get_model_statuses_parallel(models, registry)
+    models = get_models()
+    results = _get_model_statuses_parallel(models, registry)
     
     # Validate that each model row has unique identifying data (regression check for web-47ob)
-    if results and not registry.is_remote_mode:
-        _validate_status_uniqueness(results)
+    _validate_status_uniqueness(results)
     
     # Add mode and remote health info to response
     from webapp.config import PREFER_LINUX_BINARY
     response_data = {
         "models": results,
-        "mode": "remote" if registry.is_remote_mode else "local",
-        "remote_healthy": g.get('remote_healthy', True),
+        "mode": "local",
         "prefer_linux_binary": PREFER_LINUX_BINARY,
         "wsl": WSL,
     }
@@ -661,54 +482,6 @@ def api_status_single(model_name):
         return jsonify({"error": f"Unknown model '{model_name}'"}), 404
     
     meta = models[model_key]
-    
-    # In remote mode, use remote API for status
-    if registry.is_remote_mode:
-        remote_model = registry._remote_client.get_model(model_key)
-        if not remote_model:
-            return jsonify({"error": f"Model '{model_key}' not found on remote server"}), 404
-        # Get local proxy status
-        proxy_status = {}
-        proxy_manager = get_proxy_manager(model_key)
-        if proxy_manager:
-            proxy_status = proxy_manager.get_status()
-        
-        return jsonify({
-            "model": model_key,
-            "port": remote_model.port,
-            "status": "running",
-            "pid": None,
-            "file_exists": True,
-            "file_size_gb": remote_model.file_size_gb,
-            "model_path": remote_model.model_path,
-            "download_status": None,
-            "partial_download": 0,
-            "pp": None,
-            "tg": None,
-            "pg": None,
-            "mnemonic_proxy": proxy_status,
-            "repo": remote_model.repo,
-            "filename": remote_model.filename,
-            "expected_size": remote_model.expected_size,
-            "threads": remote_model.threads,
-            "threads_batch": remote_model.threads_batch,
-            "timeout": remote_model.timeout,
-            "mlock": remote_model.mlock,
-            "flash_attn": remote_model.flash_attn,
-            "no_mmap": remote_model.no_mmap,
-            "parallel": remote_model.parallel,
-            "ubatch_size": remote_model.ubatch_size,
-            "ctx_size": remote_model.ctx_size,
-            "yarn_orig_ctx": remote_model.yarn_orig_ctx,
-            "overthinking_penalty_enabled": remote_model.overthinking_penalty_enabled,
-            "overthinking_penalty_words": remote_model.overthinking_penalty_words,
-            "overthinking_penalty_bias": remote_model.overthinking_penalty_bias,
-            "logit_bias": remote_model.logit_bias,
-            "rating_speed": remote_model.rating_speed,
-            "rating_coding": remote_model.rating_coding,
-            "comment": remote_model.comment,
-            "speculative_decoding_model": getattr(remote_model, "speculative_decoding_model", False),
-        })
     
     # Local mode: use existing _status_for_model function
     result = _status_for_model(model_key, meta, registry)
@@ -793,22 +566,6 @@ def api_debug(model_name):
     meta = models[model_name]
     port = int(meta["port"])
     
-    # In remote mode, use remote API for status
-    if registry.is_remote_mode:
-        remote_model = registry._remote_client.get_model(model_name)
-        return jsonify({
-            "model": model_name,
-            "port": remote_model.port if remote_model else port,
-            "active": remote_model is not None,
-            "WSL": WSL,
-            "LLAMA_SERVER": str(config.LLAMA_SERVER) if config.LLAMA_SERVER else None,
-            "stored_pid": None,
-            "recent_stop": _recent_stops.get(model_name),
-            "mode": "remote",
-            "remote_healthy": g.get('remote_healthy', True),
-        })
-    
-    # Local mode
     active = _check_model_ready(port, model_name)
     result = {
         "model": model_name,
@@ -827,11 +584,6 @@ def api_debug(model_name):
 @status_bp.route("/api/next-port")
 def api_next_port():
     registry = g.get('registry') or get_status_registry()
-    
-    # In remote mode, we can't check local port availability
-    if registry.is_remote_mode:
-        # Return a placeholder port for remote mode
-        return jsonify({"port": 0, "note": "Port assignment handled by remote server"})
     
     # Local mode: find next available port
     start = 11000

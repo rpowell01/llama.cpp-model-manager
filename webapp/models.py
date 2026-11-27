@@ -3,10 +3,6 @@
 Model management: caching, filesystem scanning, port assignment, and persistence.
 
 This module maintains the in-memory model registry with thread-safe access.
-
-REMOTE_MODE: In remote mode, this module delegates to RemoteModelRegistry for
-API-based model management. In local mode, it provides filesystem-based model
-management with port assignment and cache persistence.
 """
 
 from __future__ import annotations
@@ -15,10 +11,12 @@ import json
 import logging
 import subprocess
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from webapp.config import BASE_DIR, DEFAULTS, MODELS_DIR, MODELS_JSON, normalize_path_for_binary, resolve_model_path
+from webapp.logit_bias import DEFAULT_OVERTHINKING_WORDS
 
 # Thread-safe in-memory model cache
 _models: dict[str, dict[str, Any]] = {}
@@ -32,22 +30,282 @@ log = logging.getLogger("llamaweb")
 # ──────────────────────────────────────────────────────────────────────────────
 
 class InvalidModeError(Exception):
-    """Raised when attempting to use local-only functions in remote mode."""
+    """Raised when attempting to use registry operations not supported in local mode."""
     
     def __init__(self, operation: str):
         super().__init__(
-            f"Cannot perform '{operation}' in remote mode. "
-            "This operation requires local process management."
+            f"Cannot perform '{operation}' via registry. "
+            "Use processes module for local mode operations."
         )
         self.operation = operation
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Model Data Class - imported from remote_client for consistency
+# Model Data Class
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Import Model from remote_client to avoid duplication
-from webapp.remote_client import Model
+@dataclass
+class Model:
+    """Represents a model configuration."""
+    name: str
+    repo: str = ""
+    filename: str = ""
+    model_path: str = ""
+    expected_size: int = 0
+    port: int = 0
+    threads: int = 16
+    threads_batch: int = 22
+    timeout: int = 3600
+    mlock: bool = True
+    flash_attn: str = "off"
+    no_mmap: bool = True
+    parallel: int = 4
+    ubatch_size: int = 512
+    file_exists: bool = False
+    file_size_gb: Optional[float] = None
+    # Agent/Tool parameters
+    jinja: bool = True
+    reasoning_preserve: bool = True
+    # CPU-only optimizations
+    gpu_layers: int = 0
+    device: str = ""
+    cpu_moe: bool = False
+    n_cpu_moe: int = 0
+    moe_cache_mib: int = 0
+    cache_type_k: str = "f16"
+    cache_type_v: str = "f16"
+    numa: bool = True
+    numa_value: str = "distribute"
+    cpu_affinity: str = "auto"
+    cpu_strict: bool = False
+    batch_size: int = 512
+    ctx_size: int = 4096
+    # YaRN RoPE scaling
+    rope_freq_base: float = 10000.0
+    rope_freq_scale: float = 1.0
+    rope_scaling_type: str = "none"
+    rope_scale: float = 1.0
+    yarn_orig_ctx: int = 0
+    yarn_ext_factor: float = -1.0
+    yarn_attn_factor: float = 1.0
+    yarn_beta_slow: float = 1.0
+    yarn_beta_fast: float = 32.0
+    # Speculative decoding
+    spec_type: str = "none"
+    spec_draft_model: str = ""
+    spec_draft_hf_repo: str = ""
+    spec_draft_n_max: int = 3
+    spec_draft_n_min: int = 0
+    spec_draft_p_split: float = 0.10
+    spec_draft_p_min: float = 0.00
+    spec_draft_ngl: str = "auto"
+    spec_draft_temp: float = 0.0
+    spec_draft_top_p: float = 1.0
+    spec_draft_min_p: float = 0.0
+    spec_draft_typical: float = 1.0
+    spec_ngram_size_n: int = 12
+    spec_ngram_size_m: int = 48
+    spec_ngram_min_hits: int = 1
+    # Ngram-mod parameters
+    spec_ngram_mod_n_match: int = 24
+    spec_ngram_mod_n_min: int = 48
+    spec_ngram_mod_n_max: int = 64
+    # Draft model KV cache type
+    spec_draft_type_k: str = "f16"
+    spec_draft_type_v: str = "f16"
+    # Warmup
+    warmup_enabled: bool = False
+    warmup_message: str = "Hello"
+    warmup_max_tokens: int = 10
+    # User ratings and comments
+    comment: str = ""
+    rating_speed: int = 0
+    rating_coding: int = 0
+    # Speculative decoding model flag
+    speculative_decoding_model: bool = False
+    # Slot KV Cache Persistence
+    slot_save_path: str = ""
+    cache_reuse: int = 4096
+    keep: int = 0
+    swa_full: bool = False
+    # Logging
+    log_verbosity: int = 3
+    # Chat template
+    chat_template_file: str = ""
+    # Custom model start parameter string
+    custom_model_start_param: str = ""
+    # Multimodal projector parameters
+    mmproj: str = ""
+    mmproj_auto: bool = True
+    mmproj_offload: bool = True
+    # Generation / Sampling parameters
+    use_generation_params: bool = True
+    temperature: float = 0.7
+    top_k: int = 40
+    top_p: float = 0.9
+    min_p: float = 0.05
+    repeat_penalty: float = 1.1
+    presence_penalty: float = 0.0
+    reasoning: str = "auto"
+    reasoning_effort: str = "default"
+    reasoning_budget: int = -1
+    reasoning_budget_message: str = ""
+    # Overthinking logit penalty
+    overthinking_penalty_enabled: bool = False
+    overthinking_penalty_words: List[str] = None
+    overthinking_penalty_bias: float = -2.0
+    logit_bias: str = ""
+    overthinking_penalty_cache: Optional[Dict] = None
+    # llama.cpp platform and backend selection
+    llama_cpp_platform: str = "auto"
+    llama_cpp_backend: str = "auto"
+    # Mnemonic Proxy configuration
+    mnemonic_proxy_enabled: bool = False
+    mnemonic_proxy_port: int = 8096
+    mnemonic_proxy_data_dir: str = ""
+    mnemonic_proxy_slot_dir: str = ""
+    mnemonic_proxy_tokenizer_path: str = ""
+    mnemonic_proxy_config_override: Optional[Dict] = None
+    mnemonic_proxy_mcp_enabled: bool = False
+    mnemonic_proxy_mcp_port: int = 8133
+
+    def __post_init__(self):
+        # Initialize list fields that default to None
+        if self.overthinking_penalty_words is None:
+            from webapp.logit_bias import DEFAULT_OVERTHINKING_WORDS
+            self.overthinking_penalty_words = list(DEFAULT_OVERTHINKING_WORDS)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Model":
+        """Create a Model instance from a dictionary."""
+        # Handle overthinking_penalty_words specially
+        overthinking_words = data.get("overthinking_penalty_words")
+        if overthinking_words is not None and not isinstance(overthinking_words, list):
+            overthinking_words = list(overthinking_words)
+        
+        return cls(
+            name=data.get("name", ""),
+            repo=data.get("repo", ""),
+            filename=data.get("filename", ""),
+            model_path=data.get("model_path", ""),
+            expected_size=data.get("expected_size", 0),
+            port=data.get("port", 0),
+            threads=data.get("threads", 16),
+            threads_batch=data.get("threads_batch", 22),
+            timeout=data.get("timeout", 3600),
+            mlock=data.get("mlock", True),
+            flash_attn=data.get("flash_attn", "off"),
+            no_mmap=data.get("no_mmap", True),
+            parallel=data.get("parallel", 4),
+            ubatch_size=data.get("ubatch_size", 512),
+            file_exists=data.get("file_exists", False),
+            file_size_gb=data.get("file_size_gb"),
+            # Agent/Tool parameters
+            jinja=data.get("jinja", True),
+            reasoning_preserve=data.get("reasoning_preserve", True),
+            # CPU-only optimizations
+            gpu_layers=data.get("gpu_layers", 0),
+            device=data.get("device", ""),
+            cpu_moe=data.get("cpu_moe", False),
+            n_cpu_moe=data.get("n_cpu_moe", 0),
+            moe_cache_mib=data.get("moe_cache_mib", 0),
+            cache_type_k=data.get("cache_type_k", "f16"),
+            cache_type_v=data.get("cache_type_v", "f16"),
+            numa=data.get("numa", True),
+            numa_value=data.get("numa_value", "distribute"),
+            cpu_affinity=data.get("cpu_affinity", "auto"),
+            cpu_strict=data.get("cpu_strict", False),
+            batch_size=data.get("batch_size", 512),
+            ctx_size=data.get("ctx_size", 4096),
+            # YaRN RoPE scaling
+            rope_freq_base=data.get("rope_freq_base", 10000.0),
+            rope_freq_scale=data.get("rope_freq_scale", 1.0),
+            rope_scaling_type=data.get("rope_scaling_type", "none"),
+            rope_scale=data.get("rope_scale", 1.0),
+            yarn_orig_ctx=data.get("yarn_orig_ctx", 0),
+            yarn_ext_factor=data.get("yarn_ext_factor", -1.0),
+            yarn_attn_factor=data.get("yarn_attn_factor", 1.0),
+            yarn_beta_slow=data.get("yarn_beta_slow", 1.0),
+            yarn_beta_fast=data.get("yarn_beta_fast", 32.0),
+            # Speculative decoding
+            spec_type=data.get("spec_type", "none"),
+            spec_draft_model=data.get("spec_draft_model", ""),
+            spec_draft_hf_repo=data.get("spec_draft_hf_repo", ""),
+            spec_draft_n_max=data.get("spec_draft_n_max", 3),
+            spec_draft_n_min=data.get("spec_draft_n_min", 0),
+            spec_draft_p_split=data.get("spec_draft_p_split", 0.10),
+            spec_draft_p_min=data.get("spec_draft_p_min", 0.00),
+            spec_draft_ngl=data.get("spec_draft_ngl", "auto"),
+            spec_draft_temp=data.get("spec_draft_temp", 0.0),
+            spec_draft_top_p=data.get("spec_draft_top_p", 1.0),
+            spec_draft_min_p=data.get("spec_draft_min_p", 0.0),
+            spec_draft_typical=data.get("spec_draft_typical", 1.0),
+            spec_ngram_size_n=data.get("spec_ngram_size_n", 12),
+            spec_ngram_size_m=data.get("spec_ngram_size_m", 48),
+            spec_ngram_min_hits=data.get("spec_ngram_min_hits", 1),
+            # Ngram-mod parameters
+            spec_ngram_mod_n_match=data.get("spec_ngram_mod_n_match", 24),
+            spec_ngram_mod_n_min=data.get("spec_ngram_mod_n_min", 48),
+            spec_ngram_mod_n_max=data.get("spec_ngram_mod_n_max", 64),
+            # Draft model KV cache type
+            spec_draft_type_k=data.get("spec_draft_type_k", "f16"),
+            spec_draft_type_v=data.get("spec_draft_type_v", "f16"),
+            # Warmup
+            warmup_enabled=data.get("warmup_enabled", False),
+            warmup_message=data.get("warmup_message", "Hello"),
+            warmup_max_tokens=data.get("warmup_max_tokens", 10),
+            # User ratings and comments
+            comment=data.get("comment", ""),
+            rating_speed=data.get("rating_speed", 0),
+            rating_coding=data.get("rating_coding", 0),
+            # Speculative decoding model flag
+            speculative_decoding_model=data.get("speculative_decoding_model", False),
+            # Slot KV Cache Persistence
+            slot_save_path=data.get("slot_save_path", ""),
+            cache_reuse=data.get("cache_reuse", 4096),
+            keep=data.get("keep", 0),
+            swa_full=data.get("swa_full", False),
+            # Logging
+            log_verbosity=data.get("log_verbosity", 3),
+            # Chat template
+            chat_template_file=data.get("chat_template_file", ""),
+            # Custom model start parameter string
+            custom_model_start_param=data.get("custom_model_start_param", ""),
+            # Multimodal projector parameters
+            mmproj=data.get("mmproj", ""),
+            mmproj_auto=data.get("mmproj_auto", True),
+            mmproj_offload=data.get("mmproj_offload", True),
+            # Generation / Sampling parameters
+            use_generation_params=data.get("use_generation_params", True),
+            temperature=data.get("temperature", 0.7),
+            top_k=data.get("top_k", 40),
+            top_p=data.get("top_p", 0.9),
+            min_p=data.get("min_p", 0.05),
+            repeat_penalty=data.get("repeat_penalty", 1.1),
+            presence_penalty=data.get("presence_penalty", 0.0),
+            reasoning=data.get("reasoning", "auto"),
+            reasoning_effort=data.get("reasoning_effort", "default"),
+            reasoning_budget=data.get("reasoning_budget", -1),
+            reasoning_budget_message=data.get("reasoning_budget_message", ""),
+            # Overthinking logit penalty
+            overthinking_penalty_enabled=data.get("overthinking_penalty_enabled", False),
+            overthinking_penalty_words=list(data["overthinking_penalty_words"]) if data.get("overthinking_penalty_words") is not None else list(DEFAULT_OVERTHINKING_WORDS),
+            overthinking_penalty_bias=data.get("overthinking_penalty_bias", -2.0),
+            logit_bias=data.get("logit_bias", ""),
+            overthinking_penalty_cache=data.get("overthinking_penalty_cache"),
+            # llama.cpp platform and backend selection
+            llama_cpp_platform=data.get("llama_cpp_platform", "auto"),
+            llama_cpp_backend=data.get("llama_cpp_backend", "auto"),
+            # Mnemonic Proxy configuration
+            mnemonic_proxy_enabled=data.get("mnemonic_proxy", {}).get("enabled", False),
+            mnemonic_proxy_port=data.get("mnemonic_proxy", {}).get("port", 8096),
+            mnemonic_proxy_data_dir=data.get("mnemonic_proxy", {}).get("data_dir", ""),
+            mnemonic_proxy_slot_dir=data.get("mnemonic_proxy", {}).get("slot_dir", ""),
+            mnemonic_proxy_tokenizer_path=data.get("mnemonic_proxy", {}).get("tokenizer_path", ""),
+            mnemonic_proxy_config_override=data.get("mnemonic_proxy", {}).get("config_override"),
+            mnemonic_proxy_mcp_enabled=data.get("mnemonic_proxy", {}).get("mcp_enabled", False),
+            mnemonic_proxy_mcp_port=data.get("mnemonic_proxy", {}).get("mcp_port", 8133),
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -56,42 +314,30 @@ from webapp.remote_client import Model
 
 class ModelRegistry:
     """
-    Unified model registry that works in both local and remote modes.
-    
-    In local mode, it provides filesystem-based model management.
-    In remote mode, it delegates to RemoteModelRegistry for API-based management.
+    Model registry for local mode filesystem-based model management.
     """
-    
+
     def __init__(self, config):
         """
         Initialize the ModelRegistry.
         
         Args:
-            config: Config object with is_remote_mode property and remote_url property
+            config: Config object
         """
         self._config = config
-        self._remote_client = None
-        
-        if self._config.is_remote_mode:
-            from webapp.remote_client import RemoteModelRegistry
-            self._remote_client = RemoteModelRegistry(self._config.remote_url)
     
     @property
     def is_remote_mode(self) -> bool:
-        """Return True if running in remote mode."""
-        return self._config.is_remote_mode
+        """Always returns False since remote mode is removed."""
+        return False
     
     def list_models(self) -> list[Model]:
         """
         List all models.
         
         Returns:
-            List of Model objects. In remote mode, returns models from the API.
-            In local mode, returns models from the local cache.
+            List of Model objects from the local cache.
         """
-        if self._config.is_remote_mode:
-            return self._remote_client.list_models()
-        
         # Local mode: return from local cache
         with _models_lock:
             models = []
@@ -102,7 +348,8 @@ class ModelRegistry:
     
     def load_model(self, name: str) -> bool:
         """
-        Load a model. In remote mode, delegates to the remote API.
+        Load a model. In local mode, this raises InvalidModeError.
+        Use processes module for local model loading.
         
         Args:
             name: Model name to load
@@ -111,15 +358,14 @@ class ModelRegistry:
             True if successful
             
         Raises:
-            InvalidModeError: In local mode (use processes module)
+            InvalidModeError: Always raised in local mode (use processes module for local mode)
         """
-        if self._config.is_remote_mode:
-            return self._remote_client.load_model(name)
         raise InvalidModeError("load_model via registry - use processes module for local mode")
     
     def unload_model(self, name: str) -> bool:
         """
-        Unload a model. In remote mode, delegates to the remote API.
+        Unload a model. In local mode, this raises InvalidModeError.
+        Use processes module for local model unloading.
         
         Args:
             name: Model name to unload
@@ -128,10 +374,8 @@ class ModelRegistry:
             True if successful
             
         Raises:
-            InvalidModeError: In local mode (use processes module)
+            InvalidModeError: Always raised in local mode (use processes module for local mode)
         """
-        if self._config.is_remote_mode:
-            return self._remote_client.unload_model(name)
         raise InvalidModeError("unload_model via registry - use processes module for local mode")
     
     def get_model(self, name: str) -> Optional[Model]:
@@ -144,14 +388,10 @@ class ModelRegistry:
         Returns:
             Model object if found, None otherwise
         """
-        if self._config.is_remote_mode:
-            remote_model = self._remote_client.get_model(name)
-            return remote_model
-        
-        # Local mode
         with _models_lock:
-            if name in _models:
-                return Model.from_dict({**_models[name], "name": name})
+            meta = _models.get(name)
+            if meta:
+                return Model.from_dict({**meta, "name": name})
             return None
     
     def close(self) -> None:

@@ -1037,50 +1037,22 @@ def get_platform_backend_dir(platform: str, backend: str) -> str:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Remote configuration support
-#
-# REMOTE_MODE: When enabled (REMOTE_MODE=true), the application connects to an
-# external llama.cpp server via REST API instead of managing local processes.
-# All model operations are delegated to the remote server.
-# ──────────────────────────────────────────────────────────────────────────────
-
 class Config:
-    """Configuration for remote vs local mode."""
+    """Configuration for local mode."""
 
     def __init__(self) -> None:
-        self._remote_mode: bool = False
-        self._remote_url: str = ""
         self._load()
 
     def _load(self) -> None:
         """Load configuration from environment variables."""
-        # Read REMOTE_MODE: default to False if unset
-        remote_mode_str = os.getenv("REMOTE_MODE", "").strip().lower()
-        if remote_mode_str in ("true", "1", "yes", "on"):
-            self._remote_mode = True
-        else:
-            self._remote_mode = False
-
-        # Read LLAMA_CPP_SERVER_URL value (may be None if not set)
-        url_env = os.getenv("LLAMA_CPP_SERVER_URL")
-
-        if self._remote_mode:
-            # In remote mode, URL must be explicitly set and non-empty
-            if not url_env or not url_env.strip():
-                raise ValueError(
-                    "REMOTE_MODE is enabled but LLAMA_CPP_SERVER_URL is not set or empty. "
-                    "Please set LLAMA_CPP_SERVER_URL to the remote server address."
-                )
-            self._remote_url = url_env.strip()
-        else:
-            # In local mode, use provided URL or default to localhost:8080
-            self._remote_url = url_env.strip() if url_env and url_env.strip() else "http://localhost:8080"
+        pass
 
     @property
     def is_remote_mode(self) -> bool:
-        """Return True if remote mode is enabled."""
-        return self._remote_mode
+        """Always returns False since remote mode is removed."""
+        return False
 
     @property
     def remote_url(self) -> str:
-        """Return the remote server URL."""
-        return self._remote_url
+        """Return empty string since remote mode is removed."""
+        return ""

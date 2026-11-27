@@ -63,26 +63,14 @@ def get_model_registry() -> ModelRegistry:
 
 
 def inject_registry_to_context():
-    """Middleware to inject ModelRegistry into request context."""
+    """Before request hook to inject ModelRegistry into request context."""
     g.registry = get_model_registry()
-
-
-def validate_remote_connectivity():
-    """Before request hook to validate remote server connectivity if in remote mode."""
-    registry = getattr(g, 'registry', None)
-    if registry and registry.is_remote_mode:
-        try:
-            registry._remote_client.get_status()
-        except Exception as e:
-            log.warning(f"Remote server connectivity check failed: {e}")
-            return jsonify({"error": "Remote server unreachable"}), 503
 
 
 lifecycle_bp = Blueprint("lifecycle", __name__)
 
 # Register before_request handlers
 lifecycle_bp.before_request(inject_registry_to_context)
-lifecycle_bp.before_request(validate_remote_connectivity)
 
 
 def _stop_model(model: str, port: int) -> tuple[bool, int | None]:
@@ -262,26 +250,9 @@ def _force_kill_all_llama() -> int:
 
 @lifecycle_bp.route("/api/start", methods=["POST"])
 def api_start():
-    """Start a model. In remote mode, delegates to remote API with 202 Accepted."""
+    """Start a model."""
     registry = g.registry
     
-    # Check if we're in remote mode
-    if registry.is_remote_mode:
-        data = request.get_json(force=True) or {}
-        model = data.get("model", "").strip()
-        if not model:
-            return jsonify({"error": "Missing 'model'"}), 400
-        # In remote mode, models are pre-loaded on the remote server
-        # We just verify connectivity and return 202 Accepted
-        try:
-            registry._remote_client.get_status()
-            # Return 202 Accepted immediately for async operation in remote mode
-            return jsonify({"status": "loading", "model": model}), 202
-        except Exception as e:
-            log.exception("Failed to connect to remote server")
-            return jsonify({"error": "Remote server unreachable"}), 503
-    
-    # Local mode: use process management
     start_success = False
     model = None
     proc = None
@@ -903,20 +874,9 @@ def _kill_lingering_service_listeners(model: str) -> None:
 
 @lifecycle_bp.route("/api/stop", methods=["POST"])
 def api_stop():
-    """Stop a model. In remote mode, models are pre-loaded and cannot be stopped."""
+    """Stop a model."""
     registry = g.registry
     
-    # Check if we're in remote mode
-    if registry.is_remote_mode:
-        data = request.get_json(force=True) or {}
-        model = data.get("model", "").strip()
-        if not model:
-            return jsonify({"error": "Missing 'model'"}), 400
-        # In remote mode, models are pre-loaded and cannot be stopped via API
-        # The remote server manages its own model lifecycle
-        return jsonify({"status": "stopped", "model": model})
-    
-    # Local mode: use process management
     data = request.get_json(force=True) or {}
     model = data.get("model", "").strip()
     if not model:

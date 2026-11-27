@@ -106,90 +106,73 @@ def api_chat():
     if not model:
         return jsonify({"error": "Missing model name"}), 400
 
-    # Always query ModelRegistry for loaded models
-    if registry.is_remote_mode:
-        # In remote mode, check if model is loaded via the remote API
-        remote_model = registry._remote_client.get_model(model)
-        if not remote_model:
-            return jsonify({"error": f"Model '{model}' is not loaded on remote server"}), 400
-        # In remote mode, use the remote server URL directly
-        remote_url = registry._config.remote_url.rstrip("/")
-        port = 80  # Default HTTP port for URL parsing
-        host = remote_url.replace("http://", "").replace("https://", "")
-        if ":" in host:
-            host, port_str = host.split(":", 1)
-            port = int(port_str)
-        
-        # In remote mode, we don't have mnemonic-proxy - proxy directly
-        target_url = f"{remote_url}/v1/chat/completions"
-    else:
-        # In local mode, check local cache and port
-        models = registry.list_models()
-        model_obj = None
-        for m in models:
-            if m.name == model:
-                model_obj = m
-                break
-        
-        if not model_obj:
-            return jsonify({"error": f"Unknown model '{model}'"}), 404
-        
-        port = model_obj.port
-        if not port:
-            return jsonify({"error": "Model has no assigned port"}), 400
-        
-        try:
-            port_int = int(port)
-        except (TypeError, ValueError):
-            log.error(f"Invalid port type for model {model}: {port!r}")
-            return jsonify({"error": "Model has invalid port configuration"}), 500
+    # Local mode: check local cache and port
+    models = registry.list_models()
+    model_obj = None
+    for m in models:
+        if m.name == model:
+            model_obj = m
+            break
+    
+    if not model_obj:
+        return jsonify({"error": f"Unknown model '{model}'"}), 404
+    
+    port = model_obj.port
+    if not port:
+        return jsonify({"error": "Model has no assigned port"}), 400
+    
+    try:
+        port_int = int(port)
+    except (TypeError, ValueError):
+        log.error(f"Invalid port type for model {model}: {port!r}")
+        return jsonify({"error": "Model has invalid port configuration"}), 500
 
-        # Check if model is starting
-        local_models = get_models()
-        if model in local_models:
-            status_info = _status_for_model(model, local_models[model], registry)
-            if status_info.get("status") == "starting":
-                return jsonify({"error": "Model is starting", "status": "starting"}), 503
+    # Check if model is starting
+    local_models = get_models()
+    if model in local_models:
+        status_info = _status_for_model(model, local_models[model], registry)
+        if status_info.get("status") == "starting":
+            return jsonify({"error": "Model is starting", "status": "starting"}), 503
 
-        if not _check_model_ready(port_int, model):
-            return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
-        
-        # Resolve the model's platform so WSL+Windows models use the right host set
-        model_platform = getattr(model_obj, 'llama_cpp_platform', 'auto') or "auto"
-        _is_wsl_windows_model = WSL and model_platform == "windows"
+    if not _check_model_ready(port_int, model):
+        return jsonify({"error": f"Model '{model}' is not running (port {port} inactive)"}), 400
+    
+    # Resolve the model's platform so WSL+Windows models use the right host set
+    model_platform = getattr(model_obj, 'llama_cpp_platform', 'auto') or "auto"
+    _is_wsl_windows_model = WSL and model_platform == "windows"
 
-        # Check if mnemonic-proxy is enabled for this model
-        mnemonic_proxy_enabled = getattr(model_obj, 'mnemonic_proxy_enabled', False)
-        proxy_port = getattr(model_obj, 'mnemonic_proxy_port', 8096) if mnemonic_proxy_enabled else None
+    # Check if mnemonic-proxy is enabled for this model
+    mnemonic_proxy_enabled = getattr(model_obj, 'mnemonic_proxy_enabled', False)
+    proxy_port = getattr(model_obj, 'mnemonic_proxy_port', 8096) if mnemonic_proxy_enabled else None
+    
+    # Determine target URL: use mnemonic-proxy if enabled, otherwise llama-server directly
+    if mnemonic_proxy_enabled and proxy_port:
+        # Route through mnemonic-proxy for strata context management
+        hosts_to_try = []
+        if _is_wsl_windows_model:
+            wsl_host = get_server_host()
+            if wsl_host and wsl_host != "127.0.0.1":
+                hosts_to_try.append(wsl_host)
+            hosts_to_try.append("127.0.0.1")
+        else:
+            hosts_to_try.append(get_server_host())
         
-        # Determine target URL: use mnemonic-proxy if enabled, otherwise llama-server directly
-        if mnemonic_proxy_enabled and proxy_port:
-            # Route through mnemonic-proxy for strata context management
-            hosts_to_try = []
-            if _is_wsl_windows_model:
-                wsl_host = get_server_host()
-                if wsl_host and wsl_host != "127.0.0.1":
-                    hosts_to_try.append(wsl_host)
-                hosts_to_try.append("127.0.0.1")
-            else:
-                hosts_to_try.append(get_server_host())
-            
-            target_url = None
-            for host in hosts_to_try:
-                url = f"http://{host}:{proxy_port}/v1/chat/completions"
-                log.info(f"Chat proxy to {model} via mnemonic-proxy at {url}")
-                try:
-                    resp = requests.post(url, json=payload, timeout=timeout)
-                    if resp.status_code == 200:
-                        target_url = url
-                        break
-                except requests.exceptions.RequestException as e:
-                    log.warning(f"Failed to connect to mnemonic-proxy at {url}: {e}")
-                    continue
-            
-            if not target_url:
-                log.warning(f"mnemonic-proxy unavailable for {model}, falling back to direct llama-server")
-                mnemonic_proxy_enabled = False
+        target_url = None
+        for host in hosts_to_try:
+            url = f"http://{host}:{proxy_port}/v1/chat/completions"
+            log.info(f"Chat proxy to {model} via mnemonic-proxy at {url}")
+            try:
+                resp = requests.post(url, json=payload, timeout=timeout)
+                if resp.status_code == 200:
+                    target_url = url
+                    break
+            except requests.exceptions.RequestException as e:
+                log.warning(f"Failed to connect to mnemonic-proxy at {url}: {e}")
+                continue
+        
+        if not target_url:
+            log.warning(f"mnemonic-proxy unavailable for {model}, falling back to direct llama-server")
+            mnemonic_proxy_enabled = False
         
         if not mnemonic_proxy_enabled:
             # Fallback: direct to llama-server

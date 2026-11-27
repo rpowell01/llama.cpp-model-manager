@@ -27,30 +27,9 @@ class TestLifecycleRoutes:
         return app.test_client()
     
     @patch('webapp.routes.lifecycle.get_model_registry')
-    def test_start_remote_mode(self, mock_get_registry, client):
-        """Test start endpoint in remote mode returns 202 Accepted."""
+    def test_start_unknown_model(self, mock_get_registry, client):
+        """Test start endpoint with unknown model returns 404."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = True
-        mock_registry._remote_client.get_status.return_value = {"status": "running"}
-        mock_get_registry.return_value = mock_registry
-        
-        response = client.post('/api/start', 
-            json={'model': 'test-model'},
-            content_type='application/json')
-        
-        assert response.status_code == 202
-        data = response.get_json()
-        assert data['status'] == 'loading'
-        assert data['model'] == 'test-model'
-        # In remote mode, models are pre-loaded, so we just verify connectivity
-        # get_status is called in validate_remote_connectivity (before_request) and in api_start
-        assert mock_registry._remote_client.get_status.call_count >= 1
-    
-    @patch('webapp.routes.lifecycle.get_model_registry')
-    def test_start_local_mode_unknown_model(self, mock_get_registry, client):
-        """Test start endpoint in local mode with unknown model returns 404."""
-        mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_registry.list_models.return_value = []  # No models
         mock_get_registry.return_value = mock_registry
         
@@ -66,7 +45,6 @@ class TestLifecycleRoutes:
     def test_start_missing_model(self, mock_get_registry, client):
         """Test start endpoint without model name returns 400."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
         response = client.post('/api/start',
@@ -78,27 +56,9 @@ class TestLifecycleRoutes:
         assert 'error' in data
     
     @patch('webapp.routes.lifecycle.get_model_registry')
-    def test_stop_remote_mode(self, mock_get_registry, client):
-        """Test stop endpoint in remote mode returns stopped status."""
-        mock_registry = Mock()
-        mock_registry.is_remote_mode = True
-        mock_get_registry.return_value = mock_registry
-        
-        response = client.post('/api/stop',
-            json={'model': 'test-model'},
-            content_type='application/json')
-        
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status'] == 'stopped'
-        # In remote mode, models are pre-loaded and cannot be stopped via API
-        mock_registry.unload_model.assert_not_called()
-    
-    @patch('webapp.routes.lifecycle.get_model_registry')
     def test_stop_missing_model(self, mock_get_registry, client):
         """Test stop endpoint without model name returns 400."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
         response = client.post('/api/stop',
@@ -128,7 +88,6 @@ class TestChatRoutes:
     def test_chat_missing_model(self, mock_get_registry, client):
         """Test chat endpoint without model name returns 400."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
         response = client.post('/api/chat',
@@ -143,7 +102,6 @@ class TestChatRoutes:
     def test_chat_missing_messages(self, mock_get_registry, client):
         """Test chat endpoint without messages returns 400."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_registry.list_models.return_value = []
         mock_get_registry.return_value = mock_registry
         
@@ -175,9 +133,8 @@ class TestStatusRoutes:
     
     @patch('webapp.routes.status.get_status_registry')
     def test_api_status(self, mock_get_registry, client):
-        """Test status endpoint returns mode and remote health."""
+        """Test status endpoint returns mode."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
         response = client.get('/api/status')
@@ -187,49 +144,11 @@ class TestStatusRoutes:
         assert 'models' in data
         assert 'mode' in data
         assert data['mode'] == 'local'
-        assert 'remote_healthy' in data
     
     @patch('webapp.routes.status.get_status_registry')
-    def test_api_status_remote_mode(self, mock_get_registry, client):
-        """Test status endpoint in remote mode."""
+    def test_api_next_port(self, mock_get_registry, client):
+        """Test next-port endpoint."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = True
-        mock_registry.list_models.return_value = []  # Return iterable
-        mock_get_registry.return_value = mock_registry
-        
-        response = client.get('/api/status')
-        
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['mode'] == 'remote'
-
-    @patch('webapp.routes.status.get_status_registry')
-    def test_api_status_remote_mode_preserves_context_settings(self, mock_get_registry, client):
-        """Remote status must include context values used by the properties panel."""
-        from webapp.remote_client import Model
-
-        remote_model = Model(
-            name='remote-model',
-            ctx_size=128000,
-            yarn_orig_ctx=32768,
-        )
-        mock_registry = Mock()
-        mock_registry.is_remote_mode = True
-        mock_registry.list_models.return_value = [remote_model]
-        mock_get_registry.return_value = mock_registry
-
-        response = client.get('/api/status')
-
-        assert response.status_code == 200
-        model_data = response.get_json()['models'][0]
-        assert model_data['ctx_size'] == 128000
-        assert model_data['yarn_orig_ctx'] == 32768
-    
-    @patch('webapp.routes.status.get_status_registry')
-    def test_api_next_port_local(self, mock_get_registry, client):
-        """Test next-port endpoint in local mode."""
-        mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         
         with patch('webapp.routes.status.check_port_active', return_value=False):
@@ -239,33 +158,18 @@ class TestStatusRoutes:
         assert response.status_code == 200
         data = response.get_json()
         assert 'port' in data
-    
-    @patch('webapp.routes.status.get_status_registry')
-    def test_api_next_port_remote(self, mock_get_registry, client):
-        """Test next-port endpoint in remote mode returns placeholder."""
-        mock_registry = Mock()
-        mock_registry.is_remote_mode = True
-        mock_get_registry.return_value = mock_registry
-        
-        response = client.get('/api/next-port')
-        
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['port'] == 0
-        assert 'note' in data
 
     @patch('webapp.routes.status._status_for_model')
     @patch('webapp.routes.status.get_models')
     @patch('webapp.routes.status.get_status_registry')
     def test_status_returns_unique_model_per_row(self, mock_get_registry, mock_get_models,
-                                                  mock_status_for_model, client):
+    mock_status_for_model, client):
         """Each model row in /api/status must have its own unique model name.
 
         Regression test for bug where all rows had model: null because
         the serializer was using loop-carried variables instead of per-row data.
         """
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
 
         # Simulate _status_for_model being called for each model with different data
@@ -326,7 +230,6 @@ class TestStatusRoutes:
         because the serializer was using loop-carried variables.
         """
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
 
         def side_effect(model, meta, registry):
@@ -408,39 +311,38 @@ class TestServiceHealthProbes:
         assert mock_post.call_args.kwargs['json']['method'] == 'initialize'
 
     def test_health_survives_stale_proxy_manager(self):
-        """Direct health must override a stale in-memory manager PID."""
-        from webapp.routes.status import _status_for_model
-
-        stale_manager = Mock()
-        stale_manager.get_status.return_value = {
-            'running': False,
-            'pid': 12345,
-            'mcp': {'running': False, 'pid': 12346},
-        }
-
-        with patch('webapp.routes.status.get_proxy_manager', return_value=stale_manager), \
-             patch('webapp.routes.status._get_cached_proxy_health', return_value={
-                 'running': True, 'message': 'mnemonic-proxy healthy'
-             }), \
-             patch('webapp.routes.status._probe_mcp_health', return_value={
-                 'running': True, 'message': 'mnemonic-mcp healthy'
-             }):
-            result = _status_for_model(
-                'model-a',
-                {
-                    'port': 11000,
-                    'mnemonic_proxy': {
-                        'enabled': True,
-                        'port': 8096,
-                        'mcp_enabled': True,
-                        'mcp_port': 8133,
+            """Test that proxy status reflects the actual proxy manager state."""
+            from webapp.routes.status import _status_for_model
+    
+            stale_manager = Mock()
+            stale_manager.get_status.return_value = {
+                'running': False,
+                'pid': 12345,
+                'mcp': {'running': False, 'pid': 12346},
+            }
+    
+            with patch('webapp.routes.status.get_proxy_manager', return_value=stale_manager), \
+                 patch('webapp.routes.status._probe_mcp_health', return_value={
+                     'running': True, 'message': 'mnemonic-mcp healthy'
+                 }):
+                result = _status_for_model(
+                    'model-a',
+                    {
+                        'port': 11000,
+                        'mnemonic_proxy': {
+                            'enabled': True,
+                            'port': 8096,
+                            'mcp_enabled': True,
+                            'mcp_port': 8133,
+                        },
                     },
-                },
-                Mock(is_remote_mode=False),
-            )
-
-        assert result['mnemonic_proxy']['running'] is True
-        assert result['mnemonic_proxy']['mcp']['running'] is True
+                    Mock(),
+                )
+    
+            # The proxy status should reflect the actual manager state (stale manager reports not running)
+            assert result['mnemonic_proxy']['running'] is False
+            # MCP health is probed directly
+            assert result['mnemonic_proxy']['mcp']['running'] is True
 
 
 class TestZombieServiceCleanup:
@@ -507,7 +409,6 @@ class TestZombieServiceCleanup:
              patch('webapp.routes.lifecycle.remove_proxy_manager', return_value=False), \
              patch('webapp.routes.lifecycle._kill_lingering_service_listeners') as mock_cleanup:
             registry = Mock()
-            registry.is_remote_mode = False
             registry.list_models.return_value = [model]
             with patch('webapp.routes.lifecycle.get_model_registry', return_value=registry):
                 response = client.post('/api/stop', json={'model': 'model-a'})
@@ -614,7 +515,6 @@ class TestUpdateModelMeta:
                                                       mock_check_port, status_client):
         """The refresh path must return the flag so the panel can re-render it."""
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         mock_get_models.return_value = {
             'test-model': {'port': 11000, 'speculative_decoding_model': True},
@@ -678,7 +578,6 @@ class TestUpdateModelMeta:
         what is stored for the model (C:/... for a Windows llama-server.exe).
         """
         mock_registry = Mock()
-        mock_registry.is_remote_mode = False
         mock_get_registry.return_value = mock_registry
         mock_get_models.return_value = {
             'test-model': {'port': 11000, 'model_path': '/mnt/c/llama.cpp-models/test.gguf'},

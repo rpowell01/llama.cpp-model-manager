@@ -153,9 +153,7 @@ def main() -> None:
     )
     log = logging.getLogger("llamaweb")
 
-    # Check remote mode config
     cfg = Config()
-    log.info("Remote mode: %s, URL: %s", cfg.is_remote_mode, cfg.remote_url)
 
     # Parse command line arguments early so we can set app config
     parser = argparse.ArgumentParser(description="llama.cpp web frontend")
@@ -236,13 +234,10 @@ def main() -> None:
         
         return response
 
-    # Load models cache (skip in remote mode)
-    if not cfg.is_remote_mode:
-        log.info("Loading models cache...")
-        load_models_cache()
-        log.info("Models cache loaded")
-    else:
-        log.info("Remote mode: skipping local models cache")
+    # Load models cache
+    log.info("Loading models cache...")
+    load_models_cache()
+    log.info("Models cache loaded")
 
     # Start the export scheduler on the first request, once the Flask
     # server is accepting connections. This prevents the first export

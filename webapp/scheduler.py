@@ -147,12 +147,8 @@ class Scheduler:
             registry = get_status_registry()
 
             # Get all models
-            if registry.is_remote_mode:
-                remote_models = registry.list_models()
-                model_names = [m.name for m in remote_models]
-            else:
-                models = get_models()
-                model_names = list(models.keys())
+            models = get_models()
+            model_names = list(models.keys())
 
             if not model_names:
                 return
@@ -201,15 +197,6 @@ class Scheduler:
             else:
                 # Use port from the Model object (works for both local and remote)
                 port = getattr(model, 'port', 0)
-
-            # In remote mode, models are managed by the remote server. A model
-            # returned by the registry is loaded/running there; there is no
-            # local port to probe. In local mode, require a port and verify it
-            # is active before considering the model running.
-            if registry.is_remote_mode:
-                if model is not None:
-                    running.append(model_name)
-                continue
 
             if not port:
                 continue
