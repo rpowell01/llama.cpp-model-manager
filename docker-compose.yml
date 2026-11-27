@@ -5,31 +5,60 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        REMOTE_MODE: "false"
-        LLAMA_CPP_SERVER_URL: "http://localhost:8080"
     container_name: llamaweb
     ports:
       - "5000:5000"
     environment:
-      - REMOTE_MODE=${REMOTE_MODE:-false}
-      - LLAMA_CPP_SERVER_URL=${LLAMA_CPP_SERVER_URL:-http://localhost:8080}
+      # Model directory (can be overridden to point to external models)
+      - MODEL_DIR=/app/models
+      # Optional: Prefer Linux llama-server binary in WSL (true/false)
+      # - PREFER_LINUX_BINARY=true
+      # Optional: Custom llama-server directory
+      # - LLAMA_SERVER_DIR=/path/to/llama-server
     volumes:
+      # Persistent data directories
       - ./models:/app/models
       - ./logs:/app/logs
+      # Mount llama-server binary directory (REQUIRED - see documentation)
+      # Example: - /home/user/llama.cpp/bin:/app/llama-server:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/status', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/status"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
-# Optional: Remote llama-cpp server service
-# Uncomment and configure if you want to run the llama.cpp server locally
-# alongside the web frontend.
+# ──────────────────────────────────────────────────────────────────────────────
+# REQUIRED: llama-server binary
+# ──────────────────────────────────────────────────────────────────────────────
+# The web UI manages llama-server processes but does NOT include the llama-server
+# binary itself. You MUST provide the llama-server binary by mounting it into the
+# container.
 #
-# remote-llama:
+# Option 1: Mount from host (recommended)
+#   volumes:
+#     - /home/user/llama.cpp/bin:/app/llama-server:ro
+#   Then the web UI will auto-detect the binary at /app/llama-server/llama-server
+#
+# Option 2: Set LLAMA_SERVER_DIR environment variable
+#   environment:
+#     - LLAMA_SERVER_DIR=/app/llama-server
+#
+# The binary must be built with KV cache slot save support (--slot-save-path).
+# Supported binaries:
+#   - Linux: llama-server (SYCL/Vulkan/OpenVINO builds) or llama (with 'serve' subcommand)
+#   - Windows: llama-server.exe (runs via Wine in container, not recommended)
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional: Run llama.cpp server alongside the web UI
+# ──────────────────────────────────────────────────────────────────────────────
+# You can run a llama-server instance in a separate container and connect the
+# web UI to it. This is useful for GPU-accelerated inference.
+#
+# Example (uncomment and configure):
+#
+# llama-server:
 #   image: ghcr.io/ggerganov/llama.cpp:server
 #   container_name: llamacpp-server
 #   ports:
@@ -37,9 +66,14 @@ services:
 #   volumes:
 #     - ./models:/models
 #   command: -m /models/your-model.gguf --host 0.0.0.0 --port 8080
-#   environment:
-#     - LLAMA_CPP_PORT=8080
+#   deploy:
+#     resources:
+#       reservations:
+#         devices:
+#           - driver: nvidia
+#             count: 1
+#             capabilities: [gpu]
 #
-# Then set in the web service:
-#   REMOTE_MODE: "true"
-#   LLAMA_CPP_SERVER_URL: "http://remote-llama:8080"
+# Then configure your model in the web UI to use the remote llama-server at
+# http://llama-server:8080 (Docker DNS) or http://host.docker.internal:8080
+# (from host network mode).

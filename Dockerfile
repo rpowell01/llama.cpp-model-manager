@@ -24,15 +24,25 @@ WORKDIR /app
 # Create non-root user for security
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
+# Install runtime dependencies (curl for healthcheck, ca-certificates for HTTPS)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/appuser/.local
 ENV PATH=/home/appuser/.local/bin:$PATH
 
-# Copy application code
+# Copy application code (respects .dockerignore)
 COPY --chown=appuser:appgroup . /app
 
 # Ensure /app is writable by appuser (WORKDIR creates it as root)
 RUN chown -R appuser:appgroup /app
+
+# Create required directories
+RUN mkdir -p /app/models /app/logs /app/webapp/data && \
+    chown -R appuser:appgroup /app/models /app/logs /app/webapp/data
 
 # Switch to non-root user
 USER appuser
@@ -40,17 +50,9 @@ USER appuser
 # Expose Flask port
 EXPOSE 5000
 
-# Build arguments for optional configuration
-ARG REMOTE_MODE=false
-ARG LLAMA_CPP_SERVER_URL=http://localhost:8080
-
-# Set environment variables
-ENV REMOTE_MODE=${REMOTE_MODE}
-ENV LLAMA_CPP_SERVER_URL=${LLAMA_CPP_SERVER_URL}
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/', timeout=5)" || exit 1
+# Health check - use /api/status endpoint which returns JSON
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:5000/api/status > /dev/null 2>&1 || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["python", "webapp/main.py"]

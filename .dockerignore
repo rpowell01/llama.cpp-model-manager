@@ -4,75 +4,66 @@
 
 # Python
 __pycache__
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info
-.eggs
-*.egg
+*.pyc
+*.pyo
+*.pyd
 .pytest_cache
-.mypy_cache
 .coverage
-htmlcov
 .tox
-.nox
+.venv
+venv/
+env/
+ENV/
 
 # Virtual environments
-venv
-env
-.venv
+venv/
 .env
-.env.local
+*.egg-info
+dist/
+build/
 
-# IDE and editor files
-.idea
-.vscode
+# IDE
+.vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# Project-specific
-.beads
-.kilo
-.kilocode
-.claude
-.codex
-.codemill
-.pants.d
-.mill
-.hg
-
-# Logs
-*.log
-logs/
-
-# Docker
-Dockerfile
-docker-compose*.yml
-.dockerignore
-
-# Temporary files
-tmp
-temp
-*.tmp
-*.bak
-*.backup
-
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Test and coverage
-tests/
-.coverage
-coverage.xml
-*.cover
+# Logs
+logs/
+*.log
+
+# Models (large files - mount at runtime instead)
+models/
+*.gguf
+*.bin
 
 # Documentation
+docs/
 *.md
 !README.md
-docs/
 
-# Models (large files, should be mounted)
-models/
+# Tests
+tests/
+
+# Examples
+examples/
+
+# Agent/Config files
+AGENTS.md
+CLAUDE.md
+.kilo/
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml
+
+# Misc
+*.tmp
+*.temp
+.cache/
