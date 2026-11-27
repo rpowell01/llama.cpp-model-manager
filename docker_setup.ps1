@@ -135,45 +135,49 @@ function Check-Prerequisites {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# GitHub Release Download
-# ──────────────────────────────────────────────────────────────────────────────
+# GitHub Source Download (Release or Main Branch)
+# ─────────────────────────────────────────────────────────────────────────��────
 
-function Get-LatestRelease {
+function Get-SourceInfo {
     Write-LogInfo "Fetching latest release from GitHub..."
 
     $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
 
     try {
         $response = Invoke-RestMethod -Uri $apiUrl -Headers @{ "Accept" = "application/vnd.github.v3+json" } -UseBasicParsing
+        $response.SourceType = "release"
         return $response
     } catch {
-        Write-LogError "Failed to fetch release information: $($_.Exception.Message)"
-        Write-Host "Check your internet connection and GitHub API availability." -ForegroundColor $Yellow
-        exit 1
+        # No releases found - fall back to main branch
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            Write-LogInfo "No releases found, falling back to main branch..."
+            $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName"
+            $repoInfo = Invoke-RestMethod -Uri $apiUrl -Headers @{ "Accept" = "application/vnd.github.v3+json" } -UseBasicParsing
+            $repoInfo.SourceType = "branch"
+            $repoInfo.tag_name = $repoInfo.default_branch
+            $repoInfo.name = "main branch"
+            $repoInfo.zipball_url = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$($repoInfo.default_branch).zip"
+            return $repoInfo
+        } else {
+            Write-LogError "Failed to fetch repository information: $($_.Exception.Message)"
+            Write-Host "Check your internet connection and GitHub API availability." -ForegroundColor $Yellow
+            exit 1
+        }
     }
 }
 
-function Download-Release {
+function Download-Source {
     param(
-        [object]$Release,
+        [object]$SourceInfo,
         [string]$Destination
     )
 
-    # Find the source code zip asset
-    $asset = $Release.assets | Where-Object { $_.name -like "*.zip" -and $_.name -like "*source*" }
-    if (-not $asset) {
-        # Fallback: use the zipball_url from the release
-        Write-LogInfo "No source code asset found, using zipball_url..."
-        $downloadUrl = $Release.zipball_url
-        $fileName = "$($Release.tag_name).zip"
-    } else {
-        $downloadUrl = $asset.browser_download_url
-        $fileName = $asset.name
-    }
+    $downloadUrl = $SourceInfo.zipball_url
+    $fileName = "$($SourceInfo.tag_name).zip"
 
     $zipPath = Join-Path $Destination $fileName
 
-    Write-LogInfo "Downloading $fileName..."
+    Write-LogInfo "Downloading $fileName ($($SourceInfo.SourceType))..."
     Write-LogVerbose "URL: $downloadUrl"
 
     try {
@@ -445,10 +449,12 @@ function Main {
     # Check prerequisites
     Check-Prerequisites
 
-    # Get latest release
-    $release = Get-LatestRelease
-    Write-LogInfo "Latest release: $($release.tag_name) - $($release.name)"
-    Write-LogVerbose "Published: $($release.published_at)"
+    # Get source info (release or main branch)
+    $sourceInfo = Get-SourceInfo
+    Write-LogInfo "Latest source: $($sourceInfo.tag_name) - $($sourceInfo.name)"
+    if ($sourceInfo.published_at) {
+        Write-LogVerbose "Published: $($sourceInfo.published_at)"
+    }
 
     # Prepare install directory
     if (-not (Test-Path $InstallDir)) {
@@ -458,7 +464,7 @@ function Main {
 
     # Download and extract
     $tempDir = [System.IO.Path]::GetTempPath()
-    $zipPath = Download-Release -Release $release -Destination $tempDir
+    $zipPath = Download-Source -SourceInfo $sourceInfo -Destination $tempDir
     $extractDir = Extract-Release -ZipPath $zipPath -ExtractDir $InstallDir
 
     # Find or prompt for llama-server directory
