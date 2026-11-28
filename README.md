@@ -45,7 +45,6 @@ The Llama.cpp Model Manager is a Flask-based web application that provides:
 | **HF Integration** | Search Hugging Face models via `/api/hf-repo-search` |
 | **Downloads** | Resumable GGUF model downloads with progress tracking |
 | **Hardware Detection** | CPU, GPU (NVIDIA/AMD/Intel), memory detection |
-| **Remote Mode** | Manage models on a remote llama-server instance |
 | **WSL Support** | Full Windows Subsystem for Linux support with PowerShell wrapper |
 | **Speculative Decoding** | Ngram and draft model speculation parameters |
 | **SSE Logging** | Real-time log streaming to the web console |
@@ -204,15 +203,75 @@ Each model entry supports fields such as:
 | `port` | llama-server port | `9931` |
 | `gpu_layers` | Layers offloaded to GPU | `99` |
 | `threads` | CPU threads | `16` |
+| `threads_batch` | Batch threads | `16` |
+| `timeout` | Server timeout (seconds) | `3600` |
 | `ctx_size` | Context window size | `131072` |
-| `cache_type_k/v` | KV cache quantization | `fp16`, `q4_0`, `q8_0` |
+| `cache_type_k` | K cache quantization | `fp16`, `q4_0`, `q8_0` |
+| `cache_type_v` | V cache quantization | `fp16`, `q4_0`, `q8_0` |
+| `spec_type` | Speculative decoding type | `ngram-mod`, `none` |
+| `spec_draft_model` | Draft model repo | `Qwen/Qwen3-1.7B` |
+| `spec_ngram_mod_n_match` | Ngram match length | `24` |
+| `spec_ngram_mod_n_min` | Min ngram size | `48` |
+| `spec_ngram_mod_n_max` | Max ngram size | `64` |
+| `slot_save_path` | KV cache slot directory | `./data/<model name>` |
+| `chat_template_file` | Chat template path | `./templates/qwen_sharp_chat_template.jinja` |
+| `mmproj` | Multimodal projector path | `./mmproj/Qwen3-VL-30B-A3B-Instruct.mmproj-Q8_0.gguf` |
+| `mmproj_auto` | Auto-load mmproj | `true` |
+| `mmproj_offload` | Offload mmproj to GPU | `true` |
+| `llama_cpp_platform` | Target platform | `linux`, `windows`, `auto` |
+| `llama_cpp_backend` | GPU backend | `vulkan`, `sycl`, `openvino`, `auto` |
+| `device` | GPU device override | `vulkan`, `sycl`, `opencl`, `cuda`, `none` |
+| `gpu_layers` | Layers offloaded to GPU | `99` |
+| `threads` | CPU threads | `16` |
+| `threads_batch` | Batch threads | `16` |
+| `ctx_size` | Context window size | `131072` |
+| `cache_type_k` | K cache quantization | `fp16`, `q4_0`, `q8_0` |
+| `cache_type_v` | V cache quantization | `fp16`, `q4_0`, `q8_0` |
 | `spec_type` | Speculative decoding | `ngram-mod`, `none` |
 | `slot_save_path` | KV cache slot directory | `./data/<model name>` |
 | `mnemonic_proxy` | Proxy config object | see below |
 
 ### Mnemonic Proxy Configuration
 
-Each model can enable mnemonic-proxy for long-context management:
+Each model can enable mnemonic-proxy for long-context management. The proxy is configured via a `config.json` in the model's data directory. Default configuration:
+
+```json
+{
+  "kv_archive": true,
+  "kv_archive_level": 3,
+  "kv_archive_idle_s": 600,
+  "kv_archive_min_age_s": 1800,
+  "kv_archive_min_bytes": 67108864,
+  "kv_archive_poll_s": 60,
+  "kv_archive_threads": 2,
+  "autosave": true,
+  "autosave_idle_s": 30,
+  "autosave_keep": 8,
+  "autosave_max_gb": 10,
+  "mask_anchor": true,
+  "mask_reasoning": true,
+  "mask_target": 8000,
+  "mask_tool_args": true,
+  "mask_trigger": 14000,
+  "min_age_turns": 1,
+  "min_batch_tokens": 2000,
+  "notes_max_tokens": 12288,
+  "recall_flex": true,
+  "recall_multi": true,
+  "recall_struct": true,
+  "response_floor": 16384,
+  "seal_experimental": true,
+  "slot_save": true,
+  "tools_paging": true,
+  "tools_paging_native_split": true,
+  "tools_paging_native_split_build": "",
+  "tools_core": "read/bash/edit/write/grep/find/ls/execute + read_file/write_file/patch/search_files/terminal"
+}
+```
+
+The `tools_core` parameter defines which tools are always available when `tools_paging` is enabled. Add `execute` (or any other tool) to the slash-separated list to make it automatically available.
+
+To enable mnemonic-proxy for a model, add the following to the model's configuration in `models.json`:
 
 ```json
 {
@@ -221,21 +280,11 @@ Each model can enable mnemonic-proxy for long-context management:
     "port": 8096,
     "data_dir": "./data/my-model",
     "slot_dir": "./data/my-model/slots",
-    "tokenizer_path": "",
-    "config_override": {
-      "mask_anchor": true,
-      "autosave": true,
-      "window_estimate_slack": 0.15,
-      "tools_paging": true,
-      "tools_core": "read/bash/edit/write/grep/find/ls/execute + read_file/write_file/patch/search_files/terminal"
-    },
     "mcp_enabled": false,
     "mcp_port": 8133
   }
 }
 ```
-
-The `tools_core` parameter defines which tools are always available when `tools_paging` is enabled. Add `execute` (or any other tool) to the slash-separated list to make it automatically available.
 
 ### Web Interface Config (`.llama-web-config.json`)
 
@@ -291,9 +340,7 @@ Enable `mnemonic_proxy.enabled: true` in a model's config to get:
 - Semantic recall of past conversations
 - Automatic anchor-based state management
 
-### Remote Mode
 
-Set `REMOTE_MODE=true` and configure the remote URL to manage models on a remote llama-server instance instead of local processes.
 
 ---
 
