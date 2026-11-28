@@ -1191,8 +1191,8 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     # Add --device for GPU backends
     # For Vulkan backend on Linux, explicitly use Vulkan device
     if llama_cpp_backend == "vulkan" and llama_cpp_platform == "linux":
-        # Use Vulkan device 0 (first Vulkan device)
-        cmd += ["--device", "vulkan:0"]
+        # Use Vulkan device (format: "vulkan" without device index)
+        cmd += ["--device", "vulkan"]
     elif device == "none":
         # Explicitly disable GPU
         gpu_layers = 0
