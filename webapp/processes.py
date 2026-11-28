@@ -83,6 +83,28 @@ def _get_intel_env() -> dict[str, str]:
     except Exception:
         pass  # Ignore errors, return empty dict
     
+    # Detect Intel Vulkan ICD for Vulkan backend support
+    # Intel Vulkan ICD is typically at /usr/share/vulkan/icd.d/intel_icd.json
+    # or /usr/share/vulkan/icd.d/intel_hasvk_icd.json (for Hasvk)
+    intel_vulkan_icd_paths = [
+        "/usr/share/vulkan/icd.d/intel_icd.json",
+        "/usr/share/vulkan/icd.d/intel_hasvk_icd.json",
+    ]
+    for icd_path in intel_vulkan_icd_paths:
+        if os.path.exists(icd_path):
+            # Check if the ICD is for Intel GPU
+            try:
+                import json
+                with open(icd_path, 'r') as f:
+                    icd_data = json.load(f)
+                    if "ICD" in icd_data and "library_path" in icd_data["ICD"]:
+                        library_path = icd_data["ICD"]["library_path"]
+                        if "intel" in library_path.lower() or "hasvk" in library_path.lower():
+                            _intel_env_cache["VK_ICD_FILENAMES"] = icd_path
+                            break
+            except Exception:
+                pass
+    
     return _intel_env_cache
 
 

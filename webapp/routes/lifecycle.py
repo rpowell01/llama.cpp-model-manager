@@ -24,7 +24,13 @@ from webapp.processes import (
     get_server_host,
     wait_port_free,
     _port_has_listener,
+    _get_intel_env,
 )
+
+def _get_hardware_info():
+    """Lazy import to avoid circular import with system.py."""
+    from webapp.routes.system import get_hardware_info
+    return get_hardware_info()
 from webapp.mnemonic_proxy import (
     create_proxy_manager,
     get_proxy_manager,
@@ -414,6 +420,19 @@ def api_start():
         # Build command
         cmd = build_cmd(model, port, meta)
         env = os.environ.copy()
+        
+        # Intel Vulkan ICD setup for Intel GPU with Vulkan backend
+        # Check if model uses Vulkan backend and Intel GPU is detected
+        model_backend = meta.get("llama_cpp_backend", "auto") or "auto"
+        if model_backend == "vulkan":
+            # Check if Intel GPU is detected in hardware info
+            hardware_info = _get_hardware_info()
+            if hardware_info.get("has_intel_gpu", False):
+                # Get Intel Vulkan ICD path from _get_intel_env (which detects Intel Vulkan ICD)
+                intel_env = _get_intel_env()
+                if "VK_ICD_FILENAMES" in intel_env:
+                    env["VK_ICD_FILENAMES"] = intel_env["VK_ICD_FILENAMES"]
+                    log.info(f"Intel Vulkan ICD detected, setting VK_ICD_FILENAMES={intel_env['VK_ICD_FILENAMES']}")
         
         # WSL + Windows binary workaround: use wrapper batch file to ensure
         # environment variables are properly set in Windows process context.
