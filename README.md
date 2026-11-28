@@ -25,7 +25,6 @@ The Llama.cpp Model Manager is a Flask-based web application that provides:
 - **Hugging Face integration** — search and discover models from the Hugging Face Hub
 - **Model downloading** — background download management for GGUF model files
 - **System information** — hardware detection (CPU, GPU, memory), logs, and server health
-- **Remote mode** — connect to and manage a remote llama-server instance
 - **WSL support** — Windows Subsystem for Linux with PowerShell wrapper for Intel oneAPI/SYCL
 - **Speculative decoding** — ngram and draft-model speculation configuration
 - **Background metrics scheduler** — periodic automatic metrics export
@@ -95,7 +94,6 @@ llama.cpp-model-manager/
 │   ├── processes.py     # llama-server process lifecycle
 │   ├── scheduler.py     # Background metrics export scheduler
 │   ├── state.py         # Shared runtime state & SSE logging
-│   ├── remote_client.py # Remote API client abstraction
 │   ├── metrics.py       # Metrics scraping & parsing
 │   ├── mnemonic_proxy.py # Mnemonic-proxy integration
 │   ├── mnemonic_proxy_updater.py # mnemonic-proxy package updater
@@ -140,8 +138,6 @@ llama.cpp-model-manager/
 ├── CLAUDE.md            # Claude configuration
 ├── start.sh             # Start script (Linux/macOS/WSL)
 ├── start.ps1            # Start script (Windows PowerShell)
-├── docker-compose.yml   # Docker configuration
-├── Dockerfile           # Docker image definition
 ├── LICENSE              # MIT License
 └── requirements.txt     # Python dependencies
 ```
