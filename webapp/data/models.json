@@ -4691,7 +4691,7 @@
     "mmproj_auto": true,
     "mmproj_offload": true,
     "llama_cpp_platform": "linux",
-    "llama_cpp_backend": "sycl",
+    "llama_cpp_backend": "vulkan",
     "mnemonic_proxy": {
       "enabled": true,
       "port": 8096,
