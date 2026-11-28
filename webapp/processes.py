@@ -1188,8 +1188,16 @@ def build_cmd(model: str, port: int | str, meta: dict[str, Any]) -> list[str]:
     if gpu_layers is not None:
         cmd += ["-ngl", str(gpu_layers)]
     
-    # Add --device none when using CPU-only mode
-    if device and gpu_layers == 0:
+    # Add --device for GPU backends
+    # For Vulkan backend on Linux, explicitly use Vulkan device
+    if llama_cpp_backend == "vulkan" and llama_cpp_platform == "linux":
+        # Use Vulkan device 0 (first Vulkan device)
+        cmd += ["--device", "vulkan:0"]
+    elif device == "none":
+        # Explicitly disable GPU
+        gpu_layers = 0
+    elif device and gpu_layers == 0:
+        # Explicit device with CPU-only mode
         cmd += ["--device", device]
     
     # MoE CPU offloading
